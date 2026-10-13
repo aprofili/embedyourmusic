@@ -22,10 +22,13 @@ const html = `<!doctype html><html><head><style>${css}</style></head><body>
       <a href="https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy">spotify</a>
     </div>
   </div>
-  <div class="section_comments" id="comments">comments</div>
-  <div class="section_lists" id="lists">lists</div>
-  <div class="page_object_section_discussion page_object_section" id="discussion">discussion</div>
-  <div class="section_outer section_reviews" id="reviews">reviews</div>
+  <div class="section_comments" id="comments"><div class="release_page_header" id="comments_hdr"><h2 class="">Comments </h2></div>comments</div>
+  <div class="section_lists" id="lists"><div class="release_page_header"><h2 id="lists_h2" style="float:left;">
+     816 Lists
+  </h2><div id="addtolist" style="float:right;">Add to list</div></div>lists</div>
+  <div class="page_object_section_discussion page_object_section" id="discussion"><div class="page_object_section_discussion_header" id="disc_hdr"><h2 class="page_object_section_header">Discussion</h2></div>discussion</div>
+  <div class="section_outer section_reviews" id="reviews"><div class="release_page_header" id="reviews_hdr"><h2>58 Reviews
+  </h2></div>reviews</div>
   <div class="section_suggestions" id="suggestions">suggestions</div>
   <table class="album_info_outer"><tbody><tr><td id="infocell">Label text <b id="infobold">bold</b></td></tr></tbody></table>
   <div id="keep">always visible</div>
@@ -96,6 +99,28 @@ assert.ok(!shown("infobold"), "cell contents hide on click");
 assert.ok(shown("infocell"), "cell itself stays");
 cellToggle.click();
 assert.ok(shown("infobold"), "cell contents return");
+
+// Section titles are reused as toggle labels and the originals hidden
+const label = (id) => toggleFor(id).textContent;
+assert.strictEqual(label("comments"), "\u25B8 Comments");
+assert.strictEqual(label("reviews"), "\u25BE 58 Reviews");
+assert.strictEqual(label("discussion"), "\u25B8 Discussion");
+assert.strictEqual(label("lists"), "\u25B8 816 Lists");
+assert.strictEqual(label("credits"), "\u25B8 Credits", "no <h2>: falls back to configured label");
+// Header row holding only the title is hidden entirely
+for (const id of ["reviews_hdr", "disc_hdr", "comments_hdr"]) {
+  assert.ok(document.getElementById(id).classList.contains("rym-title-hidden"), `${id} hidden`);
+}
+// Header with a control beside the title: only the title is hidden
+assert.ok(document.getElementById("lists_h2").classList.contains("rym-title-hidden"));
+assert.ok(!document.getElementById("addtolist").parentElement.classList.contains("rym-title-hidden"));
+
+// Expanding/collapsing keeps the title text in the label
+const rv = toggleFor("reviews");
+rv.click();
+assert.strictEqual(rv.textContent, "\u25B8 58 Reviews");
+rv.click();
+assert.strictEqual(rv.textContent, "\u25BE 58 Reviews");
 
 // Toggle expands and re-collapses
 const t = toggleFor("comments");

@@ -32,7 +32,7 @@ const html = `<!doctype html><html><head><style>${css}</style></head><body>
       <div class="hide-for-small"><div class="section_tracklisting" id="tracklist">tracks</div></div>
       <div class="section_comments" id="comments">comments</div>
       <a name="suggestions" class="anchor"></a>
-      <div class="section_suggestions" id="suggestions"><ul class="suggestions" id="sugglist"><li>one</li><li>two</li></ul></div>
+      <div class="section_suggestions" id="suggestions"><div class="release_page_header" id="sug_hdr"><h2>Suggestions</h2></div><ul class="suggestions" id="sugglist"><li>one</li><li>two</li></ul></div>
       <div class="column_filler" id="column_filler_left"></div>
     </div>
   </div></div>
@@ -70,6 +70,10 @@ assert.ok(heroMain.querySelector(".rym-embed"), "our embed lands inside the hero
 const sug = $("#suggestions");
 assert.ok(sug.previousElementSibling.classList.contains("rym-collapse-toggle"));
 assert.ok(heroMain.contains(sug.previousElementSibling));
+
+// Title reused in the toggle; original header hidden
+assert.strictEqual(sug.previousElementSibling.textContent, "\u25BE Suggestions");
+assert.ok($("#sug_hdr").classList.contains("rym-title-hidden"));
 
 // Embed comes after player container, before suggestions
 const order = [...heroMain.querySelectorAll("#media_link_button_container_top, .rym-embed, #suggestions")].map((n) => n.id || "embed");

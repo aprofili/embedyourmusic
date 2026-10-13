@@ -141,11 +141,26 @@
 
   const prepared = new WeakSet();
 
+  // Use the section's own title (its first <h2>) as the toggle label and hide the original,
+  // so the title isn't shown twice. Falls back to the configured label if there is no title.
+  function adoptTitle(el, fallback) {
+    const h2 = el.querySelector("h2");
+    const text = h2 && h2.textContent.replace(/\s+/g, " ").trim();
+    if (!text) return fallback;
+    const header = h2.parentElement;
+    // If the title is all its header holds, hide the whole header row; otherwise hide just the
+    // title so controls beside it (e.g. "Add to list", "Show track credits") stay.
+    const hide = header !== el && header.children.length === 1 ? header : h2;
+    hide.classList.add("rym-title-hidden");
+    return text;
+  }
+
   function addCollapseToggles(root) {
-    for (const [selector, label, opts = {}] of COLLAPSIBLE) {
+    for (const [selector, fallbackLabel, opts = {}] of COLLAPSIBLE) {
       for (const el of root.querySelectorAll(selector)) {
         if (prepared.has(el)) continue;
         prepared.add(el);
+        const label = adoptTitle(el, fallbackLabel);
 
         // Element whose visibility is toggled.
         let target = el;

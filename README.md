@@ -13,6 +13,7 @@ Browser extension (Edge, Firefox) that replaces Spotify and Bandcamp links on ra
 
 - Collapsed until clicked (toggle bar above each): issues, contributions (the third `div` under `.release_page`), discussion, comments, credits, tracklist, lists, catalog.
 - Collapsible but open by default: reviews, album info table cells, suggestions.
+- Each toggle reuses the section's own title (e.g. "58 Reviews") and the original title is hidden. Sections without a title (album info) use the label in `COLLAPSIBLE`.
 - Collapsing is plain CSS in `content.css`; the toggles are added by `content.js`. Edit the matching lists in both files to change which sections are affected.
 
 ## Release page layout

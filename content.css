@@ -87,3 +87,8 @@ div.hide-for-small > .section_tracklisting:not(.rym-expanded),
 .rym-emptied {
   display: none !important;
 }
+
+/* Section titles replaced by the toggle label */
+.rym-title-hidden {
+  display: none !important;
+}
