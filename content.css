@@ -14,16 +14,11 @@
   border-radius: 12px;
 }
 
-/* ---- Hidden sections ----
-   Keep in sync with HIDDEN in content.js. */
-.hide-for-small > .section_outer.section_issues,
-.release_page > div:nth-of-type(3),
-.page_object_section_discussion.page_object_section {
-  display: none !important;
-}
-
 /* ---- Collapsed by default, expanded by clicking the toggle ----
    Keep in sync with COLLAPSIBLE in content.js. */
+.hide-for-small > .section_outer.section_issues:not(.rym-expanded),
+.release_page > div:nth-of-type(3):not(.rym-expanded),
+.page_object_section_discussion.page_object_section:not(.rym-expanded),
 .section_comments:not(.rym-expanded),
 div.hide-for-small > .section_credits:not(.rym-expanded),
 div.hide-for-small > .section_tracklisting:not(.rym-expanded),

@@ -42,12 +42,8 @@ window.eval(js);
 
 const shown = (id) => window.getComputedStyle(document.getElementById(id)).display !== "none";
 
-// Always hidden
-for (const id of ["issues", "third", "discussion"]) {
-  assert.ok(!shown(id), `${id} should be hidden`);
-}
-// Collapsed by default
-for (const id of ["comments", "credits", "tracklist", "lists", "catalog"]) {
+const COLLAPSED = ["issues", "third", "discussion", "comments", "credits", "tracklist", "lists", "catalog"];
+for (const id of COLLAPSED) {
   assert.ok(!shown(id), `${id} should start collapsed`);
 }
 // Untouched
@@ -55,16 +51,15 @@ for (const id of ["info", "art", "keep", "links"]) {
   assert.ok(shown(id), `${id} should stay visible`);
 }
 
-// A toggle exists directly before each collapsible, and none for hidden sections
+// A toggle exists directly before each collapsible
 const toggleFor = (id) => {
   const prev = document.getElementById(id).previousElementSibling;
   return prev && prev.classList.contains("rym-collapse-toggle") ? prev : null;
 };
-for (const id of ["comments", "credits", "tracklist", "lists", "catalog"]) {
+for (const id of COLLAPSED) {
   assert.ok(toggleFor(id), `${id} should have a toggle`);
 }
-assert.strictEqual(document.querySelectorAll(".rym-collapse-toggle").length, 5);
-assert.ok(!document.querySelector("#issues").previousElementSibling, "no toggle for hidden section");
+assert.strictEqual(document.querySelectorAll(".rym-collapse-toggle").length, 8);
 
 // Toggle expands and re-collapses
 const t = toggleFor("comments");
@@ -76,9 +71,9 @@ assert.ok(!shown("comments"), "comments collapses again");
 
 // Re-running does not duplicate toggles
 window.__embedYourMusic.run();
-assert.strictEqual(document.querySelectorAll(".rym-collapse-toggle").length, 5);
+assert.strictEqual(document.querySelectorAll(".rym-collapse-toggle").length, 8);
 
-// Embed was inserted, as a non-div, so div:nth-of-type(3) is still #third
+// Embed and toggles are non-divs, so div:nth-of-type(3) is still #third
 const embeds = document.querySelectorAll(".rym-embed");
 assert.strictEqual(embeds.length, 1);
 assert.notStrictEqual(embeds[0].tagName, "DIV");

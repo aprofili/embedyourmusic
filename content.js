@@ -120,16 +120,13 @@
   }
 
   // ---- Page cleanup ----
-  // Hiding itself is done in content.css (so it applies before first paint).
-  // Keep these lists in sync with the selectors there.
-  const HIDDEN = [
-    ".hide-for-small > .section_outer.section_issues",
-    ".release_page > div:nth-of-type(3)",
-    ".page_object_section_discussion.page_object_section",
-  ];
-
+  // Collapsing itself is done in content.css (so it applies before first paint).
+  // Keep this list in sync with the selectors there.
   // [selector, toggle label]. CSS collapses these; the toggle expands them.
   const COLLAPSIBLE = [
+    [".hide-for-small > .section_outer.section_issues", "Issues"],
+    [".release_page > div:nth-of-type(3)", "Extra section"],
+    [".page_object_section_discussion.page_object_section", "Discussion"],
     [".section_comments", "Comments"],
     ["div.hide-for-small > .section_credits", "Credits"],
     ["div.hide-for-small > .section_tracklisting", "Tracklist"],
@@ -144,7 +141,6 @@
       for (const el of root.querySelectorAll(selector)) {
         if (prepared.has(el)) continue;
         prepared.add(el);
-        if (HIDDEN.some((s) => el.matches(s))) continue;
 
         // <button>, not <div>, so div:nth-of-type() counts are unaffected.
         const toggle = document.createElement("button");

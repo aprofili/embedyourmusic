@@ -11,9 +11,8 @@ Browser extension (Edge, Firefox) that replaces Spotify and Bandcamp links on ra
 
 ## Page cleanup
 
-- Always hidden: `.section_issues`, the third `div` under `.release_page`, and the discussion section.
-- Collapsed until clicked (toggle bar above each): comments, credits, tracklist, lists, catalog.
-- Hiding is plain CSS in `content.css`; collapse toggles are added by `content.js`. Edit the matching lists in both files to change which sections are affected.
+- Collapsed until clicked (toggle bar above each): issues, the third `div` under `.release_page`, discussion, comments, credits, tracklist, lists, catalog.
+- Collapsing is plain CSS in `content.css`; the toggles are added by `content.js`. Edit the matching lists in both files to change which sections are affected.
 
 ## Install
 
