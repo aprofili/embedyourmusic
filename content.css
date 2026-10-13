@@ -92,3 +92,21 @@ div.hide-for-small > .section_tracklisting:not(.rym-expanded),
 .rym-title-hidden {
   display: none !important;
 }
+
+/* RYM centers its icon row in a shrink-wrapped flex box, which makes the player only as
+   wide as the icons. In the hero, let the player block fill the available width. */
+.rym-hero-main .media_link_container {
+  display: block;
+}
+
+.rym-hero-main .media_link_container > div {
+  width: 100%;
+}
+
+.rym-hero-main .ui_media_links {
+  margin: 0 auto;
+}
+
+.rym-hero-main .rym-embed {
+  max-width: none;
+}

@@ -8,7 +8,7 @@ const root = path.join(__dirname, "..");
 const css = fs.readFileSync(path.join(root, "content.css"), "utf8");
 const js = fs.readFileSync(path.join(root, "content.js"), "utf8");
 
-const html = `<!doctype html><html><head><style>${css}</style></head><body>
+const html = `<!doctype html><html><head><style>.media_link_container{min-height:2.9em;margin:.5em 0;display:flex;justify-content:center}.ui_media_links{display:flex;max-width:31rem}${css}</style></head><body>
 <div class="release_page">
   <div id="agg"></div>
   <meta itemprop="name" content="x" />
@@ -23,7 +23,7 @@ const html = `<!doctype html><html><head><style>${css}</style></head><body>
         <div class="hide-for-small" id="frameinner">
           <a href="buy/" id="art"><div class="coverart_1"><img src="x.jpg"></div></a>
           <div id="media_link_button_container_top" class="media_link_container">
-            <a id="splink" href="https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy">spotify</a>
+            <div id="mlinner"><div class="ui_media_links"><a id="splink" href="https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy">spotify</a></div></div>
           </div>
           <div id="submit">Submit media links</div>
         </div>
@@ -70,6 +70,17 @@ assert.ok(heroMain.querySelector(".rym-embed"), "our embed lands inside the hero
 const sug = $("#suggestions");
 assert.ok(sug.previousElementSibling.classList.contains("rym-collapse-toggle"));
 assert.ok(heroMain.contains(sug.previousElementSibling));
+
+// Player fills the hero instead of shrink-wrapping to the icon row
+const cs = (sel) => window.getComputedStyle($(sel));
+assert.strictEqual(cs("#media_link_button_container_top").display, "block");
+assert.strictEqual(cs("#mlinner").width, "100%");
+assert.strictEqual(cs(".rym-embed").maxWidth, "none");
+assert.ok(
+  $("#mlinner").contains($(".rym-embed")),
+  "embed sits inside the full-width wrapper, after the icon row"
+);
+assert.strictEqual($(".ui_media_links").nextElementSibling, $(".rym-embed"));
 
 // Title reused in the toggle; original header hidden
 assert.strictEqual(sug.previousElementSibling.textContent, "\u25BE Suggestions");
