@@ -53,49 +53,50 @@ const window = load();
 const { document } = window;
 const $ = (s) => document.querySelector(s);
 
-const hero = $(".rym-hero");
-assert.ok(hero, "hero created");
-assert.strictEqual(hero.tagName, "SECTION");
-assert.strictEqual(hero.nextElementSibling.id, "wrapper", "hero sits just above the normal layout");
+// No separate band: the art stays in the left column, the player block tops the right column.
+assert.ok(!$(".rym-hero"), "no hero band");
+const main = $(".rym-hero-main");
+assert.ok(main, "player block created");
+assert.strictEqual(main.tagName, "ASIDE");
+assert.strictEqual($("#column_container_right").firstElementChild, main, "tops the right column");
+assert.ok(main.querySelector("#media_link_button_container_top"), "player container moved");
+assert.ok(main.querySelector("#submit"), "submit link moved with it");
+assert.ok(main.querySelector("#suggestions"), "suggestions moved");
+assert.ok(main.querySelector(".rym-embed"), "our player panel is inside it");
 
-const heroArt = hero.querySelector(".rym-hero-art");
-const heroMain = hero.querySelector(".rym-hero-main");
-assert.strictEqual(heroArt.firstElementChild.id, "art", "art on the left");
-assert.ok(heroMain.querySelector("#media_link_button_container_top"), "player container on the right");
-assert.ok(heroMain.querySelector("#submit"), "submit link moved with it");
-assert.ok(heroMain.querySelector("#suggestions"), "suggestions on the right");
-assert.ok(heroMain.querySelector(".rym-embed"), "our embed lands inside the hero");
+// Art stays at the top of the left column and nothing else is left in its block
+const left = $("#column_container_left");
+const frame = $("#frame");
+assert.strictEqual(left.firstElementChild, frame, "art frame is first in the left column");
+assert.ok(frame.contains($("#art")));
+assert.deepStrictEqual([...$("#frameinner").children].map((n) => n.id), ["art"]);
+assert.notStrictEqual(window.getComputedStyle(frame).display, "none", "art frame stays visible");
+// Nothing sits between the art and the rest of the left column (no leftover empty block)
+assert.strictEqual(frame.nextElementSibling.tagName, "TABLE", "color bar directly follows the art");
+assert.ok(!left.contains($("#suggestions")), "suggestions left the left column");
+assert.ok(left.contains($("#tracklist")) && left.contains($("#comments")), "other left sections stay");
+assert.ok($("#column_container_right").contains($("#reviews")), "right sections stay");
 
 // Suggestions toggle moved with it and sits directly above it
 const sug = $("#suggestions");
 assert.ok(sug.previousElementSibling.classList.contains("rym-collapse-toggle"));
-assert.ok(heroMain.contains(sug.previousElementSibling));
+assert.ok(main.contains(sug.previousElementSibling));
 
-// Player fills the hero instead of shrink-wrapping to the icon row
+// Player fills the available width instead of shrink-wrapping to the icon row
 const cs = (sel) => window.getComputedStyle($(sel));
 assert.strictEqual(cs("#media_link_button_container_top").display, "block");
 assert.strictEqual(cs("#mlinner").width, "100%");
 assert.strictEqual(cs(".rym-embed").maxWidth, "none");
-assert.ok(
-  $("#mlinner").contains($(".rym-embed")),
-  "embed sits inside the full-width wrapper, after the icon row"
-);
+assert.ok($("#mlinner").contains($(".rym-embed")), "panel sits inside the full-width wrapper");
 assert.strictEqual($(".ui_media_links").nextElementSibling, $(".rym-embed"));
 
 // Title reused in the toggle; original header hidden
 assert.strictEqual(sug.previousElementSibling.textContent, "\u25BE Suggestions");
 assert.ok($("#sug_hdr").classList.contains("rym-title-hidden"));
 
-// Embed comes after player container, before suggestions
-const order = [...heroMain.querySelectorAll("#media_link_button_container_top, .rym-embed, #suggestions")].map((n) => n.id || "embed");
+// Order inside the block: player, then suggestions
+const order = [...main.querySelectorAll("#media_link_button_container_top, .rym-embed, #suggestions")].map((n) => n.id || "embed");
 assert.deepStrictEqual(order, ["media_link_button_container_top", "embed", "suggestions"]);
-
-// Old art frame is hidden; the rest of the page is untouched
-assert.strictEqual(window.getComputedStyle($("#frame")).display, "none");
-assert.ok($("#tracklist"), "tracklist still in place");
-assert.ok($("#column_container_left").contains($("#tracklist")));
-assert.ok($("#column_container_right").contains($("#reviews")));
-assert.ok(!$("#column_container_left").contains(sug), "suggestions left the left column");
 
 // Contributions is still the third div under .release_page
 assert.strictEqual($(".release_page > div:nth-of-type(3)").id, "contrib");
@@ -105,7 +106,7 @@ assert.ok(css.includes("column-count: 2"));
 
 // Idempotent
 window.__embedYourMusic.run();
-assert.strictEqual(document.querySelectorAll(".rym-hero").length, 1);
+assert.strictEqual(document.querySelectorAll(".rym-hero-main").length, 1);
 assert.strictEqual(document.querySelectorAll(".rym-embed").length, 1);
 
 // Narrow screens: leave the page alone
@@ -114,6 +115,7 @@ dom2.window.matchMedia = () => ({ matches: false });
 dom2.window.IntersectionObserver = class { observe() {} unobserve() {} };
 dom2.window.chrome = { runtime: { sendMessage: async () => ({}) } };
 dom2.window.eval(js);
-assert.ok(!dom2.window.document.querySelector(".rym-hero"), "no hero on small screens");
+assert.ok(!dom2.window.document.querySelector(".rym-hero-main"), "left alone on small screens");
+assert.ok(dom2.window.document.querySelector("#column_container_left").contains(dom2.window.document.querySelector("#suggestions")), "suggestions untouched on small screens");
 
 console.log("hero tests passed");

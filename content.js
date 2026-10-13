@@ -395,9 +395,9 @@
     }
   }
 
-  // ---- Hero layout ----
-  // Top band: cover art on the left; the media player and suggestions on the right.
-  // Everything else stays in RYM's normal two-column layout below it.
+  // ---- Player and suggestions placement ----
+  // The cover art stays at the top of the left column, so Previous/Next and the other left-column
+  // sections follow directly under it. The player and suggestions move to the top of the right column.
   function moveWithToggle(el, dest) {
     const prev = el.previousElementSibling;
     if (prev && prev.classList.contains("rym-collapse-toggle")) dest.append(prev);
@@ -405,35 +405,30 @@
   }
 
   function buildHero() {
-    if (document.querySelector(".rym-hero")) return;
+    if (document.querySelector(".rym-hero-main")) return;
     // On narrow (mobile) layouts RYM hides the desktop art block; leave the page alone.
     if (globalThis.matchMedia && !globalThis.matchMedia("(min-width: 768px)").matches) return;
 
     const left = document.querySelector(".release_page .release_left_column");
-    if (!left) return;
-    const frame = left.querySelector(":scope > .page_release_art_frame");
-    const frameInner = frame && frame.querySelector(":scope > .hide-for-small");
+    const right = document.querySelector(".release_page .release_right_column");
+    if (!left || !right) return;
+    const frameInner = left.querySelector(":scope > .page_release_art_frame > .hide-for-small");
     const art = frameInner && frameInner.querySelector(":scope > a");
-    const outer = left.closest(".release_page > div");
-    if (!art || !outer) return;
+    if (!art) return;
 
-    // <section>/<aside>, not <div>: extra divs would shift RYM's div:nth-of-type() selectors.
-    const hero = document.createElement("section");
-    hero.className = "rym-hero";
-    const heroArt = document.createElement("aside");
-    heroArt.className = "rym-hero-art";
-    const heroMain = document.createElement("aside");
-    heroMain.className = "rym-hero-main";
+    // <aside>, not <div>: extra divs could shift RYM's div:nth-of-type() selectors.
+    const main = document.createElement("aside");
+    main.className = "rym-hero-main";
 
-    heroArt.append(art);
-    // Player icons, RYM's own player, submit link (and any embed we add beside them).
-    heroMain.append(frameInner);
+    // Everything in the art block except the cover itself: player icons, RYM's player,
+    // submit link (and any embed we add beside them).
+    for (const node of [...frameInner.childNodes]) {
+      if (node !== art) main.append(node);
+    }
     const suggestions = left.querySelector(".section_suggestions");
-    if (suggestions) moveWithToggle(suggestions, heroMain);
+    if (suggestions) moveWithToggle(suggestions, main);
 
-    hero.append(heroArt, heroMain);
-    outer.before(hero);
-    frame.classList.add("rym-emptied");
+    right.prepend(main);
   }
 
   function run() {
