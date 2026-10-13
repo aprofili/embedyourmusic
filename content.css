@@ -1,0 +1,14 @@
+.rym-embed {
+  display: block;
+  clear: both;
+  width: 100%;
+  max-width: 500px;
+  margin: 8px 0;
+}
+
+.rym-embed-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+}
