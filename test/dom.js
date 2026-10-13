@@ -25,6 +25,9 @@ const html = `<!doctype html><html><head><style>${css}</style></head><body>
   <div class="section_comments" id="comments">comments</div>
   <div class="section_lists" id="lists">lists</div>
   <div class="page_object_section_discussion page_object_section" id="discussion">discussion</div>
+  <div class="section_outer section_reviews" id="reviews">reviews</div>
+  <div class="section_suggestions" id="suggestions">suggestions</div>
+  <table class="album_info_outer"><tbody><tr><td id="infocell">Label text <b id="infobold">bold</b></td></tr></tbody></table>
   <div id="keep">always visible</div>
 </div>
 </body></html>`;
@@ -40,11 +43,21 @@ window.IntersectionObserver = class {
 window.chrome = { runtime: { sendMessage: async () => ({}) } };
 window.eval(js);
 
-const shown = (id) => window.getComputedStyle(document.getElementById(id)).display !== "none";
+// Visible = no element from itself up to <body> has display:none.
+const shown = (id) => {
+  for (let n = document.getElementById(id); n && n !== document.body; n = n.parentElement) {
+    if (window.getComputedStyle(n).display === "none") return false;
+  }
+  return true;
+};
 
 const COLLAPSED = ["issues", "third", "discussion", "comments", "credits", "tracklist", "lists", "catalog"];
 for (const id of COLLAPSED) {
   assert.ok(!shown(id), `${id} should start collapsed`);
+}
+// Open by default
+for (const id of ["reviews", "suggestions", "infocell", "infobold"]) {
+  assert.ok(shown(id), `${id} should start open`);
 }
 // Untouched
 for (const id of ["info", "art", "keep", "links"]) {
@@ -59,7 +72,30 @@ const toggleFor = (id) => {
 for (const id of COLLAPSED) {
   assert.ok(toggleFor(id), `${id} should have a toggle`);
 }
-assert.strictEqual(document.querySelectorAll(".rym-collapse-toggle").length, 8);
+assert.strictEqual(document.querySelectorAll(".rym-collapse-toggle").length, 11);
+
+// Open-by-default sections collapse on click and reopen
+for (const id of ["reviews", "suggestions"]) {
+  const tg = toggleFor(id);
+  assert.strictEqual(tg.getAttribute("aria-expanded"), "true");
+  tg.click();
+  assert.ok(!shown(id), `${id} collapses on click`);
+  assert.strictEqual(tg.getAttribute("aria-expanded"), "false");
+  tg.click();
+  assert.ok(shown(id), `${id} reopens`);
+}
+
+// Table cell: toggle inside the cell, contents wrapped and preserved
+const cell = document.getElementById("infocell");
+assert.ok(cell.firstElementChild.classList.contains("rym-collapse-toggle"));
+assert.ok(cell.textContent.includes("Label text"));
+assert.strictEqual(cell.querySelector("#infobold").textContent, "bold");
+const cellToggle = cell.firstElementChild;
+cellToggle.click();
+assert.ok(!shown("infobold"), "cell contents hide on click");
+assert.ok(shown("infocell"), "cell itself stays");
+cellToggle.click();
+assert.ok(shown("infobold"), "cell contents return");
 
 // Toggle expands and re-collapses
 const t = toggleFor("comments");
@@ -71,7 +107,7 @@ assert.ok(!shown("comments"), "comments collapses again");
 
 // Re-running does not duplicate toggles
 window.__embedYourMusic.run();
-assert.strictEqual(document.querySelectorAll(".rym-collapse-toggle").length, 8);
+assert.strictEqual(document.querySelectorAll(".rym-collapse-toggle").length, 11);
 
 // Embed and toggles are non-divs, so div:nth-of-type(3) is still #third
 const embeds = document.querySelectorAll(".rym-embed");

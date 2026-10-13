@@ -122,38 +122,66 @@
   // ---- Page cleanup ----
   // Collapsing itself is done in content.css (so it applies before first paint).
   // Keep this list in sync with the selectors there.
-  // [selector, toggle label]. CSS collapses these; the toggle expands them.
+  // [selector, toggle label, options]. Default: CSS collapses these and the toggle expands them.
+  // { open: true }   starts open; the toggle collapses it (class added by JS).
+  // { inside: true } for table cells: toggle goes inside the cell and wraps its contents.
   const COLLAPSIBLE = [
     [".hide-for-small > .section_outer.section_issues", "Issues"],
-    [".release_page > div:nth-of-type(3)", "Extra section"],
+    [".release_page > div:nth-of-type(3)", "Contributions"],
     [".page_object_section_discussion.page_object_section", "Discussion"],
     [".section_comments", "Comments"],
     ["div.hide-for-small > .section_credits", "Credits"],
     ["div.hide-for-small > .section_tracklisting", "Tracklist"],
     [".section_lists", "Lists"],
     [".section_outer.section_catalog", "Catalog"],
+    [".section_outer.section_reviews", "Reviews", { open: true }],
+    [".album_info_outer > tbody > tr > td", "Album info", { open: true, inside: true }],
+    [".section_suggestions", "Suggestions", { open: true }],
   ];
 
   const prepared = new WeakSet();
 
   function addCollapseToggles(root) {
-    for (const [selector, label] of COLLAPSIBLE) {
+    for (const [selector, label, opts = {}] of COLLAPSIBLE) {
       for (const el of root.querySelectorAll(selector)) {
         if (prepared.has(el)) continue;
         prepared.add(el);
+
+        // Element whose visibility is toggled.
+        let target = el;
+        if (opts.inside) {
+          // Wrap the cell's contents (<aside>, not <div>, to keep nth-of-type counts intact).
+          target = document.createElement("aside");
+          target.className = "rym-collapse-body";
+          while (el.firstChild) target.append(el.firstChild);
+          el.append(target);
+        }
 
         // <button>, not <div>, so div:nth-of-type() counts are unaffected.
         const toggle = document.createElement("button");
         toggle.type = "button";
         toggle.className = "rym-collapse-toggle";
-        toggle.setAttribute("aria-expanded", "false");
-        toggle.textContent = `▸ ${label}`;
-        toggle.addEventListener("click", () => {
-          const open = el.classList.toggle("rym-expanded");
+
+        const render = (open) => {
           toggle.setAttribute("aria-expanded", String(open));
-          toggle.textContent = `${open ? "▾" : "▸"} ${label}`;
-        });
-        el.before(toggle);
+          toggle.textContent = `${open ? "\u25BE" : "\u25B8"} ${label}`;
+        };
+
+        if (opts.open) {
+          render(true);
+          toggle.addEventListener("click", () => {
+            const collapsed = target.classList.toggle("rym-collapsed");
+            render(!collapsed);
+          });
+        } else {
+          render(false);
+          toggle.addEventListener("click", () => {
+            render(target.classList.toggle("rym-expanded"));
+          });
+        }
+
+        if (opts.inside) el.prepend(toggle);
+        else el.before(toggle);
       }
     }
   }

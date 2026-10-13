@@ -45,3 +45,8 @@ div.hide-for-small > .section_tracklisting:not(.rym-expanded),
 .rym-collapse-toggle:hover {
   background: rgba(128, 128, 128, 0.18);
 }
+
+/* Sections that start open and are collapsed by the toggle */
+.rym-collapsed {
+  display: none !important;
+}
