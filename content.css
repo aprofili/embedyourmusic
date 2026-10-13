@@ -110,3 +110,29 @@ div.hide-for-small > .section_tracklisting:not(.rym-expanded),
 .rym-hero-main .rym-embed {
   max-width: none;
 }
+
+/* ---- Streaming tabs ---- */
+.rym-tab {
+  opacity: 0.55;
+  border-radius: 8px;
+  transition: opacity 0.1s;
+}
+
+.rym-tab:hover,
+.rym-tab-active {
+  opacity: 1;
+}
+
+.rym-tab-active {
+  outline: 2px solid var(--gen-blue-darker, #4a90e2);
+  outline-offset: 2px;
+}
+
+.rym-embed-slot[hidden] {
+  display: none;
+}
+
+.rym-embed-msg {
+  margin: 8px 0;
+  font-size: 0.9em;
+}

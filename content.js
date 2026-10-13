@@ -1,4 +1,5 @@
-// Finds Spotify and Bandcamp links on RateYourMusic and adds inline players.
+// Adds inline players on RateYourMusic: tabbed players for the release page's streaming icons,
+// plus plain embeds for loose Spotify/Bandcamp links elsewhere. Also tidies the release page layout.
 
 (() => {
   const api = globalThis.browser ?? globalThis.chrome;
@@ -6,7 +7,20 @@
   const SPOTIFY_RE =
     /^https?:\/\/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(album|track|playlist|artist|episode|show)\/([A-Za-z0-9]+)/;
 
-  function classify(href) {
+  const LABELS = {
+    spotify: "Spotify",
+    applemusic: "Apple Music",
+    soundcloud: "SoundCloud",
+    bandcamp: "Bandcamp",
+    youtube: "YouTube",
+    tidal: "Tidal",
+    deezer: "Deezer",
+  };
+
+  // Embed info for any supported streaming service, or null.
+  //   kind "iframe":   { src, height, maxWidth? } is ready to use.
+  //   kind "bandcamp": { url } must be resolved to a player URL by the background script.
+  function classifyAny(href) {
     if (!href) return null;
 
     const sp = href.match(SPOTIFY_RE);
@@ -14,26 +28,120 @@
       const [, type, id] = sp;
       const compact = type === "track" || type === "episode";
       return {
+        service: "spotify",
+        kind: "iframe",
         key: `spotify:${type}:${id}`,
-        kind: "spotify",
         src: `https://open.spotify.com/embed/${type}/${id}`,
         height: compact ? 152 : 352,
       };
     }
 
+    let u;
     try {
-      const u = new URL(href);
-      if (
-        u.hostname.endsWith(".bandcamp.com") &&
-        /^\/(album|track)\//.test(u.pathname)
-      ) {
-        const clean = `https://${u.hostname}${u.pathname}`;
-        return { key: `bandcamp:${clean}`, kind: "bandcamp", url: clean };
-      }
+      u = new URL(href);
     } catch {
-      /* not a URL */
+      return null;
     }
+    const host = u.hostname.replace(/^www\./, "");
+    const parts = u.pathname.split("/").filter(Boolean);
+
+    if (host.endsWith(".bandcamp.com") && /^\/(album|track)\//.test(u.pathname)) {
+      const clean = `https://${u.hostname}${u.pathname}`;
+      return { service: "bandcamp", kind: "bandcamp", key: `bandcamp:${clean}`, url: clean };
+    }
+
+    if (
+      (host === "geo.music.apple.com" || host === "music.apple.com") &&
+      parts.length >= 3 &&
+      ["album", "song", "playlist"].includes(parts[1])
+    ) {
+      return {
+        service: "applemusic",
+        kind: "iframe",
+        key: `applemusic:${u.pathname}`,
+        src: `https://embed.music.apple.com${u.pathname}${u.search}`,
+        height: parts[1] === "song" ? 175 : 450,
+      };
+    }
+
+    if (host === "soundcloud.com" && parts.length >= 2) {
+      const params = new URLSearchParams({
+        url: `https://soundcloud.com${u.pathname}`,
+        color: "#ff5500",
+        auto_play: "false",
+        hide_related: "true",
+        show_comments: "false",
+        show_user: "true",
+        show_reposts: "false",
+        show_teaser: "false",
+        visual: "false",
+      });
+      return {
+        service: "soundcloud",
+        kind: "iframe",
+        key: `soundcloud:${u.pathname}`,
+        src: `https://w.soundcloud.com/player/?${params}`,
+        height: parts.includes("sets") ? 450 : 166,
+      };
+    }
+
+    if (["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host)) {
+      let id = null;
+      let list = null;
+      if (host === "youtu.be") id = parts[0];
+      else if (u.pathname === "/watch") id = u.searchParams.get("v");
+      else if (u.pathname === "/playlist") list = u.searchParams.get("list");
+
+      let src = null;
+      if (id && /^[\w-]{6,}$/.test(id)) src = `https://www.youtube-nocookie.com/embed/${id}`;
+      else if (list && /^[\w-]+$/.test(list))
+        src = `https://www.youtube-nocookie.com/embed/videoseries?list=${list}`;
+      if (src) {
+        return {
+          service: "youtube",
+          kind: "iframe",
+          key: `youtube:${id || list}`,
+          src,
+          height: 405,
+          maxWidth: 720,
+        };
+      }
+    }
+
+    if (host === "tidal.com" || host === "listen.tidal.com") {
+      const p = parts[0] === "browse" ? parts.slice(1) : parts;
+      if (p.length >= 2 && ["album", "track", "playlist", "video"].includes(p[0]) && /^[\w-]+$/.test(p[1])) {
+        return {
+          service: "tidal",
+          kind: "iframe",
+          key: `tidal:${p[0]}:${p[1]}`,
+          src: `https://embed.tidal.com/${p[0]}s/${p[1]}`,
+          height: p[0] === "track" ? 150 : p[0] === "video" ? 315 : 400,
+        };
+      }
+    }
+
+    if (host === "deezer.com") {
+      const i = parts.findIndex((x) => ["album", "track", "playlist", "artist"].includes(x));
+      if (i >= 0 && /^\d+$/.test(parts[i + 1] || "")) {
+        const type = parts[i];
+        return {
+          service: "deezer",
+          kind: "iframe",
+          key: `deezer:${type}:${parts[i + 1]}`,
+          src: `https://widget.deezer.com/widget/auto/${type}/${parts[i + 1]}`,
+          height: type === "track" ? 150 : 350,
+        };
+      }
+    }
+
     return null;
+  }
+
+  // Loose links on the page (reviews, lists, ...) only get Spotify and Bandcamp players.
+  function classify(href) {
+    const info = classifyAny(href);
+    return info && (info.service === "spotify" || info.service === "bandcamp") ? info : null;
   }
 
   function makeFrame(src, height, title) {
@@ -48,6 +156,15 @@
     return frame;
   }
 
+  async function resolveBandcamp(url) {
+    try {
+      const res = await api.runtime.sendMessage({ type: "resolve-bandcamp", url });
+      return res && res.embed ? res.embed : null;
+    } catch {
+      return null;
+    }
+  }
+
   const seen = new Set();
   const lazy = new IntersectionObserver(
     (entries) => {
@@ -60,6 +177,7 @@
     { rootMargin: "300px" }
   );
 
+  // ---- Loose links: one embed per link ----
   function place(link, wrapper) {
     // Put the embed after the link's container, keeping several embeds in link order.
     let ref = link.parentElement || link;
@@ -82,24 +200,15 @@
     wrapper.style.minHeight = `${info.height || 120}px`;
 
     wrapper.__load = async () => {
-      if (info.kind === "spotify") {
-        wrapper.append(makeFrame(info.src, info.height, "Spotify player"));
+      if (info.kind !== "bandcamp") {
+        wrapper.append(makeFrame(info.src, info.height, `${LABELS[info.service]} player`));
         return;
       }
-      try {
-        const res = await api.runtime.sendMessage({
-          type: "resolve-bandcamp",
-          url: info.url,
-        });
-        if (res && res.embed) {
-          wrapper.style.minHeight = `${res.embed.height}px`;
-          wrapper.append(
-            makeFrame(res.embed.src, res.embed.height, "Bandcamp player")
-          );
-        } else {
-          wrapper.remove();
-        }
-      } catch {
+      const res = await resolveBandcamp(info.url);
+      if (res) {
+        wrapper.style.minHeight = `${res.height}px`;
+        wrapper.append(makeFrame(res.src, res.height, "Bandcamp player"));
+      } else {
         wrapper.remove();
       }
     };
@@ -113,10 +222,95 @@
       ? root.querySelectorAll("a[href]")
       : [];
     for (const link of links) {
-      if (link.closest(".rym-embed")) continue;
+      // The release page's icon row is handled by buildTabs below.
+      if (link.closest(".rym-embed, .media_link_container")) continue;
       const info = classify(link.href);
       if (info) embed(link, info);
     }
+  }
+
+  // ---- Release page: streaming icons become tabs that switch a single player ----
+  const tabbed = new WeakSet();
+
+  function buildTabs(container) {
+    const row = container.querySelector(".ui_media_links");
+    if (!row || tabbed.has(row)) return;
+
+    const entries = [];
+    const taken = new Set();
+    for (const a of row.querySelectorAll("a[href]")) {
+      const info = classifyAny(a.href);
+      if (!info || taken.has(info.service)) continue; // not embeddable (e.g. Qobuz) stays a link
+      taken.add(info.service);
+      entries.push({ a, info, slot: null });
+    }
+    if (!entries.length) return;
+    tabbed.add(row);
+
+    const panel = document.createElement("aside");
+    panel.className = "rym-embed rym-embed-panel";
+    row.after(panel);
+
+    function loadInto(entry) {
+      const { info, slot } = entry;
+      const label = LABELS[info.service];
+      if (info.kind !== "bandcamp") {
+        if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
+        slot.append(makeFrame(info.src, info.height, `${label} player`));
+        return;
+      }
+      slot.textContent = "Loading…";
+      resolveBandcamp(info.url).then((res) => {
+        slot.textContent = "";
+        if (res) {
+          slot.append(makeFrame(res.src, res.height, "Bandcamp player"));
+          return;
+        }
+        const msg = document.createElement("p");
+        msg.className = "rym-embed-msg";
+        msg.append(`Couldn't load the ${label} player. `);
+        const open = document.createElement("a");
+        open.href = entry.a.href;
+        open.target = "_blank";
+        open.rel = "noopener";
+        open.textContent = `Open on ${label}`;
+        msg.append(open);
+        slot.append(msg);
+      });
+    }
+
+    let active = null;
+    function select(entry) {
+      if (active === entry) return;
+      active = entry;
+      for (const e of entries) {
+        const on = e === entry;
+        e.a.classList.toggle("rym-tab-active", on);
+        e.a.setAttribute("aria-pressed", String(on));
+        if (e.slot) e.slot.hidden = !on;
+      }
+      if (!entry.slot) {
+        const slot = document.createElement("div");
+        slot.className = "rym-embed-slot";
+        entry.slot = slot;
+        slot.__load = () => loadInto(entry);
+        panel.append(slot);
+        lazy.observe(slot); // loads when visible, so hidden duplicates never load
+      }
+    }
+
+    for (const entry of entries) {
+      entry.a.classList.add("rym-tab");
+      entry.a.setAttribute("aria-pressed", "false");
+      entry.a.addEventListener("click", (e) => {
+        // Let modified clicks (new tab, etc.) behave like normal links.
+        if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        select(entry);
+      });
+    }
+
+    select(entries.find((e) => e.info.service === "spotify") || entries[0]);
   }
 
   // ---- Page cleanup ----
@@ -245,6 +439,7 @@
   function run() {
     buildHero();
     addCollapseToggles(document);
+    for (const c of document.querySelectorAll(".media_link_container")) buildTabs(c);
     scan(document);
   }
 
@@ -261,5 +456,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, addCollapseToggles, buildHero, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, addCollapseToggles, buildHero, buildTabs, run };
 })();
