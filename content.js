@@ -395,9 +395,9 @@
     }
   }
 
-  // ---- Player and suggestions placement ----
-  // The cover art stays at the top of the left column, so Previous/Next and the other left-column
-  // sections follow directly under it. The player and suggestions move to the top of the right column.
+  // ---- Release page layout ----
+  // Left column:  cover art, Rate/Catalog, Previous/Next, Album info, then RYM's other left sections.
+  // Right column: album title, player, suggestions, then RYM's other right sections.
   function moveWithToggle(el, dest) {
     const prev = el.previousElementSibling;
     if (prev && prev.classList.contains("rym-collapse-toggle")) dest.append(prev);
@@ -412,23 +412,51 @@
     const left = document.querySelector(".release_page .release_left_column");
     const right = document.querySelector(".release_page .release_right_column");
     if (!left || !right) return;
-    const frameInner = left.querySelector(":scope > .page_release_art_frame > .hide-for-small");
+    const frame = left.querySelector(":scope > .page_release_art_frame");
+    const frameInner = frame && frame.querySelector(":scope > .hide-for-small");
     const art = frameInner && frameInner.querySelector(":scope > a");
     if (!art) return;
+
+    const mainInfo = right.querySelector(":scope > .section_main_info");
+    const title = mainInfo && mainInfo.querySelector(":scope > .page_section > .album_title");
+    const titleBar =
+      title && title.nextElementSibling && title.nextElementSibling.matches("table.color_bar")
+        ? title.nextElementSibling
+        : null;
+    const albumInfo = mainInfo && mainInfo.querySelector("table.album_info_outer");
+    const rate = right.querySelector(":scope > .section_my_catalog");
+    const nav = left.querySelector(".section_release_navigation");
+    const navBox = nav && (nav.closest(".hide-for-small") || nav);
+    const colorBar = left.querySelector(":scope > table.color_bar");
+    const suggestions = left.querySelector(".section_suggestions");
 
     // <aside>, not <div>: extra divs could shift RYM's div:nth-of-type() selectors.
     const main = document.createElement("aside");
     main.className = "rym-hero-main";
 
+    // Right column top: title and its bar, then the player block, then suggestions.
+    if (title) main.append(title);
+    if (titleBar) main.append(titleBar);
     // Everything in the art block except the cover itself: player icons, RYM's player,
     // submit link (and any embed we add beside them).
     for (const node of [...frameInner.childNodes]) {
       if (node !== art) main.append(node);
     }
-    const suggestions = left.querySelector(".section_suggestions");
     if (suggestions) moveWithToggle(suggestions, main);
-
     right.prepend(main);
+
+    // Left column: Rate/Catalog right under the art, Album info after Previous/Next.
+    let after = colorBar || frame;
+    if (rate) {
+      after.after(rate);
+      after = rate;
+    }
+    if (albumInfo) (navBox || after).after(albumInfo);
+
+    // The old info box is left holding only mobile-only content; don't show an empty panel.
+    if (mainInfo && !mainInfo.querySelector(":scope > .page_section > :not(.show-for-small)")) {
+      mainInfo.classList.add("rym-emptied");
+    }
   }
 
   function run() {

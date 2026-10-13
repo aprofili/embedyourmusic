@@ -51,7 +51,25 @@ div.hide-for-small > .section_tracklisting:not(.rym-expanded),
   display: none !important;
 }
 
-/* ---- Player and suggestions at the top of the right column ---- */
+/* ---- Release page layout ---- */
+/* The old info box is empty (desktop) once the title and album info move out. */
+.rym-emptied {
+  display: none !important;
+}
+
+/* RYM scopes these paddings to the right column; restore them in the left column. */
+.release_left_column .section_my_catalog.section_outer {
+  padding: 12px 14px 8px;
+  border-top: 1px solid var(--mono-e);
+  border-bottom: 1px solid var(--mono-e);
+}
+
+.release_left_column .album_info_outer {
+  width: calc(100% - 28px);
+  margin: 0 14px 12px;
+}
+
+/* Player and suggestions at the top of the right column */
 .rym-hero-main {
   padding: 16px 16px 4px;
   box-sizing: border-box;

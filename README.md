@@ -21,7 +21,12 @@ Browser extension (Edge, Firefox) that replaces Spotify and Bandcamp links on ra
 
 ## Release page layout
 
-On release pages (desktop width) the cover art stays at the top of the left column, with Previous/Next and the other left-column sections directly under it. The player block (streaming tabs and player) and the suggestions (two columns) move to the top of the right column, above the album info. Narrow/mobile layouts are left alone.
+On release pages (desktop width):
+
+- **Left column:** cover art, then Rate/Catalog, then Previous/Next, then Album info, then RYM's other left-column sections (track listing, credits, lists, comments, discussion).
+- **Right column:** album title, then the player (streaming tabs) and suggestions (two columns), then the remaining sections (catalog, issues, reviews). Contributions stays full-width below both columns.
+
+Narrow/mobile layouts are left alone.
 
 ## Install
 

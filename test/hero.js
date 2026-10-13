@@ -14,7 +14,13 @@ const html = `<!doctype html><html><head><style>.media_link_container{min-height
   <meta itemprop="name" content="x" />
   <div id="wrapper" style="max-width:1700px"><div class="row">
     <div id="column_container_right" class="large-8 push-4 columns release_right_column">
-      <div class="section_main_info section_outer" id="maininfo">info</div>
+      <div class="section_main_info section_outer" id="maininfo"><div class="page_section">
+        <div class="album_title" id="title">Nothingface <input class="album_shortcut" value="[Album1]"></div>
+        <table class="color_bar" id="titlebar"><tr><td>.</td></tr></table>
+        <div class="show-for-small" id="mobile">mobile art</div>
+        <table class="album_info_outer" id="albuminfo"><tbody><tr><td id="infotd">Artist: Voivod</td></tr></tbody></table>
+      </div></div>
+      <div class="section_my_catalog section_outer" id="mycatalog"><div class="page_section">rate stuff</div></div>
       <div class="hide-for-small"><div class="section_outer section_issues" id="issues">issues</div></div>
       <div class="section_outer section_reviews" id="reviews">reviews</div>
     </div>
@@ -28,11 +34,14 @@ const html = `<!doctype html><html><head><style>.media_link_container{min-height
           <div id="submit">Submit media links</div>
         </div>
       </div>
-      <table class="color_bar"><tr><td>.</td></tr></table>
+      <table class="color_bar" id="artbar"><tr><td>.</td></tr></table>
+      <div id="leftbody">
+      <div class="hide-for-small" id="navbox"><div class="section_release_navigation" id="nav">prev/next</div></div>
       <div class="hide-for-small"><div class="section_tracklisting" id="tracklist">tracks</div></div>
       <div class="section_comments" id="comments">comments</div>
       <a name="suggestions" class="anchor"></a>
       <div class="section_suggestions" id="suggestions"><div class="release_page_header" id="sug_hdr"><h2>Suggestions</h2></div><ul class="suggestions" id="sugglist"><li>one</li><li>two</li></ul></div>
+      </div>
       <div class="column_filler" id="column_filler_left"></div>
     </div>
   </div></div>
@@ -76,6 +85,33 @@ assert.strictEqual(frame.nextElementSibling.tagName, "TABLE", "color bar directl
 assert.ok(!left.contains($("#suggestions")), "suggestions left the left column");
 assert.ok(left.contains($("#tracklist")) && left.contains($("#comments")), "other left sections stay");
 assert.ok($("#column_container_right").contains($("#reviews")), "right sections stay");
+
+// Right column top: title, its bar, then the player block, then suggestions
+const mainKids = [...main.children];
+assert.strictEqual(mainKids[0].id, "title", "title above the player");
+assert.strictEqual(mainKids[1].id, "titlebar", "title bar right under the title");
+assert.ok(mainKids.indexOf($("#media_link_button_container_top")) > 1 || main.querySelector("#media_link_button_container_top"));
+assert.ok(
+  main.querySelector("#title").compareDocumentPosition(main.querySelector("#media_link_button_container_top")) &
+    window.Node.DOCUMENT_POSITION_FOLLOWING,
+  "title precedes the player"
+);
+// Old info box is hidden once only mobile-only content is left
+assert.strictEqual(window.getComputedStyle($("#maininfo")).display, "none", "emptied info box hidden");
+assert.ok($("#mobile"), "mobile-only content is untouched");
+
+// Left column: art, color bar, Rate/Catalog, then Previous/Next, Album info, other sections
+const leftKids = [...left.children].map((n) => n.id);
+assert.deepStrictEqual(leftKids.slice(0, 4), ["frame", "artbar", "mycatalog", "leftbody"], "Rate/Catalog is right under the art");
+assert.ok(!$("#column_container_right").contains($("#mycatalog")), "Rate/Catalog left the right column");
+const body = [...$("#leftbody").children];
+assert.strictEqual(body[0].id, "navbox", "Previous/Next comes first in the left body");
+assert.strictEqual(body[1].id, "albuminfo", "Album info right after Previous/Next");
+assert.ok(body.findIndex((n) => n.contains($("#tracklist"))) > 1, "tracklist after Album info");
+// Album info keeps its toggle and still collapses
+const infoTd = $("#infotd");
+assert.ok(infoTd.firstElementChild.classList.contains("rym-collapse-toggle"));
+assert.ok(!$("#column_container_right").contains($("#albuminfo")));
 
 // Suggestions toggle moved with it and sits directly above it
 const sug = $("#suggestions");
