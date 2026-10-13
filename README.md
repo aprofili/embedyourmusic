@@ -28,6 +28,10 @@ On release pages (desktop width):
 
 Narrow/mobile layouts are left alone.
 
+## Artist page ratings
+
+On artist pages each discography row's "Rate" cell becomes RYM's star widget, so a release can be rated in one click without expanding the issues list. It is the same widget and request the release page's Rate/Catalog box uses (`RYMrating('l', albumId)` → `CatalogSetRating`), so it rates the album itself. Existing ratings show as filled stars. This runs in the page's JavaScript world (`artist-ratings.js`, manifest `"world": "MAIN"`) because it needs RYM's own `RYMrating` class.
+
 ## Install
 
 Run `node build.js` first. It writes `dist/chromium` and `dist/firefox`; the two differ only in `manifest.json` (Edge rejects `background.scripts`, Firefox has no service worker).

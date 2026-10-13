@@ -10,9 +10,13 @@ const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
 // manifest sanity
 const manifest = JSON.parse(read("manifest.json"));
 assert.strictEqual(manifest.manifest_version, 3);
-for (const f of ["background.js", "content.js", "content.css", "rules.json"]) {
+for (const f of ["background.js", "content.js", "content.css", "artist-ratings.js", "rules.json"]) {
   assert.ok(fs.existsSync(path.join(root, f)), `${f} missing`);
 }
+
+// The artist-page script must run in the page world to reach RYM's RYMrating class
+const mainWorld = manifest.content_scripts.find((c) => c.js.includes("artist-ratings.js"));
+assert.ok(mainWorld && mainWorld.world === "MAIN");
 JSON.parse(read("rules.json"));
 
 // Chromium manifest must not use background.scripts (Edge/Chrome reject it)
@@ -27,7 +31,7 @@ assert.strictEqual(ff.browser_specific_settings.gecko.id, "embedyourmusic@aprofi
 const cr = JSON.parse(read("dist/chromium/manifest.json"));
 assert.deepStrictEqual(cr.background, { service_worker: "background.js" });
 for (const d of ["chromium", "firefox"]) {
-  for (const f of ["manifest.json", "background.js", "content.js", "content.css", "rules.json"]) {
+  for (const f of ["manifest.json", "background.js", "content.js", "content.css", "artist-ratings.js", "rules.json"]) {
     assert.ok(fs.existsSync(path.join(root, "dist", d, f)), `dist/${d}/${f} missing`);
   }
 }

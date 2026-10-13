@@ -138,3 +138,22 @@ div.hide-for-small > .section_tracklisting:not(.rym-expanded),
   margin: 8px 0;
   font-size: 0.9em;
 }
+
+/* ---- Artist page: one-click star ratings in the discography ---- */
+@media (min-width: 48.1em) {
+  .disco_cat.rym-rate-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    height: 100%;
+    padding: 0 6px;
+    background: none;
+    line-height: normal;
+    cursor: default;
+  }
+
+  .rym-rate-cell .my_catalog_rating {
+    margin: 0;
+  }
+}

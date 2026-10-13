@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 const root = __dirname;
-const FILES = ["background.js", "content.js", "content.css", "rules.json"];
+const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "rules.json"];
 const base = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 
 const firefox = {
