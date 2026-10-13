@@ -15,6 +15,10 @@ Browser extension (Edge, Firefox) that replaces Spotify and Bandcamp links on ra
 - Collapsible but open by default: reviews, album info table cells, suggestions.
 - Collapsing is plain CSS in `content.css`; the toggles are added by `content.js`. Edit the matching lists in both files to change which sections are affected.
 
+## Release page layout
+
+On release pages (desktop width) a top band is built with the cover art on the left and, on the right, the media player (RYM's own and any embed from this extension) with the suggestions below it in two columns. Everything else stays in RYM's normal layout underneath. Narrow/mobile layouts are left alone.
+
 ## Install
 
 Run `node build.js` first. It writes `dist/chromium` and `dist/firefox`; the two differ only in `manifest.json` (Edge rejects `background.scripts`, Firefox has no service worker).

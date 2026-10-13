@@ -50,3 +50,40 @@ div.hide-for-small > .section_tracklisting:not(.rym-expanded),
 .rym-collapsed {
   display: none !important;
 }
+
+/* ---- Hero layout: art left; player + suggestions right ---- */
+.rym-hero {
+  display: grid;
+  grid-template-columns: minmax(260px, 440px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  max-width: 1700px;
+  margin: 0 auto;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* RYM sizes the cover from its container width, so the link must be a block. */
+.rym-hero-art > a {
+  display: block;
+}
+
+.rym-hero-main .section_suggestions {
+  padding: 0;
+}
+
+/* Two-column suggestions; RYM gives the list min-height: 500px. */
+.rym-hero-main ul.suggestions {
+  min-height: 0;
+  column-count: 2;
+  column-gap: 24px;
+}
+
+.rym-hero-main ul.suggestions > li {
+  break-inside: avoid;
+}
+
+/* The original art frame is empty once its contents move to the hero. */
+.rym-emptied {
+  display: none !important;
+}

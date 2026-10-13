@@ -186,7 +186,49 @@
     }
   }
 
+  // ---- Hero layout ----
+  // Top band: cover art on the left; the media player and suggestions on the right.
+  // Everything else stays in RYM's normal two-column layout below it.
+  function moveWithToggle(el, dest) {
+    const prev = el.previousElementSibling;
+    if (prev && prev.classList.contains("rym-collapse-toggle")) dest.append(prev);
+    dest.append(el);
+  }
+
+  function buildHero() {
+    if (document.querySelector(".rym-hero")) return;
+    // On narrow (mobile) layouts RYM hides the desktop art block; leave the page alone.
+    if (globalThis.matchMedia && !globalThis.matchMedia("(min-width: 768px)").matches) return;
+
+    const left = document.querySelector(".release_page .release_left_column");
+    if (!left) return;
+    const frame = left.querySelector(":scope > .page_release_art_frame");
+    const frameInner = frame && frame.querySelector(":scope > .hide-for-small");
+    const art = frameInner && frameInner.querySelector(":scope > a");
+    const outer = left.closest(".release_page > div");
+    if (!art || !outer) return;
+
+    // <section>/<aside>, not <div>: extra divs would shift RYM's div:nth-of-type() selectors.
+    const hero = document.createElement("section");
+    hero.className = "rym-hero";
+    const heroArt = document.createElement("aside");
+    heroArt.className = "rym-hero-art";
+    const heroMain = document.createElement("aside");
+    heroMain.className = "rym-hero-main";
+
+    heroArt.append(art);
+    // Player icons, RYM's own player, submit link (and any embed we add beside them).
+    heroMain.append(frameInner);
+    const suggestions = left.querySelector(".section_suggestions");
+    if (suggestions) moveWithToggle(suggestions, heroMain);
+
+    hero.append(heroArt, heroMain);
+    outer.before(hero);
+    frame.classList.add("rym-emptied");
+  }
+
   function run() {
+    buildHero();
     addCollapseToggles(document);
     scan(document);
   }
@@ -204,5 +246,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, addCollapseToggles, run };
+  globalThis.__embedYourMusic = { classify, addCollapseToggles, buildHero, run };
 })();
