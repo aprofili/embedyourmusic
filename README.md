@@ -16,11 +16,13 @@ Browser extension (Edge, Firefox) that replaces Spotify and Bandcamp links on ra
 
 ## Install
 
-**Edge:** `edge://extensions` → Developer mode → Load unpacked → select this folder.
+Run `node build.js` first. It writes `dist/chromium` and `dist/firefox`; the two differ only in `manifest.json` (Edge rejects `background.scripts`, Firefox has no service worker).
 
-**Firefox (temporary):** `about:debugging#/runtime/this-firefox` → Load Temporary Add-on → select `manifest.json`. Removed on restart.
+**Edge:** `edge://extensions` → Developer mode → Load unpacked → select `dist/chromium` (or the repo root).
 
-**Firefox (permanent):** `npx web-ext sign --channel=unlisted --api-key=... --api-secret=...` (free AMO credentials), then install the resulting `.xpi`.
+**Firefox (temporary):** `about:debugging#/runtime/this-firefox` → Load Temporary Add-on → select `dist/firefox/manifest.json`. Removed on restart.
+
+**Firefox (permanent):** `npx web-ext sign --channel=unlisted --api-key=... --api-secret=...` from `dist/firefox` (free AMO credentials), then install the resulting `.xpi`.
 
 ## If embeds are blocked by RYM's CSP
 

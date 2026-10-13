@@ -15,6 +15,23 @@ for (const f of ["background.js", "content.js", "content.css", "rules.json"]) {
 }
 JSON.parse(read("rules.json"));
 
+// Chromium manifest must not use background.scripts (Edge/Chrome reject it)
+assert.deepStrictEqual(manifest.background, { service_worker: "background.js" });
+assert.ok(!("browser_specific_settings" in manifest));
+
+// Build outputs
+require("child_process").execFileSync("node", [path.join(root, "build.js")], { stdio: "ignore" });
+const ff = JSON.parse(read("dist/firefox/manifest.json"));
+assert.deepStrictEqual(ff.background, { scripts: ["background.js"] });
+assert.strictEqual(ff.browser_specific_settings.gecko.id, "embedyourmusic@aprofili");
+const cr = JSON.parse(read("dist/chromium/manifest.json"));
+assert.deepStrictEqual(cr.background, { service_worker: "background.js" });
+for (const d of ["chromium", "firefox"]) {
+  for (const f of ["manifest.json", "background.js", "content.js", "content.css", "rules.json"]) {
+    assert.ok(fs.existsSync(path.join(root, "dist", d, f)), `dist/${d}/${f} missing`);
+  }
+}
+
 (async () => {
   // ---- content.js: classify ----
   const ctx = {
