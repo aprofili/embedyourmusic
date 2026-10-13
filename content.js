@@ -76,7 +76,8 @@
     if (seen.has(info.key)) return;
     seen.add(info.key);
 
-    const wrapper = document.createElement("div");
+    // Not a <div>: extra divs would shift RYM's div:nth-of-type() selectors.
+    const wrapper = document.createElement("aside");
     wrapper.className = "rym-embed";
     wrapper.style.minHeight = `${info.height || 120}px`;
 
@@ -118,18 +119,66 @@
     }
   }
 
-  scan(document);
+  // ---- Page cleanup ----
+  // Hiding itself is done in content.css (so it applies before first paint).
+  // Keep these lists in sync with the selectors there.
+  const HIDDEN = [
+    ".hide-for-small > .section_outer.section_issues",
+    ".release_page > div:nth-of-type(3)",
+    ".page_object_section_discussion.page_object_section",
+  ];
 
-  // RYM injects links dynamically (media popups, lazy sections).
+  // [selector, toggle label]. CSS collapses these; the toggle expands them.
+  const COLLAPSIBLE = [
+    [".section_comments", "Comments"],
+    ["div.hide-for-small > .section_credits", "Credits"],
+    ["div.hide-for-small > .section_tracklisting", "Tracklist"],
+    [".section_lists", "Lists"],
+    [".section_outer.section_catalog", "Catalog"],
+  ];
+
+  const prepared = new WeakSet();
+
+  function addCollapseToggles(root) {
+    for (const [selector, label] of COLLAPSIBLE) {
+      for (const el of root.querySelectorAll(selector)) {
+        if (prepared.has(el)) continue;
+        prepared.add(el);
+        if (HIDDEN.some((s) => el.matches(s))) continue;
+
+        // <button>, not <div>, so div:nth-of-type() counts are unaffected.
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "rym-collapse-toggle";
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.textContent = `▸ ${label}`;
+        toggle.addEventListener("click", () => {
+          const open = el.classList.toggle("rym-expanded");
+          toggle.setAttribute("aria-expanded", String(open));
+          toggle.textContent = `${open ? "▾" : "▸"} ${label}`;
+        });
+        el.before(toggle);
+      }
+    }
+  }
+
+  function run() {
+    addCollapseToggles(document);
+    scan(document);
+  }
+
+  run();
+
+  // RYM injects links and sections dynamically (media popups, lazy sections).
   let pending = false;
   new MutationObserver(() => {
     if (pending) return;
     pending = true;
     setTimeout(() => {
       pending = false;
-      scan(document);
+      run();
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify };
+  globalThis.__embedYourMusic = { classify, addCollapseToggles, run };
 })();

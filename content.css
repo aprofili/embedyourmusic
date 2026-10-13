@@ -1,3 +1,4 @@
+/* ---- Embeds ---- */
 .rym-embed {
   display: block;
   clear: both;
@@ -11,4 +12,41 @@
   width: 100%;
   border: 0;
   border-radius: 12px;
+}
+
+/* ---- Hidden sections ----
+   Keep in sync with HIDDEN in content.js. */
+.hide-for-small > .section_outer.section_issues,
+.release_page > div:nth-of-type(3),
+.page_object_section_discussion.page_object_section {
+  display: none !important;
+}
+
+/* ---- Collapsed by default, expanded by clicking the toggle ----
+   Keep in sync with COLLAPSIBLE in content.js. */
+.section_comments:not(.rym-expanded),
+div.hide-for-small > .section_credits:not(.rym-expanded),
+div.hide-for-small > .section_tracklisting:not(.rym-expanded),
+.section_lists:not(.rym-expanded),
+.section_outer.section_catalog:not(.rym-expanded) {
+  display: none !important;
+}
+
+.rym-collapse-toggle {
+  display: block;
+  width: 100%;
+  margin: 4px 0;
+  padding: 6px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.08);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rym-collapse-toggle:hover {
+  background: rgba(128, 128, 128, 0.18);
 }

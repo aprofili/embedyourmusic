@@ -9,6 +9,12 @@ Browser extension (Edge, Firefox) that replaces Spotify and Bandcamp links on ra
 - Bandcamp embeds need a numeric ID, so `background.js` fetches the Bandcamp page, reads `og:video` (fallback: `bc-page-properties`), and returns the player URL. Results are cached in `storage.local`.
 - Custom-domain Bandcamp links (not `*.bandcamp.com`) are not handled.
 
+## Page cleanup
+
+- Always hidden: `.section_issues`, the third `div` under `.release_page`, and the discussion section.
+- Collapsed until clicked (toggle bar above each): comments, credits, tracklist, lists, catalog.
+- Hiding is plain CSS in `content.css`; collapse toggles are added by `content.js`. Edit the matching lists in both files to change which sections are affected.
+
 ## Install
 
 **Edge:** `edge://extensions` → Developer mode → Load unpacked → select this folder.
@@ -24,5 +30,6 @@ Set `"enabled": true` for the `strip_csp` ruleset in `manifest.json`. That remov
 ## Tests
 
 ```
-node test/run.js
+npm install
+npm test
 ```
