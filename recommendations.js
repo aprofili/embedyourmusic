@@ -218,7 +218,15 @@
     }
   }
 
+  // The first row you haven't rated (found by reco-ratings.js) loads into the player on its own.
+  const auto = () => {
+    const li = container.querySelector("li[data-eym-first-unrated]");
+    if (li && !currentLi) play(li);
+  };
+  document.addEventListener("eym-first-unrated", auto);
+
   decorate();
+  auto();
   let timer;
   new MutationObserver(() => {
     clearTimeout(timer);

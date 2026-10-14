@@ -70,8 +70,10 @@
   }
 
   // The list doesn't include your own ratings, so read each one from the release page
-  // (its widget is initialised as new RYMrating('l', id, <0-10>)). Only rows that scroll into
-  // view are fetched, two at a time.
+  // (its widget is initialised as new RYMrating('l', id, <0-10>)). Rows are fetched when they
+  // scroll into view, plus an in-order pass from the top to find the first unrated row.
+  // Results are written to the row (data-eym-rating, class rym-rated) for content.css and
+  // recommendations.js, which run in the other JavaScript world and share only the DOM.
   const ratingKey = (id) => `eym:rating:${id}`;
   const queue = [];
   let active = 0;
@@ -105,28 +107,62 @@
     }
   }
 
-  function loadRating(li, id, box) {
-    let cached = null;
-    try {
-      cached = sessionStorage.getItem(ratingKey(id));
-    } catch {}
-    if (cached !== null) {
-      if (Number(cached) > 0) applyRating(id, box, Number(cached));
-      return;
+  const known = new Map(); // id -> Promise<number | null>
+  function ratingOf(li, id) {
+    if (!known.has(id)) {
+      known.set(
+        id,
+        new Promise((resolve) => {
+          try {
+            const cached = sessionStorage.getItem(ratingKey(id));
+            if (cached !== null) return resolve(Number(cached));
+          } catch {}
+          queue.push(async () => {
+            let rating = null;
+            try {
+              rating = await fetchRating(li, id);
+            } catch {}
+            if (rating !== null) {
+              try {
+                sessionStorage.setItem(ratingKey(id), String(rating));
+              } catch {}
+            }
+            resolve(rating);
+          });
+          pump();
+        }).then((rating) => {
+          if (rating === null) known.delete(id); // allow a retry
+          return rating;
+        })
+      );
     }
-    queue.push(async () => {
-      try {
-        const rating = await fetchRating(li, id);
-        if (rating === null) return;
-        try {
-          sessionStorage.setItem(ratingKey(id), String(rating));
-        } catch {}
-        if (rating > 0) applyRating(id, box, rating);
-      } catch {
-        /* leave the widget empty */
+    return known.get(id);
+  }
+
+  async function loadRating(li, id, box) {
+    const rating = await ratingOf(li, id);
+    if (rating === null) return;
+    li.dataset.eymRating = String(rating);
+    li.classList.toggle("rym-rated", rating > 0);
+    if (rating > 0) applyRating(id, box, rating);
+  }
+
+  // Walk the list from the top until the first row you haven't rated; recommendations.js loads it.
+  let marked = false;
+  async function findFirstUnrated() {
+    if (marked) return;
+    for (const li of document.querySelectorAll("li.component_discography_item")) {
+      const m = /^component_discography_item_(\d+)$/.exec(li.id);
+      const box = li.querySelector(".my_catalog_rating");
+      if (!m || !box) continue;
+      await loadRating(li, m[1], box);
+      if (li.dataset.eymRating === "0") {
+        marked = true;
+        li.dataset.eymFirstUnrated = "";
+        document.dispatchEvent(new Event("eym-first-unrated"));
+        return;
       }
-    });
-    pump();
+    }
   }
 
   const visible =
@@ -152,6 +188,7 @@
 
   function start() {
     scan();
+    findFirstUnrated();
     let timer;
     new MutationObserver(() => {
       clearTimeout(timer);

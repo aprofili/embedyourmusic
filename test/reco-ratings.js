@@ -24,7 +24,8 @@ let document_ids;
   w.fetch = async (u) => {
     fetched.push(u);
     const id = (document_ids || []).shift();
-    return { ok: true, text: async () => `<script>new RYMrating('l', ${id}, 7 );</script>` };
+    const rating = fetched.length === 1 ? 7 : 0;
+    return { ok: true, text: async () => `<script>new RYMrating('l', ${id}, ${rating} );</script>` };
   };
   w.RYMrating = class {
     constructor(...a) { made.push(a); }
@@ -56,6 +57,12 @@ let document_ids;
   dom2.window.eval(fs.readFileSync(path.join(root, "reco-ratings.js"), "utf8"));
   const added = dom2.window.document.querySelector("script[data-rym-reco-release]");
   assert.ok(added && added.src.includes("/js/page/release.js?v=1"));
+  // rated rows are flagged; the first unrated row is marked and announced
+  assert.ok(li.classList.contains("rym-rated") && li.dataset.eymRating === "7");
+  if (lis.length > 1) {
+    assert.ok(lis[1].hasAttribute("data-eym-first-unrated"), "first unrated marked");
+    assert.ok(!lis[1].classList.contains("rym-rated"));
+  }
   console.log("reco-ratings tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

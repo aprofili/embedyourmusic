@@ -425,3 +425,42 @@
 .rym-track-playing {
   font-weight: 700;
 }
+
+/* Rows you've already rated shrink to one dim line; order is unchanged. */
+@media (min-width: 60em) {
+  .rym-reco li.rym-rated {
+    opacity: 0.55;
+  }
+
+  .rym-reco li.rym-rated:hover,
+  .rym-reco li.rym-rated.rym-reco-current {
+    opacity: 1;
+  }
+
+  .rym-reco li.rym-rated .component_discography_item_details,
+  .rym-reco li.rym-rated .rym-reco-stats {
+    display: none !important;
+  }
+
+  .rym-reco li.rym-rated .component_discography_item_info_inner > span,
+  .rym-reco li.rym-rated .component_discography_item_info_inner > div {
+    display: inline;
+    margin-right: 8px;
+  }
+
+  .rym-reco li.rym-rated .component_discography_item_image_link {
+    width: 28px;
+    height: 28px;
+    overflow: hidden;
+  }
+
+  .rym-reco li.rym-rated .component_discography_item_image_link picture,
+  .rym-reco li.rym-rated .component_discography_item_image_link img {
+    width: 100%;
+    height: 100%;
+  }
+
+  .rym-reco li.rym-rated .rym-play {
+    display: none;
+  }
+}
