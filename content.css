@@ -518,8 +518,9 @@ html.page_recommendations:not(.eym-ready)::after {
   }
 }
 
-/* Playlists + Settings stacked on the left, Affinities beside them. */
-@media (min-width: 75em) {
+/* Affinities across the full width in two columns (year + genre | descriptor); below it,
+   Settings on the left and Playlists on the right. */
+@media (min-width: 60em) {
   .rym-reco > #page_recommendations_group_main_right {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -527,8 +528,8 @@ html.page_recommendations:not(.eym-ready)::after {
     align-items: start;
   }
 
-  .rym-reco > #page_recommendations_group_main_right > #page_recommendations_section_playlist {
-    grid-column: 1;
+  .rym-reco > #page_recommendations_group_main_right > #page_recommendations_section_affinities {
+    grid-column: 1 / -1;
     grid-row: 1;
   }
 
@@ -537,7 +538,29 @@ html.page_recommendations:not(.eym-ready)::after {
     grid-row: 2;
   }
 
-  .rym-reco > #page_recommendations_group_main_right > #page_recommendations_section_affinities {
+  .rym-reco > #page_recommendations_group_main_right > #page_recommendations_section_playlist {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .rym-reco .page_recommendations_affinities_main {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+
+  .rym-reco .page_recommendations_affinities_section_year {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .rym-reco .page_recommendations_affinities_section_year + .page_recommendations_affinities_section {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .rym-reco .page_recommendations_affinities_section_year + .page_recommendations_affinities_section ~ .page_recommendations_affinities_section {
     grid-column: 2;
     grid-row: 1 / span 2;
   }
