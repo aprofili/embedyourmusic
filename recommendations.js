@@ -194,9 +194,10 @@
         btn.setAttribute("role", "button");
         btn.setAttribute("aria-label", "Preview");
         btn.textContent = "▶";
-        btn.addEventListener("click", (e) => {
+        // The whole cover is the click target; modified clicks (new tab etc.) still navigate.
+        art.addEventListener("click", (e) => {
+          if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
           e.preventDefault();
-          e.stopPropagation();
           play(li);
         });
         art.append(btn);

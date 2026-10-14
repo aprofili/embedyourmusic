@@ -36,7 +36,7 @@ On artist pages each discography row's "Rate" cell becomes RYM's star widget, so
 
 On `/recommendations/...` (desktop width):
 
-- Each cover gets a ▶ button. Click it to load that album in a sticky player on the right; nothing navigates. The extension fetches the release page (same-origin), reads RYM's `data-links`, and shows a tab per service (Spotify default). Results are cached per release, and nothing is fetched until you click.
+- Each cover shows a ▶ badge; click anywhere on the cover (Ctrl-click still opens the release) to load that album in a sticky player on the right; nothing navigates. The extension fetches the release page (same-origin), reads RYM's `data-links`, and shows a tab per service (Spotify default). Results are cached per release, and nothing is fetched until you click.
 - The Avg/Ratings/Reviews columns are replaced by one line under the genres (`★ avg · ratings`).
 - Playlists, Settings and Affinities move below the lists.
 - A star rating sits left of each row's X (same widget and request as the release page; starts empty, so rating a release you already rated overwrites it). RYM's rating code lives in its release-page script, so `reco-ratings.js` (page world) loads that script if it is missing.

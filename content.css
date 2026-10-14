@@ -275,9 +275,11 @@
 
   .rym-reco .component_discography_item_image_link {
     position: relative;
+    cursor: pointer;
   }
 
   .rym-play {
+    pointer-events: none;
     position: absolute;
     right: 3px;
     bottom: 3px;
@@ -295,7 +297,7 @@
     opacity: 0.85;
   }
 
-  .rym-play:hover {
+  .rym-reco .component_discography_item_image_link:hover .rym-play {
     opacity: 1;
     background: #1db954;
   }

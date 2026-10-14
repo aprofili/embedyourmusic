@@ -41,7 +41,7 @@ const releasePage = `<div data-links='${JSON.stringify(links)}'></div>`;
 
   const tick = () => new Promise((r) => setTimeout(r, 20));
   const ev = new w.MouseEvent("click", { bubbles: true, cancelable: true });
-  d.querySelector(".rym-play").dispatchEvent(ev);
+  d.querySelector("a.component_discography_item_image_link").dispatchEvent(ev);
   assert.ok(ev.defaultPrevented, "navigation suppressed");
   await tick();
   assert.ok(fetched[0].startsWith("/release/"));
@@ -56,7 +56,10 @@ const releasePage = `<div data-links='${JSON.stringify(links)}'></div>`;
   [...d.querySelectorAll(".rym-reco-tab")][0].click();
   assert.strictEqual(d.querySelectorAll(".rym-reco-body iframe").length, 2, "slots kept");
 
-  d.querySelector(".rym-play").dispatchEvent(new w.MouseEvent("click", { bubbles: true, cancelable: true }));
+  const mod = new w.MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true });
+  d.querySelector("a.component_discography_item_image_link").dispatchEvent(mod);
+  assert.ok(!mod.defaultPrevented, "ctrl-click still navigates");
+  d.querySelector("a.component_discography_item_image_link").dispatchEvent(new w.MouseEvent("click", { bubbles: true, cancelable: true }));
   await tick();
   assert.strictEqual(fetched.length, 1, "release page fetched once per release");
   console.log(`reco tests passed (${lis.length} rows)`);
