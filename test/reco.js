@@ -25,6 +25,7 @@ const releasePage = `<div data-links='${JSON.stringify(links)}'></div>`;
 (async () => {
   const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
   const w = dom.window;
+  w.matchMedia = () => ({ matches: false, addEventListener() {}, addListener() {} });
   w.IntersectionObserver = class { observe() {} unobserve() {} };
   const fetched = [];
   w.fetch = async (u) => { fetched.push(u); return { ok: true, text: async () => releasePage }; };

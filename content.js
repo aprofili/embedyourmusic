@@ -207,6 +207,7 @@
 
   // Returns an element, or null when the Spotify link isn't an album or track.
   function trackList(info, frame) {
+    if (globalThis.__eymBridge) return null; // userscript: no background script to talk to
     const [, kind, id] = (info.key || "").split(":");
     if (kind !== "album" && kind !== "track") return null;
 

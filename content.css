@@ -565,3 +565,137 @@ html.page_recommendations:not(.eym-ready)::after {
     grid-row: 1 / span 2;
   }
 }
+
+/* ---- Recommendations page on phones: player opens inline under the tapped row ---- */
+.rym-reco-title {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.rym-reco-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.rym-reco-tabs:empty {
+  display: none;
+}
+
+.rym-reco-tab {
+  padding: 4px 12px;
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.rym-reco-tab:hover,
+.rym-reco-tab.rym-tab-active {
+  opacity: 1;
+}
+
+.rym-reco-tab.rym-tab-active {
+  outline: 2px solid var(--gen-blue-darker, #4a90e2);
+  outline-offset: 1px;
+}
+
+.rym-reco-hint {
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+@media (max-width: 59.99em) {
+  .rym-reco-mobile li.rym-reco-inline {
+    display: block;
+    list-style: none;
+    padding: 0 0 14px;
+  }
+
+  .rym-reco-mobile li.rym-reco-inline[hidden] {
+    display: none;
+  }
+
+  .rym-reco-mobile .rym-reco-sticky {
+    padding: 12px;
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    border-radius: 8px;
+    background: rgba(128, 128, 128, 0.08);
+  }
+
+  /* One-line stats instead of the three-chip box */
+  .rym-reco-mobile .component_discography_item_stats_compact {
+    display: none !important;
+  }
+
+  .rym-reco-mobile .rym-reco-stats {
+    margin-top: 4px;
+    opacity: 0.8;
+  }
+
+  .rym-reco-mobile .component_discography_item_image_link {
+    position: relative;
+  }
+
+  .rym-reco-mobile .rym-play {
+    display: flex;
+    pointer-events: none;
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .rym-reco-mobile li.rym-reco-current {
+    background: rgba(74, 144, 226, 0.12);
+  }
+
+  /* Rated: one dim line, same order */
+  .rym-reco-mobile li.rym-rated {
+    opacity: 0.55;
+  }
+
+  .rym-reco-mobile li.rym-rated.rym-reco-current {
+    opacity: 1;
+  }
+
+  .rym-reco-mobile li.rym-rated .component_discography_item_details,
+  .rym-reco-mobile li.rym-rated .rym-reco-stats {
+    display: none !important;
+  }
+
+  .rym-reco-mobile li.rym-rated .component_discography_item_info_inner > span,
+  .rym-reco-mobile li.rym-rated .component_discography_item_info_inner > div {
+    display: inline;
+    margin-right: 8px;
+  }
+
+  .rym-reco-mobile li.rym-rated .component_discography_item_image_link {
+    width: 40px;
+    height: 40px;
+    overflow: hidden;
+  }
+
+  .rym-reco-mobile li.rym-rated .component_discography_item_image_link picture,
+  .rym-reco-mobile li.rym-rated .component_discography_item_image_link img {
+    width: 100%;
+    height: 100%;
+  }
+
+  .rym-reco-mobile li.rym-rated .rym-play {
+    display: none;
+  }
+}

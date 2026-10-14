@@ -54,7 +54,7 @@ const header = `// ==UserScript==
 // @grant        GM.xmlHttpRequest
 // @connect      bandcamp.com
 // @connect      *.bandcamp.com
-// @run-at       document-end
+// @run-at       document-start
 // @inject-into  content
 // @noframes
 // ==/UserScript==
@@ -101,14 +101,21 @@ globalThis.__eymBridge = {
     },
   },
 };
+// Styles go in immediately (document-start) so the loading cover appears before first paint.
 const style = document.createElement("style");
 style.textContent = ${JSON.stringify(css)};
-(document.head || document.documentElement).appendChild(style);
+document.documentElement.appendChild(style);
 })();
 `;
 
 const outDir = path.join(root, "dist", "userscript");
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(path.join(outDir, "embedyourmusic.user.js"), header + prelude + content + "\n");
+const reco = fs.readFileSync(path.join(root, "recommendations.js"), "utf8");
+// The DOM scripts wait for the document (the userscript starts at document-start).
+const main = `function __eymMain() {\n${content}\n${reco}\n}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", __eymMain);
+else __eymMain();
+`;
+fs.writeFileSync(path.join(outDir, "embedyourmusic.user.js"), header + prelude + main);
 console.log("built dist/userscript");

@@ -7,6 +7,10 @@
   if (!eym || !container) return;
 
   const { classifyAny, makeFrame, resolveBandcamp, trackList, LABELS } = eym;
+  // Phone layout: no sticky side panel; the player opens inline under the tapped row.
+  const mobile = matchMedia("(max-width: 59.99em)").matches;
+  // The iOS userscript has no page-world script, so it reads ratings itself (see ratedScan).
+  const standalone = !!globalThis.__eymBridge;
   const ORDER = ["spotify", "applemusic", "soundcloud", "bandcamp", "youtube", "tidal", "deezer"];
 
   const url = (u) => (/^https?:\/\//.test(u) ? u : `https://${u}`);
@@ -76,10 +80,18 @@
   const body = document.createElement("div");
   body.className = "rym-reco-body";
   sticky.append(title, tabs, body);
-  panel.append(sticky);
-  container.append(panel);
+  const host = document.createElement("li"); // mobile: holds the player under the playing row
+  host.className = "rym-reco-inline";
+  host.hidden = true;
+  if (mobile) {
+    host.append(sticky);
+  } else {
+    panel.append(sticky);
+    container.append(panel);
+  }
   container.classList.add("rym-reco");
-  body.textContent = "Click ▶ on a cover to preview it here.";
+  if (mobile) container.classList.add("rym-reco-mobile");
+  body.textContent = mobile ? "" : "Click ▶ on a cover to preview it here.";
   body.classList.add("rym-reco-hint");
 
   let token = 0;
@@ -115,7 +127,7 @@
       if (info.kind !== "bandcamp") {
         if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
         // Taller than the default so more of the tracklist shows.
-        const tall = service === "spotify" && /\/embed\/(album|playlist)\//.test(info.src);
+        const tall = !mobile && service === "spotify" && /\/embed\/(album|playlist)\//.test(info.src);
         const frame = makeFrame(info.src, tall ? 560 : info.height, `${LABELS[service]} player`);
         slot.append(frame);
         const tracks = service === "spotify" && trackList(info, frame);
@@ -170,6 +182,10 @@
     if (currentLi) currentLi.classList.remove("rym-reco-current");
     currentLi = li;
     li.classList.add("rym-reco-current");
+    if (mobile) {
+      li.after(host);
+      host.hidden = false;
+    }
 
     const artist = li.querySelector("a.artist");
     title.textContent = `${artist ? artist.textContent.trim() : ""} — ${link.textContent.trim()}`;
@@ -201,6 +217,14 @@
         art.addEventListener("click", (e) => {
           if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
           e.preventDefault();
+          if (mobile && li === currentLi && !host.hidden) {
+            // Tapping the playing cover again closes the player.
+            host.hidden = true;
+            li.classList.remove("rym-reco-current");
+            currentLi = null;
+            token++;
+            return;
+          }
           play(li);
         });
         art.append(btn);
@@ -227,13 +251,114 @@
   // album's player is up. If that script can't run, the timeout above reveals the page.
   const auto = () => {
     const li = container.querySelector("li[data-eym-first-unrated]");
-    if (li && !currentLi) return play(li);
+    if (li && !currentLi) {
+      const done = play(li);
+      if (mobile && li.getBoundingClientRect().top > 300) {
+        window.scrollTo(0, li.getBoundingClientRect().top + window.scrollY - 80);
+      }
+      return done;
+    }
     return Promise.resolve();
   };
   document.addEventListener("eym-first-unrated", auto);
   document.addEventListener("eym-scan-done", () => auto().then(ready));
 
+  // ---- iOS userscript: read your ratings from the release pages (same logic as reco-ratings.js) ----
+  function ratedScan() {
+    const RATING = /new RYMrating\(\s*['"]l['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/;
+    const queue = [];
+    let active = 0;
+    const known = new Map();
+    const idOf = (li) => (/^component_discography_item_(\d+)$/.exec(li.id) || [])[1];
+
+    function pump() {
+      while (active < 2 && queue.length) {
+        active++;
+        queue.shift()().finally(() => {
+          active--;
+          pump();
+        });
+      }
+    }
+
+    function ratingOf(li) {
+      const id = idOf(li);
+      if (!id) return Promise.resolve(null);
+      if (!known.has(id)) {
+        known.set(
+          id,
+          new Promise((resolve) => {
+            try {
+              const cached = sessionStorage.getItem(`eym:rating:${id}`);
+              if (cached !== null) return resolve(Number(cached));
+            } catch {}
+            queue.push(async () => {
+              let rating = null;
+              try {
+                const link = li.querySelector("a.component_discography_item_link.release");
+                const res = await fetch(link.getAttribute("href"), { credentials: "same-origin" });
+                const m = res.ok && RATING.exec(await res.text());
+                if (m && m[1] === id) rating = Number(m[2]);
+              } catch {}
+              if (rating !== null) {
+                try {
+                  sessionStorage.setItem(`eym:rating:${id}`, String(rating));
+                } catch {}
+              }
+              resolve(rating);
+            });
+            pump();
+          }).then((rating) => {
+            if (rating === null) known.delete(id);
+            return rating;
+          })
+        );
+      }
+      return known.get(id);
+    }
+
+    const mark = (li, rating) => {
+      li.dataset.eymRating = String(rating);
+      li.classList.toggle("rym-rated", rating > 0);
+    };
+
+    // Rows that scroll into view get dimmed if rated.
+    const visible = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        visible.unobserve(e.target);
+        ratingOf(e.target).then((r) => r !== null && mark(e.target, r));
+      }
+    });
+    const watched = new WeakSet();
+    const watchRows = () => {
+      for (const li of container.querySelectorAll("li.component_discography_item")) {
+        if (!watched.has(li)) {
+          watched.add(li);
+          visible.observe(li);
+        }
+      }
+    };
+    watchRows();
+    new MutationObserver(watchRows).observe(container, { childList: true, subtree: true });
+
+    // In-order pass from the top to find the first unrated row.
+    (async () => {
+      for (const li of container.querySelectorAll("li.component_discography_item")) {
+        const r = await ratingOf(li);
+        if (r === null) continue;
+        mark(li, r);
+        if (r === 0) {
+          li.dataset.eymFirstUnrated = "";
+          break;
+        }
+      }
+      document.dispatchEvent(new Event("eym-scan-done"));
+    })();
+  }
+
   decorate();
+  if (standalone) ratedScan();
   let timer;
   new MutationObserver(() => {
     clearTimeout(timer);

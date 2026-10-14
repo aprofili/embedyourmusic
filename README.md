@@ -67,7 +67,7 @@ Run `node build.js` first. It writes `dist/chromium` and `dist/firefox`; the two
 1. Install Userscripts, set its script folder, enable it in Settings → Safari → Extensions (allow rateyourmusic.com).
 2. Put `embedyourmusic.user.js` in that folder.
 
-Same embeds/tabs (under the icon row) and collapsed sections as desktop. Bandcamp lookups use `GM_xmlhttpRequest` and a `localStorage` cache. Artist-page stars are not included (RYM hides that column on small screens). If RYM's CSP blocks the iframes, Safari offers no way around it.
+Same embeds/tabs (under the icon row) and collapsed sections as desktop. Bandcamp lookups use `GM_xmlhttpRequest` and a `localStorage` cache. On `/recommendations/` (phone width) the userscript: shows a one-line `★ avg · ratings` per row instead of the three-chip box; opens the player inline under the row you tap (tap the same cover again to close); dims and shrinks rows you've rated; loads and scrolls to the first unrated album on load. It runs at document-start so the loading spinner covers the page before first paint. Not included on iOS: star ratings (they need RYM's page-world code) and Spotify track saving. Artist-page stars are not included (RYM hides that column on small screens). If RYM's CSP blocks the iframes, Safari offers no way around it.
 
 ## If embeds are blocked by RYM's CSP
 
