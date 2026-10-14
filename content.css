@@ -157,3 +157,150 @@
     margin: 0;
   }
 }
+
+/* ---- Recommendations page ---- */
+.rym-play {
+  display: none;
+}
+
+@media (min-width: 60em) {
+  .rym-reco {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 480px);
+    column-gap: 24px;
+    align-items: start;
+  }
+
+  .rym-reco > #page_recommendations_section_scope_share {
+    grid-column: 1 / -1;
+  }
+
+  .rym-reco > #page_recommendations_group_main_left {
+    grid-column: 1;
+    grid-row: 2;
+    width: auto !important;
+    max-width: none !important;
+    float: none !important;
+    min-width: 0;
+  }
+
+  /* Playlists / Settings / Affinities go below, side by side where they fit. */
+  .rym-reco > #page_recommendations_group_main_right {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    width: auto !important;
+    max-width: none !important;
+    float: none !important;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 0 24px;
+    align-items: start;
+  }
+
+  .rym-reco .group_filler {
+    display: none !important;
+  }
+
+  .rym-reco > #rym-reco-player {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: stretch;
+    min-width: 0;
+  }
+
+  .rym-reco-sticky {
+    position: sticky;
+    top: 70px;
+    padding: 12px;
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    border-radius: 8px;
+    background: rgba(128, 128, 128, 0.08);
+  }
+
+  .rym-reco-title {
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  .rym-reco-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .rym-reco-tabs:empty {
+    display: none;
+  }
+
+  .rym-reco-tab {
+    padding: 3px 10px;
+    border: 1px solid rgba(128, 128, 128, 0.45);
+    border-radius: 999px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.9em;
+    cursor: pointer;
+    opacity: 0.7;
+  }
+
+  .rym-reco-tab:hover,
+  .rym-reco-tab.rym-tab-active {
+    opacity: 1;
+  }
+
+  .rym-reco-tab.rym-tab-active {
+    outline: 2px solid var(--gen-blue-darker, #4a90e2);
+    outline-offset: 1px;
+  }
+
+  .rym-reco-hint {
+    font-size: 0.9em;
+    opacity: 0.8;
+  }
+
+  /* Drop the Avg / Ratings / Reviews columns; stats are shown under the genres instead. */
+  .rym-reco .page_recommendations_list_legend,
+  .rym-reco .component_discography_item_stats,
+  .rym-reco .component_discography_item_stats_compact {
+    display: none !important;
+  }
+
+  .rym-reco-stats {
+    margin-top: 2px;
+    font-size: 0.85em;
+    opacity: 0.75;
+  }
+
+  .rym-reco .component_discography_item_image_link {
+    position: relative;
+  }
+
+  .rym-play {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.85;
+  }
+
+  .rym-play:hover {
+    opacity: 1;
+    background: #1db954;
+  }
+
+  .rym-reco-current {
+    background: rgba(74, 144, 226, 0.12);
+  }
+}

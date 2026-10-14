@@ -480,5 +480,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, addCollapseToggles, buildHero, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, LABELS, addCollapseToggles, buildHero, buildTabs, run };
 })();

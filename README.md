@@ -32,6 +32,15 @@ Narrow/mobile layouts are left alone.
 
 On artist pages each discography row's "Rate" cell becomes RYM's star widget, so a release can be rated in one click without expanding the issues list. It is the same widget and request the release page's Rate/Catalog box uses (`RYMrating('l', albumId)` → `CatalogSetRating`), so it rates the album itself. Existing ratings show as filled stars. This runs in the page's JavaScript world (`artist-ratings.js`, manifest `"world": "MAIN"`) because it needs RYM's own `RYMrating` class.
 
+## Recommendations page
+
+On `/recommendations/...` (desktop width):
+
+- Each cover gets a ▶ button. Click it to load that album in a sticky player on the right; nothing navigates. The extension fetches the release page (same-origin), reads RYM's `data-links`, and shows a tab per service (Spotify default). Results are cached per release, and nothing is fetched until you click.
+- The Avg/Ratings/Reviews columns are replaced by one line under the genres (`★ avg · ratings`).
+- Playlists, Settings and Affinities move below the lists.
+- Not hover-to-play: that would fetch a page and load an iframe for every cover the mouse crosses.
+
 ## Install
 
 Run `node build.js` first. It writes `dist/chromium` and `dist/firefox`; the two differ only in `manifest.json` (Edge rejects `background.scripts`, Firefox has no service worker).

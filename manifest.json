@@ -22,7 +22,8 @@
         "*://*.rateyourmusic.com/*"
       ],
       "js": [
-        "content.js"
+        "content.js",
+        "recommendations.js"
       ],
       "css": [
         "content.css"
