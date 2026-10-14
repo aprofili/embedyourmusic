@@ -43,6 +43,8 @@ for (const d of ["chromium", "firefox"]) {
       body: {},
       querySelectorAll: () => [],
       querySelector: () => null,
+      getElementById: () => null,
+      documentElement: { classList: { add() {} } },
     },
     IntersectionObserver: class {
       observe() {}

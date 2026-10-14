@@ -83,3 +83,5 @@ npm test
 The playing track is bolded using the playback messages the Spotify embed posts to the page (matched by track URI, else by duration). That depends on Spotify's undocumented message format; set `localStorage.eymDebug = "1"` on rateyourmusic.com to log the raw messages. On the recommendations page the Spotify album player is 560px tall.
 
 Recommendations page, ratings: rows you've already rated dim and shrink to one line (order unchanged). On load, the extension walks the list from the top, reading ratings from the release pages, and loads the first unrated album into the player.
+
+Loading cover: release and recommendations pages are covered with a spinner (pure CSS in `content.css`, keyed on `html.page_release` / `html.page_recommendations`) until the layout is final: after the first run on release pages, and after the first unrated album is loaded on the recommendations page. A CSS animation removes the cover after 8s even if the script fails.

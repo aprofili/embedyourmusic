@@ -35,6 +35,7 @@ const html = `<!doctype html><html><head></head><body><div class="release_page">
   const tick = () => new Promise((r) => setTimeout(r, 20));
   await tick();
 
+  assert.ok(w.document.documentElement.classList.contains("eym-ready"), "release page revealed");
   const cont = w.document.querySelector(".media_link_container");
   assert.ok(cont.classList.contains("rym-has-tabs"));
   assert.ok(w.document.querySelector("iframe[src*='open.spotify.com/embed']"), "spotify default");

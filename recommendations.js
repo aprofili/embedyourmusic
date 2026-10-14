@@ -165,7 +165,7 @@
 
   function play(li) {
     const link = li.querySelector("a.component_discography_item_link.release");
-    if (!link) return;
+    if (!link) return Promise.resolve();
     const my = ++token;
     if (currentLi) currentLi.classList.remove("rym-reco-current");
     currentLi = li;
@@ -177,7 +177,7 @@
     body.textContent = "Loading…";
     body.classList.add("rym-reco-hint");
 
-    linksFor(link.getAttribute("href"))
+    return linksFor(link.getAttribute("href"))
       .then((entries) => {
         if (my === token) show(entries, link.href, my);
       })
@@ -218,15 +218,22 @@
     }
   }
 
+  // Reveal the page (content.css covers it with a spinner until then).
+  const ready = () => document.documentElement.classList.add("eym-ready");
+  setTimeout(ready, 7000); // never leave the page covered
+
   // The first row you haven't rated (found by reco-ratings.js) loads into the player on its own.
+  // reco-ratings.js signals "eym-scan-done" once it has looked; the page is revealed after that
+  // album's player is up. If that script can't run, the timeout above reveals the page.
   const auto = () => {
     const li = container.querySelector("li[data-eym-first-unrated]");
-    if (li && !currentLi) play(li);
+    if (li && !currentLi) return play(li);
+    return Promise.resolve();
   };
   document.addEventListener("eym-first-unrated", auto);
+  document.addEventListener("eym-scan-done", () => auto().then(ready));
 
   decorate();
-  auto();
   let timer;
   new MutationObserver(() => {
     clearTimeout(timer);

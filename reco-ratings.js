@@ -150,6 +150,11 @@
   // Walk the list from the top until the first row you haven't rated; recommendations.js loads it.
   let marked = false;
   async function findFirstUnrated() {
+    await scanForUnrated();
+    document.dispatchEvent(new Event("eym-scan-done"));
+  }
+
+  async function scanForUnrated() {
     if (marked) return;
     for (const li of document.querySelectorAll("li.component_discography_item")) {
       const m = /^component_discography_item_(\d+)$/.exec(li.id);

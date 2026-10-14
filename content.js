@@ -604,6 +604,9 @@
   }
 
   run();
+  // Release pages: reveal the page now that the layout is final. (The recommendations page is
+  // revealed by recommendations.js once its first album is loaded.)
+  if (!document.getElementById("page_sections_recommendations")) document.documentElement.classList.add("eym-ready");
 
   // RYM injects links and sections dynamically (media popups, lazy sections).
   let pending = false;

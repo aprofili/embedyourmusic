@@ -40,12 +40,16 @@ const releasePage = `<div data-links='${JSON.stringify(links)}'></div>`;
   assert.ok(d.getElementById("page_sections_recommendations").classList.contains("rym-reco"));
 
   const tick = () => new Promise((r) => setTimeout(r, 20));
+  assert.ok(!d.documentElement.classList.contains("eym-ready"), "page stays covered until the scan finishes");
   assert.ok(!d.querySelector(".rym-reco-current"), "nothing preselected without a marked row");
   d.querySelectorAll("li.component_discography_item")[1].setAttribute("data-eym-first-unrated", "");
   d.dispatchEvent(new w.Event("eym-first-unrated"));
   await tick();
   assert.strictEqual(d.querySelector(".rym-reco-current"), d.querySelectorAll("li.component_discography_item")[1], "first unrated auto-loads");
   assert.ok(d.querySelector(".rym-reco-body iframe[src*='open.spotify.com']"));
+  d.dispatchEvent(new w.Event("eym-scan-done"));
+  await tick();
+  assert.ok(d.documentElement.classList.contains("eym-ready"), "revealed after scan + first album");
   fetched.length = 0;
   const ev = new w.MouseEvent("click", { bubbles: true, cancelable: true });
   d.querySelector("a.component_discography_item_image_link").dispatchEvent(ev);
