@@ -420,3 +420,7 @@
 .rym-heart.rym-saved {
   color: #1db954;
 }
+
+.rym-track-playing {
+  font-weight: 700;
+}

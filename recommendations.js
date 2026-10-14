@@ -114,8 +114,11 @@
       const { info, service } = entry;
       if (info.kind !== "bandcamp") {
         if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
-        slot.append(makeFrame(info.src, info.height, `${LABELS[service]} player`));
-        const tracks = service === "spotify" && trackList(info);
+        // Taller than the default so more of the tracklist shows.
+        const tall = service === "spotify" && /\/embed\/(album|playlist)\//.test(info.src);
+        const frame = makeFrame(info.src, tall ? 560 : info.height, `${LABELS[service]} player`);
+        slot.append(frame);
+        const tracks = service === "spotify" && trackList(info, frame);
         if (tracks) slot.append(tracks);
         return;
       }

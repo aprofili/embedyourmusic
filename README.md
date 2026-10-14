@@ -44,7 +44,7 @@ On `/recommendations/...` (desktop width):
 
 ## Saving individual Spotify tracks
 
-Under the Spotify player, "♡ Save tracks" opens the track list with a ♥ per track (adds/removes it in Liked Songs). Works on release pages and the recommendations player.
+Under the Spotify player, the "♡ Save tracks" list (open by default; the button collapses it) shows the tracks with a ♥ per track (adds/removes it in Liked Songs). Works on release pages and the recommendations player.
 
 One-time setup: the extension uses the Spotify app with client ID `c66c2741c3284f4eae7341cc156ca0e8` (OAuth PKCE, no secret). In the Spotify dashboard add the redirect URI for each browser under Settings → Redirect URIs. The first time you open the track list, it prints the exact URI for your browser; Edge's is fixed by the `key` in `manifest.json`: `https://pniflpimiiljpgeepfdjmjeeagldjmbk.chromiumapp.org/`. Then click "Connect Spotify". Scopes: `user-library-read`, `user-library-modify`. Tokens are stored in `storage.local`. The API calls run in `background.js`; the iOS userscript doesn't support this.
 
@@ -79,3 +79,5 @@ Set `"enabled": true` for the `strip_csp` ruleset in `manifest.json`. That remov
 npm install
 npm test
 ```
+
+The playing track is bolded using the playback messages the Spotify embed posts to the page (matched by track URI, else by duration). That depends on Spotify's undocumented message format; set `localStorage.eymDebug = "1"` on rateyourmusic.com to log the raw messages. On the recommendations page the Spotify album player is 560px tall.

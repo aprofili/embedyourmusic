@@ -126,11 +126,13 @@ const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
   w.eval(read("content.js"));
   const { trackList, classifyAny } = w.__embedYourMusic;
   assert.strictEqual(trackList(classifyAny("https://open.spotify.com/playlist/xyz")), null);
-  const box = trackList(classifyAny("https://open.spotify.com/album/alb123"));
+  const frame = w.document.createElement("iframe");
+  w.document.body.append(frame);
+  const box = trackList(classifyAny("https://open.spotify.com/album/alb123"), frame);
   w.document.body.append(box);
   const tick = () => new Promise((r) => setTimeout(r, 10));
-  box.querySelector(".rym-tracks-toggle").click();
-  await tick();
+  await tick(); // open by default: loads without a click
+  assert.ok(!box.querySelector(".rym-tracks-list").hidden);
   assert.ok(box.textContent.includes("https://x.example/"), "shows redirect URI when not connected");
   [...box.querySelectorAll("button")].find((b) => b.textContent === "Connect Spotify").click();
   await tick();
@@ -145,5 +147,16 @@ const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
   hearts[0].click();
   await tick();
   assert.strictEqual(hearts[0].textContent, "♡", "reverted after API error");
+
+  // playing track is bolded, by URI or by duration; other origins are ignored
+  const post = (data, origin = "https://open.spotify.com") =>
+    w.dispatchEvent(new w.MessageEvent("message", { data, origin, source: frame.contentWindow }));
+  const playing = () => [...box.querySelectorAll(".rym-track")].map((r) => r.classList.contains("rym-track-playing") ? 1 : 0).join("");
+  post({ type: "playback_update", payload: { playingURI: "spotify:track:b" } }, "https://evil.example");
+  assert.strictEqual(playing(), "00");
+  post({ type: "playback_update", payload: { playingURI: "spotify:track:b", isPaused: false } });
+  assert.strictEqual(playing(), "01");
+  post({ type: "playback_update", payload: { duration: 65000, position: 5 } });
+  assert.strictEqual(playing(), "10");
   console.log("spotify tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });

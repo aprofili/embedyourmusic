@@ -176,8 +176,37 @@
 
   const fmtTime = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 
+  // Bold the track that's playing. The Spotify embed posts playback updates to the parent window
+  // (the same messages its iFrame API uses). Match by track URI when present, else by duration.
+  // Set localStorage.eymDebug = "1" to log the raw messages.
+  const watchers = [];
+  function watchPlayback(frame, rows) {
+    watchers.push({ frame, rows });
+    if (watchers.length > 1) return;
+    window.addEventListener("message", (e) => {
+      if (e.origin !== "https://open.spotify.com") return;
+      try {
+        if (localStorage.eymDebug) console.log("[EmbedYourMusic] spotify message", e.data);
+      } catch {}
+      for (const w of watchers) {
+        if (!w.frame.isConnected || e.source !== w.frame.contentWindow) continue;
+        const d = e.data;
+        const p = (d && (d.payload || d.data)) || d || {};
+        const uri = typeof p.playingURI === "string" ? p.playingURI : typeof p.uri === "string" ? p.uri : "";
+        let hit = null;
+        const m = uri.match(/track[:/]([A-Za-z0-9]+)/);
+        if (m) hit = w.rows.find((r) => r.t.id === m[1]);
+        else if (typeof p.duration === "number" && p.duration > 0) {
+          const near = w.rows.filter((r) => Math.abs(r.t.ms - p.duration) <= 1500);
+          if (near.length === 1) hit = near[0];
+        }
+        if (hit) for (const r of w.rows) r.row.classList.toggle("rym-track-playing", r === hit);
+      }
+    });
+  }
+
   // Returns an element, or null when the Spotify link isn't an album or track.
-  function trackList(info) {
+  function trackList(info, frame) {
     const [, kind, id] = (info.key || "").split(":");
     if (kind !== "album" && kind !== "track") return null;
 
@@ -186,10 +215,9 @@
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "rym-tracks-toggle";
-    toggle.textContent = "♡ Save tracks ▾";
+    toggle.textContent = "♡ Save tracks ▴";
     const list = document.createElement("div");
     list.className = "rym-tracks-list";
-    list.hidden = true;
     box.append(toggle, list);
 
     const note = (text) => {
@@ -229,9 +257,11 @@
       const res = await send({ type: "spotify-tracks", kind, id });
       if (res.error) return note(`Couldn't load tracks (${res.error}).`);
       list.textContent = "";
+      const rows = [];
       for (const t of res.tracks) {
         const row = document.createElement("div");
         row.className = "rym-track";
+        rows.push({ t, row });
         const heart = document.createElement("button");
         heart.type = "button";
         heart.className = "rym-heart";
@@ -257,16 +287,15 @@
         row.append(heart, label);
         list.append(row);
       }
+      if (frame) watchPlayback(frame, rows);
     }
 
-    let loaded = false;
+    // Open by default; the button collapses it.
     toggle.addEventListener("click", () => {
       list.hidden = !list.hidden;
-      if (!list.hidden && !loaded) {
-        loaded = true;
-        load();
-      }
+      toggle.textContent = list.hidden ? "♡ Save tracks ▾" : "♡ Save tracks ▴";
     });
+    load();
     return box;
   }
 
@@ -363,7 +392,7 @@
       if (info.kind !== "bandcamp") {
         if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
         slot.append(makeFrame(info.src, info.height, `${label} player`));
-        const tracks = info.service === "spotify" && trackList(info);
+        const tracks = info.service === "spotify" && trackList(info, slot.querySelector("iframe"));
         if (tracks) slot.append(tracks);
         return;
       }
