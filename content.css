@@ -184,17 +184,28 @@
     min-width: 0;
   }
 
-  /* Playlists / Settings / Affinities go below, side by side where they fit. */
+  /* Playlists / Settings / Affinities go below the lists. RYM's own rules position these
+     sections (they overlapped), so reset them and place each one explicitly. */
   .rym-reco > #page_recommendations_group_main_right {
     grid-column: 1 / -1;
     grid-row: 3;
     width: auto !important;
     max-width: none !important;
     float: none !important;
-    display: grid !important;
-    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-    gap: 0 24px;
-    align-items: start;
+    display: block !important;
+    position: static !important;
+  }
+
+  .rym-reco > #page_recommendations_group_main_right > section {
+    position: static !important;
+    top: auto !important;
+    transform: none !important;
+    float: none !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 0 24px !important;
   }
 
   .rym-reco .group_filler {
@@ -462,5 +473,30 @@
 
   .rym-reco li.rym-rated .rym-play {
     display: none;
+  }
+}
+
+/* Playlists + Settings stacked on the left, Affinities beside them. */
+@media (min-width: 75em) {
+  .rym-reco > #page_recommendations_group_main_right {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+
+  .rym-reco > #page_recommendations_group_main_right > #page_recommendations_section_playlist {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .rym-reco > #page_recommendations_group_main_right > #page_recommendations_section_settings {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .rym-reco > #page_recommendations_group_main_right > #page_recommendations_section_affinities {
+    grid-column: 2;
+    grid-row: 1 / span 2;
   }
 }
