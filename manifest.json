@@ -40,6 +40,17 @@
       ],
       "world": "MAIN",
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://rateyourmusic.com/recommendations/*",
+        "*://*.rateyourmusic.com/recommendations/*"
+      ],
+      "js": [
+        "reco-ratings.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_idle"
     }
   ],
   "declarative_net_request": {

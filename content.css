@@ -304,3 +304,63 @@
     background: rgba(74, 144, 226, 0.12);
   }
 }
+
+/* ---- Recommendations page: star rating next to the exclude X ---- */
+.rym-reco-rate { display: none; }
+
+@media (min-width: 60em) {
+  .rym-reco-rate {
+    display: flex;
+    align-items: center;
+    margin: 0 14px;
+  }
+
+  .rym-reco-rate .my_catalog_rating {
+    display: flex;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .rym-reco-rate .rating_stars {
+    flex: none;
+    width: 90px;
+    height: 16px;
+    background: url(https://e.snmc.io/2.5/img/star_sprite_4.png) no-repeat top left;
+  }
+
+  .rym-reco-rate .rating_num {
+    width: 28px;
+    margin-left: 6px;
+    font-size: 0.9em;
+    text-align: right;
+  }
+
+  .rym-reco-rate .rating_loading {
+    display: none;
+  }
+
+  .rym-reco-rate .loading .rating_loading {
+    display: block;
+  }
+
+  .rym-reco-rate .loading .rating_stars,
+  .rym-reco-rate .loading .rating_num {
+    display: none;
+  }
+
+  .star-0m{background-position:0 0!important;width:90px;height:16px}
+  .star-10m{background-position:0 -66px!important;width:90px;height:16px}
+  .star-1m{background-position:0 -132px!important;width:90px;height:16px}
+  .star-2m{background-position:0 -198px!important;width:90px;height:16px}
+  .star-3m{background-position:0 -264px!important;width:90px;height:16px}
+  .star-4m{background-position:0 -330px!important;width:90px;height:16px}
+  .star-5m{background-position:0 -396px!important;width:90px;height:16px}
+  .star-6m{background-position:0 -462px!important;width:90px;height:16px}
+  .star-7m{background-position:0 -528px!important;width:90px;height:16px}
+  .star-8m{background-position:0 -594px!important;width:90px;height:16px}
+  .star-9m{background-position:0 -660px!important;width:90px;height:16px}
+}

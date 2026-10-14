@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "test": "node test/run.js && node test/dom.js && node test/hero.js && node test/tabs.js && node test/artist.js && node test/userscript.js && node test/reco.js"
+    "test": "node test/run.js && node test/dom.js && node test/hero.js && node test/tabs.js && node test/artist.js && node test/userscript.js && node test/reco.js && node test/reco-ratings.js"
   },
   "devDependencies": {
     "jsdom": "^26.0.0"
