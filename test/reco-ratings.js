@@ -9,25 +9,44 @@ const html = fs.existsSync(real)
   ? fs.readFileSync(real, "utf8")
   : `<body><ol><li id="component_discography_item_5" class="component_discography_item"><div class="component_discography_item_exclude">x</div></li></ol></body>`;
 
+let document_ids;
 (async () => {
   const dom = new JSDOM(html, { runScripts: "outside-only", url: "https://rateyourmusic.com/recommendations/u/release/", virtualConsole: new VirtualConsole() });
   const w = dom.window;
   const made = [];
   const calls = [];
+  w.IntersectionObserver = class {
+    constructor(cb) { this.cb = cb; }
+    observe(t) { this.cb([{ isIntersecting: true, target: t }]); }
+    unobserve() {}
+  };
+  const fetched = [];
+  w.fetch = async (u) => {
+    fetched.push(u);
+    const id = (document_ids || []).shift();
+    return { ok: true, text: async () => `<script>new RYMrating('l', ${id}, 7 );</script>` };
+  };
   w.RYMrating = class {
     constructor(...a) { made.push(a); }
     onClick() { calls.push("click"); }
     onMouseMove() { calls.push("move"); }
   };
-  w.eval(fs.readFileSync(path.join(root, "reco-ratings.js"), "utf8"));
   const d = w.document;
+  document_ids = [...d.querySelectorAll("li.component_discography_item")].map((l) => l.id.replace("component_discography_item_", ""));
+  w.eval(fs.readFileSync(path.join(root, "reco-ratings.js"), "utf8"));
   const lis = d.querySelectorAll("li.component_discography_item");
   assert.strictEqual(d.querySelectorAll(".rym-reco-rate").length, lis.length);
   const li = lis[0];
   const id = li.id.replace("component_discography_item_", "");
   const wrap = li.querySelector(".rym-reco-rate");
   assert.strictEqual(wrap.nextElementSibling, li.querySelector(".component_discography_item_exclude"), "placed left of the X");
-  assert.deepStrictEqual(made[0], ["l", Number(id), 0]);
+  assert.strictEqual(JSON.stringify(made[0]), JSON.stringify(["l", Number(id), 0]));
+  // saved rating is fetched from the release page and shown
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(fetched.length > 0 && fetched.length <= 2 + 200);
+  assert.strictEqual(JSON.stringify(made.find((a, i) => i > 0 && a[1] === Number(id))), JSON.stringify(["l", Number(id), 7]));
+  assert.strictEqual(d.getElementById(`rating_stars_l_${id}`).className, "rating_stars star-7m");
+  assert.strictEqual(d.getElementById(`rating_num_l_${id}`).textContent, "3.5");
   assert.ok(d.getElementById(`rating_stars_l_${id}`) && d.getElementById(`rating_num_l_${id}`));
   wrap.querySelector(".my_catalog_rating").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   assert.deepStrictEqual(calls, ["click"]);
