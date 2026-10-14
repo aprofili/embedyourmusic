@@ -5,6 +5,7 @@ const api = globalThis.browser ?? globalThis.chrome;
 
 const CACHE_PREFIX = "bc:";
 
+// <shared:bandcamp>
 function isBandcampItemUrl(raw) {
   try {
     const u = new URL(raw);
@@ -68,6 +69,8 @@ function parseBandcampEmbed(html) {
   }
   return null;
 }
+
+// </shared:bandcamp>
 
 async function resolveBandcamp(url) {
   if (!isBandcampItemUrl(url)) return null;

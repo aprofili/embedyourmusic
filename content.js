@@ -246,6 +246,7 @@
     }
     if (!entries.length) return;
     tabbed.add(row);
+    container.classList.add("rym-has-tabs");
 
     const panel = document.createElement("aside");
     panel.className = "rym-embed rym-embed-panel";
@@ -320,12 +321,12 @@
   // { open: true }   starts open; the toggle collapses it (class added by JS).
   // { inside: true } for table cells: toggle goes inside the cell and wraps its contents.
   const COLLAPSIBLE = [
-    [".hide-for-small > .section_outer.section_issues", "Issues"],
+    [".section_outer.section_issues", "Issues"],
     [".release_page > div:nth-of-type(3)", "Contributions"],
     [".page_object_section_discussion.page_object_section", "Discussion"],
     [".section_comments", "Comments"],
-    ["div.hide-for-small > .section_credits", "Credits"],
-    ["div.hide-for-small > .section_tracklisting", "Tracklist"],
+    [".section_credits", "Credits"],
+    [".section_tracklisting", "Tracklist"],
     [".section_lists", "Lists"],
     [".section_outer.section_catalog", "Catalog"],
     [".section_outer.section_reviews", "Reviews", { open: true }],

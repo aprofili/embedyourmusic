@@ -16,12 +16,12 @@
 
 /* ---- Collapsed by default, expanded by clicking the toggle ----
    Keep in sync with COLLAPSIBLE in content.js. */
-.hide-for-small > .section_outer.section_issues:not(.rym-expanded),
+.section_outer.section_issues:not(.rym-expanded),
 .release_page > div:nth-of-type(3):not(.rym-expanded),
 .page_object_section_discussion.page_object_section:not(.rym-expanded),
 .section_comments:not(.rym-expanded),
-div.hide-for-small > .section_credits:not(.rym-expanded),
-div.hide-for-small > .section_tracklisting:not(.rym-expanded),
+.section_credits:not(.rym-expanded),
+.section_tracklisting:not(.rym-expanded),
 .section_lists:not(.rym-expanded),
 .section_outer.section_catalog:not(.rym-expanded) {
   display: none !important;
@@ -97,19 +97,19 @@ div.hide-for-small > .section_tracklisting:not(.rym-expanded),
 
 /* RYM centers its icon row in a shrink-wrapped flex box, which makes the player only as
    wide as the icons. In the hero, let the player block fill the available width. */
-.rym-hero-main .media_link_container {
+.rym-has-tabs {
   display: block;
 }
 
-.rym-hero-main .media_link_container > div {
+.rym-has-tabs > div {
   width: 100%;
 }
 
-.rym-hero-main .ui_media_links {
+.rym-has-tabs .ui_media_links {
   margin: 0 auto;
 }
 
-.rym-hero-main .rym-embed {
+.rym-has-tabs .rym-embed {
   max-width: none;
 }
 

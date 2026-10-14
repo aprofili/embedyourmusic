@@ -42,6 +42,15 @@ Run `node build.js` first. It writes `dist/chromium` and `dist/firefox`; the two
 
 **Firefox (permanent):** `npx web-ext sign --channel=unlisted --api-key=... --api-secret=...` from `dist/firefox` (free AMO credentials), then install the resulting `.xpi`.
 
+## iOS (Safari)
+
+`node build.js` also writes `dist/userscript/embedyourmusic.user.js`, for the free [Userscripts](https://apps.apple.com/app/userscripts/id1463298887) Safari app (no Mac needed).
+
+1. Install Userscripts, set its script folder, enable it in Settings → Safari → Extensions (allow rateyourmusic.com).
+2. Put `embedyourmusic.user.js` in that folder.
+
+Same embeds/tabs (under the icon row) and collapsed sections as desktop. Bandcamp lookups use `GM_xmlhttpRequest` and a `localStorage` cache. Artist-page stars are not included (RYM hides that column on small screens). If RYM's CSP blocks the iframes, Safari offers no way around it.
+
 ## If embeds are blocked by RYM's CSP
 
 Set `"enabled": true` for the `strip_csp` ruleset in `manifest.json`. That removes CSP headers on rateyourmusic.com, so only enable it if needed.
