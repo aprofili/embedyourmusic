@@ -364,3 +364,57 @@
   .star-8m{background-position:0 -594px!important;width:90px;height:16px}
   .star-9m{background-position:0 -660px!important;width:90px;height:16px}
 }
+
+/* ---- Spotify track list ---- */
+.rym-tracks {
+  margin-top: 8px;
+  font-size: 0.9em;
+}
+
+.rym-tracks-toggle {
+  padding: 3px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rym-tracks-list {
+  margin-top: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.rym-tracks-list[hidden] {
+  display: none;
+}
+
+.rym-track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.rym-heart {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 1.2em;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.rym-heart:hover,
+.rym-heart.rym-saved {
+  opacity: 1;
+}
+
+.rym-heart.rym-saved {
+  color: #1db954;
+}

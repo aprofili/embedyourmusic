@@ -97,7 +97,168 @@ async function resolveBandcamp(url) {
   return embed;
 }
 
+// ---- Spotify: per-track library saves (OAuth PKCE, no client secret) ----
+const SPOTIFY_CLIENT_ID = "c66c2741c3284f4eae7341cc156ca0e8";
+const SPOTIFY_SCOPES = "user-library-read user-library-modify";
+const SPOTIFY_AUTH_KEY = "sp:auth";
+
+const b64url = (buf) =>
+  btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+async function spotifyToken(params) {
+  const res = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, ...params }),
+  });
+  if (!res.ok) throw new Error(`Spotify token request failed (${res.status})`);
+  return res.json();
+}
+
+async function storeAuth(tok, previous) {
+  const auth = {
+    access: tok.access_token,
+    refresh: tok.refresh_token || (previous && previous.refresh),
+    expires: Date.now() + (tok.expires_in - 60) * 1000,
+  };
+  await api.storage.local.set({ [SPOTIFY_AUTH_KEY]: auth });
+  return auth;
+}
+
+async function spotifyAuth() {
+  const got = await api.storage.local.get(SPOTIFY_AUTH_KEY);
+  return got && got[SPOTIFY_AUTH_KEY] ? got[SPOTIFY_AUTH_KEY] : null;
+}
+
+async function spotifyAccessToken() {
+  let auth = await spotifyAuth();
+  if (!auth) throw new Error("not connected");
+  if (Date.now() >= auth.expires) {
+    auth = await storeAuth(await spotifyToken({ grant_type: "refresh_token", refresh_token: auth.refresh }), auth);
+  }
+  return auth.access;
+}
+
+async function spotifyConnect() {
+  const redirect = api.identity.getRedirectURL();
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
+  const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  const state = b64url(crypto.getRandomValues(new Uint8Array(12)));
+  const authUrl =
+    "https://accounts.spotify.com/authorize?" +
+    new URLSearchParams({
+      client_id: SPOTIFY_CLIENT_ID,
+      response_type: "code",
+      redirect_uri: redirect,
+      scope: SPOTIFY_SCOPES,
+      code_challenge_method: "S256",
+      code_challenge: challenge,
+      state,
+    });
+  const back = await api.identity.launchWebAuthFlow({ url: authUrl, interactive: true });
+  const q = new URL(back).searchParams;
+  if (q.get("state") !== state || !q.get("code")) throw new Error(q.get("error") || "login cancelled");
+  await storeAuth(
+    await spotifyToken({ grant_type: "authorization_code", code: q.get("code"), redirect_uri: redirect, code_verifier: verifier })
+  );
+}
+
+// Returns the Response (caller checks ok). Retries once on 401 with a refreshed token.
+async function spotifyFetch(method, path, query) {
+  const url = "https://api.spotify.com/v1" + path + (query ? "?" + new URLSearchParams(query) : "");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(url, { method, headers: { Authorization: `Bearer ${await spotifyAccessToken()}` } });
+    if (res.status !== 401 || attempt) return res;
+    const auth = await spotifyAuth();
+    if (auth) await api.storage.local.set({ [SPOTIFY_AUTH_KEY]: { ...auth, expires: 0 } });
+  }
+}
+
+async function spotifyJson(path, query) {
+  const res = await spotifyFetch("GET", path, query);
+  if (!res.ok) throw new Error(`Spotify API ${res.status}`);
+  return res.json();
+}
+
+const FALLBACK_STATUSES = [400, 403, 404, 410];
+
+// Library endpoints exist in two generations (/me/tracks and the newer /me/library); try both.
+async function savedFlags(ids) {
+  const flags = [];
+  for (let i = 0; i < ids.length; i += 40) {
+    const chunk = ids.slice(i, i + 40);
+    let res = await spotifyFetch("GET", "/me/tracks/contains", { ids: chunk.join(",") });
+    if (!res.ok && FALLBACK_STATUSES.includes(res.status)) {
+      res = await spotifyFetch("GET", "/me/library/contains", { uris: chunk.map((id) => `spotify:track:${id}`).join(",") });
+    }
+    if (!res.ok) throw new Error(`Spotify API ${res.status}`);
+    flags.push(...(await res.json()));
+  }
+  return flags;
+}
+
+async function setSaved(id, save) {
+  const method = save ? "PUT" : "DELETE";
+  let res = await spotifyFetch(method, "/me/tracks", { ids: id });
+  if (!res.ok && FALLBACK_STATUSES.includes(res.status)) {
+    res = await spotifyFetch(method, "/me/library", { uris: `spotify:track:${id}` });
+  }
+  if (!res.ok) throw new Error(`Spotify API ${res.status}`);
+}
+
+async function spotifyTracks(type, id) {
+  let items;
+  if (type === "track") {
+    items = [await spotifyJson(`/tracks/${id}`)];
+  } else if (type === "album") {
+    items = [];
+    let page = await spotifyJson(`/albums/${id}/tracks`, { limit: "50" });
+    for (;;) {
+      items.push(...page.items);
+      if (!page.next) break;
+      const res = await fetch(page.next, { headers: { Authorization: `Bearer ${await spotifyAccessToken()}` } });
+      if (!res.ok) throw new Error(`Spotify API ${res.status}`);
+      page = await res.json();
+    }
+  } else {
+    throw new Error("unsupported type");
+  }
+  const ids = items.map((t) => t.id);
+  const flags = await savedFlags(ids);
+  return items.map((t, i) => ({
+    id: t.id,
+    name: t.name,
+    number: t.track_number,
+    disc: t.disc_number,
+    ms: t.duration_ms,
+    saved: !!flags[i],
+  }));
+}
+
+async function handleSpotify(msg) {
+  try {
+    switch (msg.type) {
+      case "spotify-status":
+        return { connected: !!(await spotifyAuth()), redirectUri: api.identity.getRedirectURL() };
+      case "spotify-connect":
+        await spotifyConnect();
+        return { ok: true };
+      case "spotify-tracks":
+        return { tracks: await spotifyTracks(msg.kind, msg.id) };
+      case "spotify-save":
+        await setSaved(msg.id, !!msg.save);
+        return { ok: true };
+    }
+  } catch (e) {
+    return { error: String((e && e.message) || e) };
+  }
+}
+
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg && typeof msg.type === "string" && msg.type.startsWith("spotify-")) {
+    handleSpotify(msg).then(sendResponse);
+    return true;
+  }
   if (msg && msg.type === "resolve-bandcamp") {
     resolveBandcamp(msg.url)
       .then((embed) => sendResponse({ embed }))

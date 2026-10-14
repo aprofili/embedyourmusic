@@ -6,7 +6,7 @@
   const container = document.getElementById("page_sections_recommendations");
   if (!eym || !container) return;
 
-  const { classifyAny, makeFrame, resolveBandcamp, LABELS } = eym;
+  const { classifyAny, makeFrame, resolveBandcamp, trackList, LABELS } = eym;
   const ORDER = ["spotify", "applemusic", "soundcloud", "bandcamp", "youtube", "tidal", "deezer"];
 
   const url = (u) => (/^https?:\/\//.test(u) ? u : `https://${u}`);
@@ -115,6 +115,8 @@
       if (info.kind !== "bandcamp") {
         if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
         slot.append(makeFrame(info.src, info.height, `${LABELS[service]} player`));
+        const tracks = service === "spotify" && trackList(info);
+        if (tracks) slot.append(tracks);
         return;
       }
       slot.textContent = "Loading…";

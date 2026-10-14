@@ -42,6 +42,14 @@ On `/recommendations/...` (desktop width):
 - A star rating sits left of each row's X (same widget and request as the release page; starts empty, so rating a release you already rated overwrites it). RYM's rating code lives in its release-page script, so `reco-ratings.js` (page world) loads that script if it is missing.
 - Not hover-to-play: that would fetch a page and load an iframe for every cover the mouse crosses.
 
+## Saving individual Spotify tracks
+
+Under the Spotify player, "♡ Save tracks" opens the track list with a ♥ per track (adds/removes it in Liked Songs). Works on release pages and the recommendations player.
+
+One-time setup: the extension uses the Spotify app with client ID `c66c2741c3284f4eae7341cc156ca0e8` (OAuth PKCE, no secret). In the Spotify dashboard add the redirect URI for each browser under Settings → Redirect URIs. The first time you open the track list, it prints the exact URI for your browser; Edge's is fixed by the `key` in `manifest.json`: `https://pniflpimiiljpgeepfdjmjeeagldjmbk.chromiumapp.org/`. Then click "Connect Spotify". Scopes: `user-library-read`, `user-library-modify`. Tokens are stored in `storage.local`. The API calls run in `background.js`; the iOS userscript doesn't support this.
+
+If Spotify has retired `/me/tracks`, the code falls back to `/me/library`.
+
 ## Install
 
 Run `node build.js` first. It writes `dist/chromium` and `dist/firefox`; the two differ only in `manifest.json` (Edge rejects `background.scripts`, Firefox has no service worker).

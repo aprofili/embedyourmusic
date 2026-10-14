@@ -8,8 +8,9 @@ const root = __dirname;
 const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "rules.json"];
 const base = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 
+const { key: _key, ...baseNoKey } = base; // `key` pins the Chromium extension id (stable OAuth redirect URI)
 const firefox = {
-  ...base,
+  ...baseNoKey,
   background: { scripts: ["background.js"] },
   browser_specific_settings: {
     gecko: {
@@ -96,7 +97,7 @@ globalThis.__eymBridge = {
       if (msg && msg.type === "resolve-bandcamp") {
         try { return { embed: await resolveBandcamp(msg.url) }; } catch { return { embed: null }; }
       }
-      return {};
+      return { unsupported: true };
     },
   },
 };

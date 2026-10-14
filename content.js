@@ -165,6 +165,111 @@
     }
   }
 
+  // ---- Spotify track list with per-track library saves (via background.js) ----
+  async function send(msg) {
+    try {
+      return (await api.runtime.sendMessage(msg)) || { error: "no response" };
+    } catch (e) {
+      return { error: String((e && e.message) || e) };
+    }
+  }
+
+  const fmtTime = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+
+  // Returns an element, or null when the Spotify link isn't an album or track.
+  function trackList(info) {
+    const [, kind, id] = (info.key || "").split(":");
+    if (kind !== "album" && kind !== "track") return null;
+
+    const box = document.createElement("div");
+    box.className = "rym-tracks";
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "rym-tracks-toggle";
+    toggle.textContent = "♡ Save tracks ▾";
+    const list = document.createElement("div");
+    list.className = "rym-tracks-list";
+    list.hidden = true;
+    box.append(toggle, list);
+
+    const note = (text) => {
+      list.textContent = "";
+      const p = document.createElement("p");
+      p.className = "rym-embed-msg";
+      p.textContent = text;
+      list.append(p);
+      return p;
+    };
+
+    async function load() {
+      note("Loading…");
+      const status = await send({ type: "spotify-status" });
+      if (status.unsupported || (status.error && !("connected" in status))) {
+        return note(status.unsupported ? "Track saving isn't available here." : `Spotify: ${status.error}`);
+      }
+      if (!status.connected) {
+        const p = note("Connect Spotify once to save tracks. Redirect URI to register in your Spotify app: ");
+        const code = document.createElement("code");
+        code.textContent = status.redirectUri;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "rym-tab";
+        btn.textContent = "Connect Spotify";
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          const r = await send({ type: "spotify-connect" });
+          if (r.error) {
+            btn.disabled = false;
+            p.append(document.createElement("br"), `Login failed: ${r.error}`);
+          } else load();
+        });
+        p.append(code, document.createElement("br"), btn);
+        return;
+      }
+      const res = await send({ type: "spotify-tracks", kind, id });
+      if (res.error) return note(`Couldn't load tracks (${res.error}).`);
+      list.textContent = "";
+      for (const t of res.tracks) {
+        const row = document.createElement("div");
+        row.className = "rym-track";
+        const heart = document.createElement("button");
+        heart.type = "button";
+        heart.className = "rym-heart";
+        const paint = () => {
+          heart.textContent = t.saved ? "♥" : "♡";
+          heart.classList.toggle("rym-saved", t.saved);
+          heart.title = t.saved ? "Remove from Liked Songs" : "Save to Liked Songs";
+        };
+        paint();
+        heart.addEventListener("click", async () => {
+          const want = !t.saved;
+          t.saved = want; // optimistic
+          paint();
+          const r = await send({ type: "spotify-save", id: t.id, save: want });
+          if (r.error) {
+            t.saved = !want;
+            paint();
+            heart.title = `Failed: ${r.error}`;
+          }
+        });
+        const label = document.createElement("span");
+        label.textContent = `${res.tracks.length > 1 ? `${t.number}. ` : ""}${t.name}  ${fmtTime(t.ms)}`;
+        row.append(heart, label);
+        list.append(row);
+      }
+    }
+
+    let loaded = false;
+    toggle.addEventListener("click", () => {
+      list.hidden = !list.hidden;
+      if (!list.hidden && !loaded) {
+        loaded = true;
+        load();
+      }
+    });
+    return box;
+  }
+
   const seen = new Set();
   const lazy = new IntersectionObserver(
     (entries) => {
@@ -258,6 +363,8 @@
       if (info.kind !== "bandcamp") {
         if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
         slot.append(makeFrame(info.src, info.height, `${label} player`));
+        const tracks = info.service === "spotify" && trackList(info);
+        if (tracks) slot.append(tracks);
         return;
       }
       slot.textContent = "Loading…";
@@ -480,5 +587,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, LABELS, addCollapseToggles, buildHero, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, LABELS, addCollapseToggles, buildHero, buildTabs, run };
 })();

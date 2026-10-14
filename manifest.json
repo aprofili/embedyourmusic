@@ -5,12 +5,15 @@
   "description": "Turns Spotify and Bandcamp links on rateyourmusic.com into inline embedded players.",
   "permissions": [
     "storage",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "identity"
   ],
   "host_permissions": [
     "*://rateyourmusic.com/*",
     "*://*.rateyourmusic.com/*",
-    "*://*.bandcamp.com/*"
+    "*://*.bandcamp.com/*",
+    "https://api.spotify.com/*",
+    "https://accounts.spotify.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -61,5 +64,6 @@
         "path": "rules.json"
       }
     ]
-  }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw8by23Xvi66fRuBZQwSWhe/aGzKb9hJjTiremdcyTYywOt7vSbzafckG7wJUlcjjCBhoW2RYItQv74Ln1xnZsZSXkqOn97dFnKLpIggR5od7E7Gr792P84ZCQ9pKLyrXLPuhvHWZRqkcwQ4WewB7MBDzPUZ5lFudjmugSnyv7lphmzXFU6X9WFTAR1NFXCKZHE/7lougqxMcMvLLscvOTpQfrAyp/vIyv3q8g+c53/I1LzYK6gthL2bcTn8ENFHM9aEb/3CqTtXigEVv8GF30HrusE0KFb1JUrpfVMym6BdWqnlkhaWIyR7m7yO6dao0cucS31cUROq9y/NvU1T6xQIDAQAB"
 }
