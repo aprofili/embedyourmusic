@@ -320,7 +320,8 @@
   .rym-reco-rate .my_catalog_rating {
     display: flex;
     align-items: center;
-    padding: 0;
+    /* RYM's hover math assumes RYM's own 10px left padding (stars start 10px into the box). */
+    padding: 0 0 0 10px;
     border: 0;
     background: none;
     cursor: pointer;
