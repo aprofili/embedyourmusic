@@ -62,6 +62,13 @@
         (e) => {
           if (type === "click" || type.startsWith("touch")) box.dataset.touched = "1";
           window[`rating_l_${id}`][method](e, box);
+          if (type === "click") {
+            // Keep the shared cache in step with what you just rated.
+            setTimeout(() => {
+              const s = /star-(\d+)m/.exec(box.querySelector(".rating_stars").className);
+              if (s) rel.setRating(id, Number(s[1]));
+            }, 1500);
+          }
         },
         { passive: type.startsWith("touch") ? false : undefined }
       );
@@ -74,9 +81,7 @@
   // scroll into view, plus an in-order pass from the top to find the first unrated row.
   // Results are written to the row (data-eym-rating, class rym-rated) for content.css and
   // recommendations.js, which run in the other JavaScript world and share only the DOM.
-  const ratingKey = (id) => `eym:rating:${id}`;
-  const queue = [];
-  let active = 0;
+  const rel = globalThis.__eymRelease;
 
   function applyRating(id, box, rating) {
     if (box.dataset.touched) return; // you already rated it here
@@ -87,56 +92,14 @@
     if (num) num.textContent = (rating / 2).toFixed(1);
   }
 
-  async function fetchRating(li, id) {
-    const link = li.querySelector("a.component_discography_item_link.release");
-    if (!link) return null;
-    const res = await fetch(link.getAttribute("href"), { credentials: "same-origin" });
-    if (!res.ok) return null;
-    const m = /new RYMrating\(\s*['"]l['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/.exec(await res.text());
-    return m && m[1] === id ? Number(m[2]) : null;
-  }
-
-  function pump() {
-    while (active < 2 && queue.length) {
-      const job = queue.shift();
-      active++;
-      job().finally(() => {
-        active--;
-        pump();
-      });
-    }
-  }
-
-  const known = new Map(); // id -> Promise<number | null>
+  // Cached, throttled, de-duplicated by release-data.js. null = unknown.
   function ratingOf(li, id) {
-    if (!known.has(id)) {
-      known.set(
-        id,
-        new Promise((resolve) => {
-          try {
-            const cached = sessionStorage.getItem(ratingKey(id));
-            if (cached !== null) return resolve(Number(cached));
-          } catch {}
-          queue.push(async () => {
-            let rating = null;
-            try {
-              rating = await fetchRating(li, id);
-            } catch {}
-            if (rating !== null) {
-              try {
-                sessionStorage.setItem(ratingKey(id), String(rating));
-              } catch {}
-            }
-            resolve(rating);
-          });
-          pump();
-        }).then((rating) => {
-          if (rating === null) known.delete(id); // allow a retry
-          return rating;
-        })
-      );
-    }
-    return known.get(id);
+    const link = li.querySelector("a.component_discography_item_link.release");
+    if (!link) return Promise.resolve(null);
+    return rel
+      .get(id, link.getAttribute("href"))
+      .then((r) => (r.ratingKnown ? r.rating : null))
+      .catch(() => null);
   }
 
   async function loadRating(li, id, box) {
@@ -148,6 +111,7 @@
   }
 
   // Walk the list from the top until the first row you haven't rated; recommendations.js loads it.
+  const MAX_SCAN = 40;
   let marked = false;
   async function findFirstUnrated() {
     await scanForUnrated();
@@ -156,10 +120,13 @@
 
   async function scanForUnrated() {
     if (marked) return;
+    let looked = 0;
     for (const li of document.querySelectorAll("li.component_discography_item")) {
+      if (looked >= MAX_SCAN || rel.blocked()) return; // bounded: never walk the whole list
       const m = /^component_discography_item_(\d+)$/.exec(li.id);
       const box = li.querySelector(".my_catalog_rating");
       if (!m || !box) continue;
+      looked++;
       await loadRating(li, m[1], box);
       if (li.dataset.eymRating === "0") {
         marked = true;

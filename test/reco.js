@@ -23,14 +23,16 @@ const links = {
 const releasePage = `<div data-links='${JSON.stringify(links)}'></div>`;
 
 (async () => {
-  const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
+  const dom = new JSDOM(html, { url: "https://rateyourmusic.com/recommendations/u/release/", runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
   const w = dom.window;
   w.matchMedia = () => ({ matches: false, addEventListener() {}, addListener() {} });
   w.IntersectionObserver = class { observe() {} unobserve() {} };
   const fetched = [];
   w.fetch = async (u) => { fetched.push(u); return { ok: true, text: async () => releasePage }; };
   w.chrome = { runtime: { sendMessage: async () => ({ embed: { src: "https://bandcamp.com/EmbeddedPlayer/album=9/", height: 120 } }) } };
+  w.__eymGapMs = 0;
   w.eval(read("content.js"));
+  w.eval(read("release-data.js"));
   w.eval(read("recommendations.js"));
   const d = w.document;
   const lis = d.querySelectorAll("li.component_discography_item");

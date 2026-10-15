@@ -47,25 +47,10 @@
     return out;
   }
 
-  const cache = new Map(); // release path -> Promise<entries>
-  function linksFor(path) {
-    if (!cache.has(path)) {
-      cache.set(
-        path,
-        fetch(path, { credentials: "same-origin" })
-          .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
-          .then((html) => {
-            const doc = new DOMParser().parseFromString(html, "text/html");
-            const el = doc.querySelector("[data-links]");
-            return el ? parseLinks(el.getAttribute("data-links")) : [];
-          })
-          .catch((e) => {
-            cache.delete(path); // allow retry
-            throw e;
-          })
-      );
-    }
-    return cache.get(path);
+  const rel = globalThis.__eymRelease;
+  // Streaming links for a release, from the shared cache or one throttled request.
+  function linksFor(path, id) {
+    return rel.get(id, path).then((r) => (r.links ? parseLinks(r.links) : []));
   }
 
   // ---- Player panel ----
@@ -193,12 +178,12 @@
     body.textContent = "Loading…";
     body.classList.add("rym-reco-hint");
 
-    return linksFor(link.getAttribute("href"))
+    return linksFor(link.getAttribute("href"), li.id.replace("component_discography_item_", ""))
       .then((entries) => {
         if (my === token) show(entries, link.href, my);
       })
-      .catch(() => {
-        if (my === token) message("Couldn't load streaming links.", link.href);
+      .catch((e) => {
+        if (my === token) message(`Couldn't load streaming links (${e.message}).`, link.href);
       });
   }
 
@@ -265,57 +250,15 @@
 
   // ---- iOS userscript: read your ratings from the release pages (same logic as reco-ratings.js) ----
   function ratedScan() {
-    const RATING = /new RYMrating\(\s*['"]l['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/;
-    const queue = [];
-    let active = 0;
-    const known = new Map();
-    const idOf = (li) => (/^component_discography_item_(\d+)$/.exec(li.id) || [])[1];
-
-    function pump() {
-      while (active < 2 && queue.length) {
-        active++;
-        queue.shift()().finally(() => {
-          active--;
-          pump();
-        });
-      }
-    }
-
-    function ratingOf(li) {
-      const id = idOf(li);
-      if (!id) return Promise.resolve(null);
-      if (!known.has(id)) {
-        known.set(
-          id,
-          new Promise((resolve) => {
-            try {
-              const cached = sessionStorage.getItem(`eym:rating:${id}`);
-              if (cached !== null) return resolve(Number(cached));
-            } catch {}
-            queue.push(async () => {
-              let rating = null;
-              try {
-                const link = li.querySelector("a.component_discography_item_link.release");
-                const res = await fetch(link.getAttribute("href"), { credentials: "same-origin" });
-                const m = res.ok && RATING.exec(await res.text());
-                if (m && m[1] === id) rating = Number(m[2]);
-              } catch {}
-              if (rating !== null) {
-                try {
-                  sessionStorage.setItem(`eym:rating:${id}`, String(rating));
-                } catch {}
-              }
-              resolve(rating);
-            });
-            pump();
-          }).then((rating) => {
-            if (rating === null) known.delete(id);
-            return rating;
-          })
-        );
-      }
-      return known.get(id);
-    }
+    const ratingOf = (li) => {
+      const link = li.querySelector("a.component_discography_item_link.release");
+      const id = li.id.replace("component_discography_item_", "");
+      if (!link) return Promise.resolve(null);
+      return rel
+        .get(id, link.getAttribute("href"))
+        .then((x) => (x.ratingKnown ? x.rating : null))
+        .catch(() => null);
+    };
 
     const mark = (li, rating) => {
       li.dataset.eymRating = String(rating);
@@ -344,7 +287,9 @@
 
     // In-order pass from the top to find the first unrated row.
     (async () => {
+      let looked = 0;
       for (const li of container.querySelectorAll("li.component_discography_item")) {
+        if (looked++ >= 40 || rel.blocked()) break; // bounded: never walk the whole list
         const r = await ratingOf(li);
         if (r === null) continue;
         mark(li, r);

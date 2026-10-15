@@ -34,6 +34,8 @@ let document_ids;
   };
   const d = w.document;
   document_ids = [...d.querySelectorAll("li.component_discography_item")].map((l) => l.id.replace("component_discography_item_", ""));
+  w.__eymGapMs = 0;
+  w.eval(fs.readFileSync(path.join(root, "release-data.js"), "utf8"));
   w.eval(fs.readFileSync(path.join(root, "reco-ratings.js"), "utf8"));
   const lis = d.querySelectorAll("li.component_discography_item");
   assert.strictEqual(d.querySelectorAll(".rym-reco-rate").length, lis.length);
@@ -54,6 +56,7 @@ let document_ids;
 
   // Missing RYMrating: loads release.js next to the bundle, never throws.
   const dom2 = new JSDOM(`<head><script src="//cdn.sonemic.net/dist/rym25/js/bundle.js?v=1"></script></head><body></body>`, { runScripts: "outside-only", url: "https://rateyourmusic.com/recommendations/u/", virtualConsole: new VirtualConsole() });
+  dom2.window.eval(fs.readFileSync(path.join(root, "release-data.js"), "utf8"));
   dom2.window.eval(fs.readFileSync(path.join(root, "reco-ratings.js"), "utf8"));
   const added = dom2.window.document.querySelector("script[data-rym-reco-release]");
   assert.ok(added && added.src.includes("/js/page/release.js?v=1"));

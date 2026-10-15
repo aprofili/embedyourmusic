@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 const root = __dirname;
-const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "rules.json"];
+const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "release-data.js", "rules.json"];
 const base = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 
 const { key: _key, ...baseNoKey } = base; // `key` pins the Chromium extension id (stable OAuth redirect URI)
@@ -111,7 +111,8 @@ document.documentElement.appendChild(style);
 const outDir = path.join(root, "dist", "userscript");
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
-const reco = fs.readFileSync(path.join(root, "recommendations.js"), "utf8");
+const reco =
+  fs.readFileSync(path.join(root, "release-data.js"), "utf8") + "\n" + fs.readFileSync(path.join(root, "recommendations.js"), "utf8");
 // The DOM scripts wait for the document (the userscript starts at document-start).
 const main = `function __eymMain() {\n${content}\n${reco}\n}
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", __eymMain);

@@ -19,7 +19,7 @@ const html = fs.existsSync(real)
 const links = { spotify: { "49JP": { default: true, type: "album" } } };
 
 (async () => {
-  const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
+  const dom = new JSDOM(html, { url: "https://rateyourmusic.com/recommendations/u/release/", runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
   const w = dom.window;
   w.matchMedia = () => ({ matches: true, addEventListener() {}, addListener() {} });
   w.IntersectionObserver = class { constructor(cb) { this.cb = cb; } observe(t) { this.cb([{ isIntersecting: true, target: t }]); } unobserve() {} };
@@ -34,6 +34,7 @@ const links = { spotify: { "49JP": { default: true, type: "album" } } };
   const rows = [...w.document.querySelectorAll("li.component_discography_item")];
   const idByHref = new Map(rows.map((li) => [li.querySelector("a.component_discography_item_link.release").getAttribute("href"), li.id.replace("component_discography_item_", "")]));
   const idFor = (u) => idByHref.get(u);
+  w.__eymGapMs = 0;
   w.eval(src);
 
   const d = w.document;

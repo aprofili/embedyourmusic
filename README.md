@@ -85,3 +85,7 @@ The playing track is bolded using the playback messages the Spotify embed posts 
 Recommendations page, ratings: rows you've already rated dim and shrink to one line (order unchanged). On load, the extension walks the list from the top, reading ratings from the release pages, and loads the first unrated album into the player.
 
 Loading cover: release and recommendations pages are covered with a spinner (pure CSS in `content.css`, keyed on `html.page_release` / `html.page_recommendations`) until the layout is final: after the first run on release pages, and after the first unrated album is loaded on the recommendations page. A CSS animation removes the cover after 8s even if the script fails.
+
+## Request volume (rateyourmusic.com)
+
+Reading ratings and streaming links needs a release-page request per album, so `release-data.js` keeps this small: results are cached in `localStorage` (rated releases 14 days, unrated 20 minutes, shared by all tabs and the page-world and content-script halves); requests go out one at a time ~400ms apart; callers for the same release share one request; the "find first unrated" walk stops after 40 rows; and a 403/429/503 pauses all extension requests for 15 minutes (the player says so). Ratings you give from the list update the cache.

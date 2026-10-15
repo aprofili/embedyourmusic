@@ -26,6 +26,7 @@
       ],
       "js": [
         "content.js",
+        "release-data.js",
         "recommendations.js"
       ],
       "css": [
@@ -50,6 +51,7 @@
         "*://*.rateyourmusic.com/recommendations/*"
       ],
       "js": [
+        "release-data.js",
         "reco-ratings.js"
       ],
       "world": "MAIN",
