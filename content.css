@@ -708,7 +708,7 @@ html.page_recommendations:not(.eym-ready)::after {
 /* ---- Big play button on a release page cover ---- */
 .rym-art-link {
   position: relative;
-  display: inline-block;
+  display: block; /* inline-block let RYM's width:100% cover collapse to nothing */
 }
 
 .rym-art-play {
