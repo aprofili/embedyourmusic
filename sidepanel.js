@@ -153,7 +153,7 @@
           if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
           const frame = makeFrame(info.src, info.height, `${LABELS[service]} player`);
           slot.append(frame);
-          const list = service === "spotify" && trackList(info, frame);
+          const list = service === "spotify" && trackList(info, frame, { compact: true });
           if (list) slot.append(list);
           return;
         }

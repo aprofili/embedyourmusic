@@ -180,8 +180,8 @@
   // (the same messages its iFrame API uses). Match by track URI when present, else by duration.
   // Set localStorage.eymDebug = "1" to log the raw messages.
   const watchers = [];
-  function watchPlayback(frame, rows) {
-    watchers.push({ frame, rows });
+  function watchPlayback(frame, rows, onHit) {
+    watchers.push({ frame, rows, onHit });
     if (watchers.length > 1) return;
     window.addEventListener("message", (e) => {
       if (e.origin !== "https://open.spotify.com") return;
@@ -200,13 +200,17 @@
           const near = w.rows.filter((r) => Math.abs(r.t.ms - p.duration) <= 1500);
           if (near.length === 1) hit = near[0];
         }
-        if (hit) for (const r of w.rows) r.row.classList.toggle("rym-track-playing", r === hit);
+        if (hit) {
+          for (const r of w.rows) r.row.classList.toggle("rym-track-playing", r === hit);
+          if (w.onHit) w.onHit(hit);
+        }
       }
     });
   }
 
   // Returns an element, or null when the Spotify link isn't an album or track.
-  function trackList(info, frame) {
+  function trackList(info, frame, opts) {
+    const compact = !!(opts && opts.compact);
     if (globalThis.__eymBridge) return null; // userscript: no background script to talk to
     const [, kind, id] = (info.key || "").split(":");
     if (kind !== "album" && kind !== "track") return null;
@@ -219,7 +223,18 @@
     toggle.textContent = "♡ Save tracks ▴";
     const list = document.createElement("div");
     list.className = "rym-tracks-list";
-    box.append(toggle, list);
+    if (compact) {
+      box.classList.add("rym-tracks-compact");
+    } else box.append(toggle);
+    box.append(list);
+
+    // Compact mode (side panel): one button that likes the song playing right now. It stays
+    // hidden until the embed reports what is playing.
+    const like = document.createElement("button");
+    like.type = "button";
+    like.className = "rym-like-current";
+    like.hidden = true;
+    if (compact) box.append(like);
 
     const note = (text) => {
       list.textContent = "";
@@ -286,7 +301,39 @@
         const label = document.createElement("span");
         label.textContent = `${res.tracks.length > 1 ? `${t.number}. ` : ""}${t.name}  ${fmtTime(t.ms)}`;
         row.append(heart, label);
-        list.append(row);
+        if (!compact) list.append(row);
+      }
+      if (compact) {
+        let cur = null;
+        const paintLike = () => {
+          const t = cur.t;
+          like.textContent = `${t.saved ? "♥ Liked" : "♡ Like"}: ${t.name}`;
+          like.classList.toggle("rym-saved", t.saved);
+          like.hidden = false;
+        };
+        like.addEventListener("click", async () => {
+          if (!cur) return;
+          const t = cur.t;
+          const want = !t.saved;
+          t.saved = want;
+          paintLike();
+          const r = await send({ type: "spotify-save", id: t.id, save: want });
+          if (r.error) {
+            t.saved = !want;
+            paintLike();
+            like.title = `Failed: ${r.error}`;
+          }
+        });
+        const show = (hit) => {
+          if (cur !== hit) {
+            cur = hit;
+            like.title = "";
+          }
+          paintLike();
+        };
+        if (rows.length === 1) show(rows[0]); // a single track: nothing to detect
+        if (frame) watchPlayback(frame, rows, show);
+        return;
       }
       if (frame) watchPlayback(frame, rows);
     }

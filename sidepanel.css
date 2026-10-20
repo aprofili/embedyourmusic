@@ -164,3 +164,27 @@ a {
 #history li:hover {
   background: rgba(128, 128, 128, 0.12);
 }
+
+.rym-like-current {
+  margin-top: 8px;
+  max-width: 100%;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rym-like-current.rym-saved {
+  color: #1db954;
+  border-color: #1db954;
+}
+
+.rym-like-current[hidden] {
+  display: none;
+}
