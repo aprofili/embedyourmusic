@@ -761,3 +761,48 @@ html.page_recommendations:not(.eym-ready)::after {
   color: #e57368;
   font-size: 0.85em;
 }
+
+/* ---- Side panel open: play from any cover, and keep players / streaming links out of the page ---- */
+.rym-float-play {
+  position: fixed;
+  z-index: 99999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* clicks reach the cover link underneath */
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.rym-float-play span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 12px;
+  padding-left: 2px;
+  box-sizing: border-box;
+}
+
+.rym-float-big span {
+  width: 56px;
+  height: 56px;
+  font-size: 24px;
+  padding-left: 4px;
+}
+
+a.rym-cover-loading {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+html.eym-sidebar .ui_media_links,
+html.eym-sidebar .ui_media_links_container,
+html.eym-sidebar .media_link_container,
+html.eym-sidebar .rym-embed,
+html.eym-sidebar .rym-embed-panel {
+  display: none !important;
+}

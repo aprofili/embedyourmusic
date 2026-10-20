@@ -632,6 +632,109 @@
     return { items, pages };
   }
 
+
+  // ---- Any album cover, anywhere on the site, opens in the side panel while it is open ----
+  const sidebarIsOpen = () => !!(document.documentElement.classList && document.documentElement.classList.contains("eym-sidebar"));
+  const pathOf = (a) => {
+    try {
+      return new URL(a.getAttribute("href"), "https://rateyourmusic.com").pathname;
+    } catch {
+      return "";
+    }
+  };
+  const RELEASE_PATH = /^\/release\/[^/]+\/[^/]+\/[^/]+\/?$/;
+
+  // The link around a cover image that points at a release page, or null. The recommendations page
+  // and the release page's own cover have their own handlers.
+  function coverAnchor(el) {
+    const a = el && el.closest && el.closest("a[href]");
+    if (!a || !a.querySelector("img") || !RELEASE_PATH.test(pathOf(a))) return null;
+    if (a.closest("#page_sections_recommendations") || a.classList.contains("rym-art-link")) return null;
+    return a;
+  }
+
+  // Title / artist / art for a cover link: look in the surrounding row for the titled link to the same release.
+  function describeCover(a) {
+    const path = pathOf(a);
+    const img = a.querySelector("img");
+    let node = a;
+    for (let i = 0; i < 6 && node.parentElement; i++) {
+      node = node.parentElement;
+      const t = [...node.querySelectorAll("a[href]")].find((x) => x !== a && !x.querySelector("img") && pathOf(x) === path && x.textContent.trim());
+      if (t) {
+        const artist = node.querySelector("a.artist");
+        return {
+          title: t.textContent.replace(/\s+/g, " ").trim(),
+          artist: artist ? artist.textContent.replace(/\s+/g, " ").trim() : "",
+          href: `https://rateyourmusic.com${path}`,
+          artUrl: imgUrl(img),
+        };
+      }
+    }
+    return {
+      title: ((img && img.getAttribute("alt")) || "").replace(/^cover art for\s*/i, "").trim() || "Album",
+      artist: "",
+      href: `https://rateyourmusic.com${path}`,
+      artUrl: imgUrl(img),
+    };
+  }
+
+  // One floating ▶ follows the pointer over covers (no layout changes to RYM's markup).
+  let floater;
+  function showFloater(a) {
+    const img = a.querySelector("img");
+    const r = img.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    if (!floater) {
+      floater = document.createElement("div");
+      floater.append(document.createElement("span"));
+      floater.firstChild.textContent = "▶";
+      document.body.append(floater);
+    }
+    floater.className = "rym-float-play" + (r.width >= 120 ? " rym-float-big" : "");
+    Object.assign(floater.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, display: "flex" });
+  }
+  const hideFloater = () => {
+    if (floater) floater.style.display = "none";
+  };
+
+  async function playCover(a) {
+    a.classList.add("rym-cover-loading");
+    try {
+      const payload = await loadRelease(describeCover(a));
+      if (!(await sidebarPlay(payload))) location.href = a.href; // panel closed meanwhile
+    } catch {
+      location.href = a.href; // couldn't load it here: just go to the album page
+    } finally {
+      a.classList.remove("rym-cover-loading");
+    }
+  }
+
+  document.addEventListener(
+    "mouseover",
+    (e) => {
+      if (!sidebarIsOpen()) return;
+      const a = coverAnchor(e.target);
+      if (a) showFloater(a);
+      else hideFloater();
+    },
+    true
+  );
+  document.addEventListener("scroll", hideFloater, true);
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (!sidebarIsOpen() || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const a = coverAnchor(e.target);
+      if (!a) return;
+      e.preventDefault();
+      e.stopPropagation();
+      hideFloater();
+      playCover(a);
+    },
+    true
+  );
+
   // ---- Sidebar player (side panel) ----
   // When the extension's side panel is open, "play" actions go there instead of embedding in the page.
   async function sidebarOpen() {
