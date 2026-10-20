@@ -95,7 +95,10 @@
   // scroll into view, plus an in-order pass from the top to find the first unrated row.
   // Results are written to the row (data-eym-rating, class rym-rated) for content.css and
   // recommendations.js, which run in the other JavaScript world and share only the DOM.
-  const rel = globalThis.__eymRelease;
+  // release-data.js is a separate script in this world; if the browser ran it after this one,
+  // __eymRelease isn't there yet, so look it up on each use instead of capturing it once.
+  const STUB = { peek: () => null, get: () => Promise.reject(new Error("not ready")), setRating() {}, blocked: () => false };
+  const rel = new Proxy({}, { get: (_t, k) => (globalThis.__eymRelease || STUB)[k] });
 
   function applyRating(id, box, rating) {
     if (box.dataset.touched) return; // you already rated it here
@@ -196,7 +199,9 @@
     }
   }
 
-  function start() {
+  async function start() {
+    // Give release-data.js a moment if it hasn't loaded yet.
+    for (let i = 0; i < 20 && !globalThis.__eymRelease; i++) await new Promise((r) => setTimeout(r, 100));
     scan();
     findFirstUnrated();
     let timer;
