@@ -23,11 +23,11 @@ const firefox = {
   },
 };
 
-function emit(name, manifest) {
+function emit(name, manifest, files = FILES) {
   const dir = path.join(root, "dist", name);
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
-  for (const f of FILES) fs.copyFileSync(path.join(root, f), path.join(dir, f));
+  for (const f of files) fs.copyFileSync(path.join(root, f), path.join(dir, f));
   fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   console.log(`built dist/${name}`);
 }
@@ -35,8 +35,11 @@ function emit(name, manifest) {
 emit("chromium", base);
 // Edge Add-ons assigns its own extension id, so the store package must not carry the pinned `key`.
 {
-  const { key: _k, ...storeManifest } = base;
-  emit("edge-store", storeManifest);
+  // The CSP-stripping ruleset is disabled by default and only for manual use, so the store build
+  // leaves out declarativeNetRequest (store review rejects permissions the extension doesn't need).
+  const { key: _k, declarative_net_request: _d, ...storeManifest } = base;
+  storeManifest.permissions = base.permissions.filter((p) => p !== "declarativeNetRequest");
+  emit("edge-store", storeManifest, FILES.filter((f) => f !== "rules.json"));
 }
 emit("firefox", firefox);
 
