@@ -24,6 +24,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
       sendMessage: async (m) => {
         sent.push(m);
         if (m.type === "rate") return { ok: true };
+        if (m.type === "to-rym" && m.msg.type === "check-rating") return { rating: 6, ratingKnown: true };
         if (m.type === "to-rym" && m.msg.type === "load-release")
           return { tabId: 9, payload: { id: "77", title: m.msg.item.title, artist: m.msg.item.artist, href: m.msg.item.href, artUrl: "", rating: 0,
             entries: [{ service: "tidal", href: "https://tidal.com/album/35146920" }] } };
@@ -61,6 +62,13 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   assert.strictEqual(d.querySelectorAll("#rating .star.full").length, 4);
   onMsg({ type: "rating", id: "123", rating: 3 });
   assert.strictEqual(d.getElementById("rating-note").textContent, "Your rating: 1.5");
+
+  // Rating never read: a Check rating button asks RYM once
+  onMsg({ type: "play", tabId: 7, payload: { id: "31", title: "Unk", artist: "U", artUrl: "", href: "https://rateyourmusic.com/release/album/u/u/", rating: 0, ratingKnown: false, entries: [] } });
+  assert.ok(d.querySelector("#rating-note button"), "check rating button");
+  d.querySelector("#rating-note button").click();
+  await tick(5);
+  assert.ok(sent.some((m) => m.type === "to-rym" && m.msg.type === "check-rating" && m.msg.id === "31"));
 
   // No embeds: art and names still show
   onMsg({ type: "play", tabId: 7, payload: { id: "5", title: "Bare", artist: "Nobody", artUrl: "https://x/a.jpg", href: "https://rateyourmusic.com/r/", rating: 0, entries: [] } });

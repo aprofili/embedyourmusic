@@ -89,15 +89,45 @@
   }
   buildStars();
 
-  function setRating(value) {
+  function setRating(value, known = true) {
     rating = value;
     hover = 0;
     if (current) {
       current.payload.rating = value;
+      if (known) current.payload.ratingKnown = true;
       store.set(LAST_KEY, current.payload);
     }
-    $("rating-note").textContent = value ? `Your rating: ${value / 2}` : "Not rated";
+    const note = $("rating-note");
+    note.textContent = "";
+    if (!known) {
+      // Rating never read for this album: offer one request to find out (stars still work).
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "more";
+      btn.textContent = "Check rating";
+      btn.title = "Fetch your current rating from RYM (one request)";
+      btn.addEventListener("click", checkRating);
+      note.append(btn);
+    } else note.textContent = value ? `Your rating: ${value / 2}` : "Not rated";
     drawStars();
+  }
+
+  async function checkRating() {
+    if (!current || !current.payload.id) return;
+    const who = current;
+    $("rating-note").textContent = "Checking…";
+    let res;
+    try {
+      res = await api.runtime.sendMessage({ type: "to-rym", tabId: who.tabId, msg: { type: "check-rating", id: who.payload.id, href: who.payload.href } });
+    } catch {
+      res = null;
+    }
+    if (current !== who) return;
+    if (res && res.ratingKnown) setRating(res.rating, true);
+    else {
+      setRating(rating, false);
+      $("rating-note").append(` (${(res && res.error) || "couldn't read it"})`);
+    }
   }
 
   async function rate(value) {
@@ -112,7 +142,7 @@
     if (res && res.ok) {
       setRating(value); // confirmed by the page's own widget a moment later
     } else {
-      $("rating-note").textContent = `Couldn't rate from here (${(res && res.error) || "no response"}). Use the RYM tab.`;
+      $("rating-note").textContent = `Couldn't rate (${(res && res.error) || "no response"}).`;
     }
   }
 
@@ -122,7 +152,7 @@
     current = { payload, tabId: payload.tabId == null ? null : payload.tabId, counted: false };
     $("empty").hidden = true;
     $("now").hidden = false;
-    setRating(payload.rating || 0);
+    setRating(payload.rating || 0, payload.ratingKnown !== false);
     store.set(LAST_KEY, payload);
 
     const tabs = $("tabs");

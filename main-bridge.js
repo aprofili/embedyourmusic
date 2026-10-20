@@ -3,6 +3,7 @@
 //   document.dispatchEvent(new CustomEvent("eym-main", { detail: JSON.stringify({ action, id }) }))
 //  - "suggestions": run RYM's own SuggestionsLoad for a release into the hidden list
 //    #suggestions_release_<id> that the requester created (the album page doesn't need to be open).
+//  - "rate": RYM's own CatalogSetRating for a release.
 //  - "listening": RYM's own "Set listening" request (AddPlayHistory) for a release.
 (() => {
   const loadScript = (path, ready, cb) => {
@@ -40,6 +41,19 @@
     }
   }
 
+  // RYM's own CatalogSetRating (what the star widget sends), 0-10 half-stars. Works from any RYM page.
+  function rate(id, rating) {
+    if (!Number.isInteger(rating) || rating < 0 || rating > 10) return;
+    try {
+      // The response script reports back to the page's rating object for this release; give it one if the page has none.
+      const name = `rating_l_${id}`;
+      if (!window[name]) window[name] = { _ratingCallback() {}, onChange() {} };
+      window.rym.request.post("CatalogSetRating", { type: "l", assoc_id: id, rating }, null, "script");
+    } catch (e) {
+      console.warn("[EmbedYourMusic] rating failed", e);
+    }
+  }
+
   document.addEventListener("eym-main", (e) => {
     let d;
     try {
@@ -50,5 +64,6 @@
     if (!d || !/^\d+$/.test(String(d.id))) return;
     if (d.action === "suggestions") suggestions(d.id);
     else if (d.action === "listening") listening(d.id);
+    else if (d.action === "rate") rate(d.id, d.rating);
   });
 })();

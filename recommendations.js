@@ -217,6 +217,7 @@
             artUrl: artSrc(art),
             href: link.href,
             rating: rec && rec.ratingKnown ? rec.rating : 0,
+            ratingKnown: !!(rec && rec.ratingKnown),
             entries: entries.map((e) => ({ service: e.service, href: e.href })),
           }));
         if (my !== token) return;

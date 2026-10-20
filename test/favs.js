@@ -46,6 +46,20 @@ const header = '<a class="header_profile_main" href="/~jkprilfools"></a>';
     assert.ok(!w.document.getElementById("suggestions_release_321"), "temporary list removed");
   }
 
+  // Rating without a widget on the page goes through RYM's own request (via the bridge); check-rating reads the release page
+  {
+    const { w, ask } = page(`<body>${header}</body>`);
+    const events = [];
+    w.document.addEventListener("eym-main", (e) => events.push(JSON.parse(e.detail)));
+    const r = await ask({ type: "rate", id: "77", rating: 7 });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r)), { ok: true });
+    assert.deepStrictEqual(events, [{ action: "rate", id: "77", rating: 7 }]);
+    assert.strictEqual(w.__eymRelease.peek("77").rating, 7, "cache updated");
+    w.fetch = async () => ({ ok: true, status: 200, text: async () => "<div data-links='{}'></div>new RYMrating('l', 88, 9 );" });
+    const c = await ask({ type: "check-rating", id: "88", href: "https://rateyourmusic.com/release/album/a/b/" });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(c)), { rating: 9, ratingKnown: true });
+  }
+
   // main-bridge: calls RYM's own functions
   {
     const dom = new JSDOM("<head><script src='//cdn.sonemic.net/dist/rym25/js/bundle.js?v=1'></script></head><body><ul id='suggestions_release_5'></ul></body>", { url: "https://rateyourmusic.com/x", runScripts: "outside-only", virtualConsole: new VirtualConsole() });
@@ -58,9 +72,12 @@ const header = '<a class="header_profile_main" href="/~jkprilfools"></a>';
     w.document.dispatchEvent(new w.CustomEvent("eym-main", { detail: JSON.stringify({ action: "suggestions", id: "5" }) }));
     w.document.dispatchEvent(new w.CustomEvent("eym-main", { detail: JSON.stringify({ action: "listening", id: "5" }) }));
     w.document.dispatchEvent(new w.CustomEvent("eym-main", { detail: JSON.stringify({ action: "listening", id: "5; drop" }) }));
+    w.document.dispatchEvent(new w.CustomEvent("eym-main", { detail: JSON.stringify({ action: "rate", id: "5", rating: 8 }) }));
+    w.document.dispatchEvent(new w.CustomEvent("eym-main", { detail: JSON.stringify({ action: "rate", id: "5", rating: 99 }) }));
     assert.deepStrictEqual(JSON.parse(JSON.stringify(calls)), [
       ["load", "suggestions_release_5"],
       ["post", "AddPlayHistory", { object: "release", assoc_id: "5", track_id: "", comments: "" }],
+      ["post", "CatalogSetRating", { type: "l", assoc_id: "5", rating: 8 }],
     ]);
   }
 

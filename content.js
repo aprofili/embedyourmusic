@@ -600,6 +600,7 @@
       artUrl: item.artUrl,
       href: item.href,
       rating: rec && rec.ratingKnown ? rec.rating : 0,
+      ratingKnown: !!(rec && rec.ratingKnown),
       entries: entries.map((e) => ({ service: e.service, href: e.href })),
     };
   }
@@ -780,6 +781,7 @@
       artUrl: og ? og.content.replace("/i/1200/", "/i/300/") : "",
       href: location.href.split("#")[0],
       rating: m ? Number(m[1]) : 0,
+      ratingKnown: !!m,
       service,
       entries: entries.map((e) => ({ service: e.info.service, href: e.a.href })),
     };
@@ -809,6 +811,25 @@
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
       }
+      if (msg && msg.type === "check-rating") {
+        const rel = globalThis.__eymRelease;
+        if (!rel) {
+          sendResponse({ error: "not ready" });
+          return false;
+        }
+        let p;
+        try {
+          p = new URL(msg.href).pathname;
+        } catch {
+          p = msg.href;
+        }
+        // One request to the release page (cached afterwards); a fresh read, so skip any stale copy.
+        rel
+          .get(String(msg.id), p)
+          .then((r) => sendResponse({ rating: r.rating || 0, ratingKnown: !!r.ratingKnown }))
+          .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
+        return true;
+      }
       if (msg && msg.type === "set-listening") {
         setListening(msg.id);
         sendResponse({ ok: true });
@@ -829,11 +850,17 @@
       }
       if (!msg || msg.type !== "rate") return false;
       const box = document.getElementById(`my_catalog_rating_l_${msg.id}`);
-      if (!box) sendResponse({ ok: false, error: "rating widget not found on that page" });
-      else {
+      if (box) {
         rateOnPage(box, msg.id, Number(msg.rating));
         sendResponse({ ok: true });
+        return false;
       }
+      // No widget on this page: send RYM's own rating request (main-bridge.js) and keep the cache in step.
+      const rating = Number(msg.rating);
+      document.dispatchEvent(new CustomEvent("eym-main", { detail: JSON.stringify({ action: "rate", id: String(msg.id), rating }) }));
+      const rel = globalThis.__eymRelease;
+      if (rel && rel.setRating) rel.setRating(String(msg.id), rating);
+      sendResponse({ ok: true });
       return false;
     });
   }

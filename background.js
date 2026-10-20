@@ -431,6 +431,23 @@ if (api.sidePanel && api.sidePanel.setPanelBehavior) {
   api.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 }
 
+// Panel -> a rateyourmusic.com tab (it needs RYM's cookies / page): the given tab if it is still
+// open, else any RYM tab. Resolves to the tab's reply plus { tabId }, or { error }.
+async function relay(tabId, urlPart, message) {
+  const rym = await api.tabs.query({ url: ["*://rateyourmusic.com/*", "*://*.rateyourmusic.com/*"] });
+  const pool = urlPart ? rym.filter((t) => (t.url || "").includes(urlPart)) : rym;
+  const tab = pool.find((t) => t.id === tabId) || pool.find((t) => t.active) || pool[0];
+  if (!tab) {
+    return { error: urlPart === "/recommendations/" ? "open your recommendations page first" : urlPart ? "open that album's RYM page first" : "open a rateyourmusic.com tab first" };
+  }
+  try {
+    const res = await api.tabs.sendMessage(tab.id, message);
+    return { ...(res || { error: "no response (reload the RYM tab)" }), tabId: tab.id };
+  } catch {
+    return { error: "no response (reload the RYM tab)" };
+  }
+}
+
 function handleSidebar(msg, sender, sendResponse) {
   switch (msg.type) {
     case "sidebar-state":
@@ -450,28 +467,11 @@ function handleSidebar(msg, sender, sendResponse) {
       for (const port of sidePorts) port.postMessage({ type: "rating", id: msg.id, rating: msg.rating });
       sendResponse({});
       return false;
-    case "to-rym": {
-      // Panel -> a rateyourmusic.com tab (it needs RYM's cookies / page): the given tab if it is
-      // still open, else any RYM tab.
-      (async () => {
-        const rym = await api.tabs.query({ url: ["*://rateyourmusic.com/*", "*://*.rateyourmusic.com/*"] });
-        const pool = msg.urlPart ? rym.filter((t) => (t.url || "").includes(msg.urlPart)) : rym;
-        const tab = pool.find((t) => t.id === msg.tabId) || pool.find((t) => t.active) || pool[0];
-        if (!tab) return { error: msg.urlPart === "/recommendations/" ? "open your recommendations page first" : msg.urlPart ? "open that album's RYM page first" : "open a rateyourmusic.com tab first" };
-        try {
-          const res = await api.tabs.sendMessage(tab.id, msg.msg);
-          return { ...(res || { error: "no response (reload the RYM tab)" }), tabId: tab.id };
-        } catch {
-          return { error: "no response (reload the RYM tab)" };
-        }
-      })().then(sendResponse);
+    case "to-rym":
+      relay(msg.tabId, msg.urlPart, msg.msg).then(sendResponse);
       return true;
-    }
-    case "rate": // from the panel: forward to the page that started playback
-      api.tabs
-        .sendMessage(msg.tabId, { type: "rate", id: msg.id, rating: msg.rating })
-        .then((r) => sendResponse(r || { ok: false, error: "no response" }))
-        .catch(() => sendResponse({ ok: false, error: "that tab is closed" }));
+    case "rate": // from the panel: any RYM tab can carry it out (RYM's own rating request)
+      relay(msg.tabId, "", { type: "rate", id: msg.id, rating: msg.rating }).then((r) => sendResponse(r.error ? { ok: false, error: r.error } : r));
       return true;
   }
   return false;
