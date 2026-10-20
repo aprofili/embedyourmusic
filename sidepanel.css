@@ -188,3 +188,22 @@ a {
 .rym-like-current[hidden] {
   display: none;
 }
+
+.rym-like-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.rym-like-bar .rym-like-current {
+  margin-top: 0;
+  min-width: 0;
+}
+
+.rym-like-count {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

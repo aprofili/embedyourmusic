@@ -234,7 +234,15 @@
     like.type = "button";
     like.className = "rym-like-current";
     like.hidden = true;
-    if (compact) box.append(like);
+    const count = document.createElement("span");
+    count.className = "rym-like-count";
+    count.hidden = true;
+    if (compact) {
+      const bar = document.createElement("div");
+      bar.className = "rym-like-bar";
+      bar.append(count, like);
+      box.append(bar);
+    }
 
     const note = (text) => {
       list.textContent = "";
@@ -305,7 +313,14 @@
       }
       if (compact) {
         let cur = null;
+        const paintCount = () => {
+          count.textContent = `♥ ${rows.filter((r) => r.t.saved).length}/${rows.length}`;
+          count.title = "Songs from this release in your Liked Songs";
+          count.hidden = false;
+        };
+        paintCount();
         const paintLike = () => {
+          paintCount();
           const t = cur.t;
           like.textContent = `${t.saved ? "♥ Liked" : "♡ Like"}: ${t.name}`;
           like.classList.toggle("rym-saved", t.saved);
