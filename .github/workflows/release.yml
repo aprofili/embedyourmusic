@@ -2,6 +2,8 @@ name: Release
 # Runs on every push to main. If manifest.json's "version" has no release yet (tag v<version>),
 # it builds and publishes one, so releasing = bump "version" in manifest.json and merge.
 #   embedyourmusic-edge.zip     Edge (and other Chromium browsers): unzip, then Load unpacked
+#   embedyourmusic-chromium.zip Chrome, Brave, Opera, Vivaldi, Arc (same build as the Edge zip)
+#   embedyourmusic-firefox.zip  Firefox (unsigned; temporary add-on, or sign with web-ext)
 #   embedyourmusic-edge-store.zip  same build without the pinned key, for uploading to Edge Add-ons
 #   embedyourmusic.user.js      Safari on iOS (Userscripts app); auto-updates via @updateURL
 # If the Edge Add-ons secrets are set, the same build is also submitted to the Edge Add-ons store
@@ -52,6 +54,8 @@ jobs:
           node build.js
           mkdir -p out
           (cd dist/chromium && zip -qr ../../out/embedyourmusic-edge.zip .)
+          (cd dist/chromium && zip -qr ../../out/embedyourmusic-chromium.zip .)
+          (cd dist/firefox && zip -qr ../../out/embedyourmusic-firefox.zip .)
           (cd dist/edge-store && zip -qr ../../out/embedyourmusic-edge-store.zip .)
           cp dist/userscript/embedyourmusic.user.js out/
       - name: Create GitHub release
@@ -59,6 +63,8 @@ jobs:
         run: |
           gh release create "v${{ steps.ver.outputs.version }}" \
             out/embedyourmusic-edge.zip \
+            out/embedyourmusic-chromium.zip \
+            out/embedyourmusic-firefox.zip \
             out/embedyourmusic-edge-store.zip \
             out/embedyourmusic.user.js \
             --target "$GITHUB_SHA" --title "v${{ steps.ver.outputs.version }}" --generate-notes

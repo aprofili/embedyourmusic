@@ -2,7 +2,7 @@
 
 <img src="store/logo-300.png" width="96" alt="EmbedYourMusic logo">
 
-Browser extension (Edge, Firefox) that replaces Spotify and Bandcamp links on rateyourmusic.com with inline players. Personal use.
+Browser extension (Edge, Chrome, Brave, Opera, Vivaldi, Firefox; Safari on iOS via userscript) that replaces Spotify and Bandcamp links on rateyourmusic.com with inline players. Personal use.
 
 ## How it works
 
@@ -63,6 +63,8 @@ iOS: the userscript has `@updateURL`/`@downloadURL` pointing at the latest relea
 Edge: unpacked extensions never auto-update. For automatic updates, publish the extension to Microsoft Edge Add-ons as an unlisted listing (free): create the listing once in Partner Center, then add repo secrets `EDGE_PRODUCT_ID`, `EDGE_CLIENT_ID`, `EDGE_API_KEY` and each tagged release is also submitted to the store (`embedyourmusic-edge-store.zip`, built without the pinned `key`, since the store assigns its own extension id; the OAuth redirect URI for Spotify saving then changes to the store id's `chromiumapp.org` URL).
 
 ## Install
+
+Release assets: `embedyourmusic-chromium.zip` (Chrome, Brave, Opera, Vivaldi, Arc, Edge: unzip, then Load unpacked at `chrome://extensions` with Developer mode on), `embedyourmusic-firefox.zip`, `embedyourmusic.user.js` (Safari). Desktop Safari needs an Xcode-built app, so it is not provided.
 
 Run `node build.js` first. It writes `dist/chromium` and `dist/firefox`; the two differ only in `manifest.json` (Edge rejects `background.scripts`, Firefox has no service worker).
 
