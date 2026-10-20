@@ -35,46 +35,23 @@ a {
 
 #now {
   display: grid;
-  grid-template-columns: 96px 1fr;
-  gap: 12px;
-  align-items: start;
-}
-
-#nav {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
   gap: 10px;
-  color: var(--muted);
 }
 
-#nav button {
-  width: 32px;
-  height: 28px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: none;
-  color: inherit;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
+#meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
 }
 
-#nav button:disabled {
-  opacity: 0.35;
-  cursor: default;
+#names {
+  min-width: 0;
 }
 
-#art {
-  width: 96px;
-  height: 96px;
-  object-fit: cover;
-  border-radius: 6px;
-  background: var(--line);
-}
-
-#art[src=""] {
-  visibility: hidden;
+#rate-box {
+  flex: none;
+  text-align: right;
 }
 
 #title {
@@ -86,11 +63,6 @@ a {
 #artist {
   color: var(--muted);
   margin-bottom: 6px;
-}
-
-#tabs,
-#body {
-  grid-column: 1 / -1;
 }
 
 #rating {
@@ -157,8 +129,12 @@ a {
   width: 100%;
 }
 
-h2 {
-  margin: 18px 0 6px;
+#history-box {
+  margin-top: 14px;
+}
+
+#history-box summary {
+  cursor: pointer;
   font-size: 0.95em;
   color: var(--muted);
 }

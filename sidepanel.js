@@ -1,4 +1,4 @@
-// Side panel player: shows what you started playing on rateyourmusic.com (album art, service
+// Side panel player: shows what you started playing on rateyourmusic.com (service
 // tabs, player, your star rating, and for Spotify the track list with ♥). Pages send the release
 // through background.js while this panel is open; with it closed, pages embed players in the page.
 // content.js is loaded first for its embed helpers (it finds nothing to do on this page).
@@ -12,7 +12,7 @@
 
   const $ = (id) => document.getElementById(id);
   let current = null; // { payload, tabId }
-  let hist = []; // newest first; pos is the one on screen (back = older, forward = newer)
+  let hist = []; // newest first; pos is the one on screen
   let pos = 0;
   let token = 0;
 
@@ -121,10 +121,6 @@
     current = { payload, tabId };
     $("empty").hidden = true;
     $("now").hidden = false;
-    setArt(payload);
-    $("back").disabled = pos >= hist.length - 1;
-    $("fwd").disabled = pos <= 0;
-    $("pos").textContent = hist.length > 1 ? `${pos + 1} / ${hist.length}` : "";
     const title = $("title");
     title.textContent = payload.title || "Untitled";
     title.href = payload.href || "#";
@@ -205,44 +201,32 @@
     drawHistory();
   }
 
-  // ---- Album art: RYM's image host may refuse our referrer; fall back to Spotify's thumbnail ----
-  function setArt(payload) {
-    const img = $("art");
-    img.referrerPolicy = "no-referrer";
-    img.onerror = async () => {
-      img.onerror = null;
-      const sp = (payload.entries || []).find((e) => e.service === "spotify");
-      if (!sp) return;
-      try {
-        const r = await fetch("https://open.spotify.com/oembed?url=" + encodeURIComponent(sp.href));
-        const j = await r.json();
-        if (j.thumbnail_url && current && current.payload === payload) img.src = j.thumbnail_url;
-      } catch {
-        /* no art */
-      }
-    };
-    img.src = payload.artUrl || "";
-    if (!payload.artUrl) img.onerror();
-  }
-
-  function go(delta) {
-    const next = pos + delta;
-    if (next < 0 || next >= hist.length) return;
-    pos = next;
-    render(hist[pos]);
-  }
-  $("back").addEventListener("click", () => go(1));
-  $("fwd").addEventListener("click", () => go(-1));
-
   // ---- History (kept across closing the panel) ----
   function save() {
     api.storage.local.set({ [HISTORY_KEY]: hist }).catch(() => {});
   }
 
+  // Open "Recently played" when it fits without scrolling; otherwise keep it collapsed.
+  // Once you toggle it yourself, it stays as you left it.
+  let userToggled = false;
+  function fitHistory() {
+    const box = $("history-box");
+    if (userToggled || box.hidden) return;
+    box.open = true;
+    if (document.documentElement.scrollHeight > window.innerHeight + 1) box.open = false;
+  }
+  $("history-box").addEventListener("toggle", () => {
+    if (document.activeElement && document.activeElement.tagName === "SUMMARY") userToggled = true;
+  });
+  window.addEventListener("resize", fitHistory);
+  // The player iframe changes the page height after it loads.
+  setInterval(fitHistory, 1500);
+
   function drawHistory() {
     const list = $("history");
     list.textContent = "";
     $("history-box").hidden = hist.length < 2;
+    fitHistory();
     hist.forEach((p, i) => {
       if (i === pos) return;
       const li = document.createElement("li");
