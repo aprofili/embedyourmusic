@@ -234,8 +234,10 @@
     return -1;
   }
 
-  function watchPlayback(frame, rows, onHit) {
-    watchers.push({ frame, rows, onHit, prev: -1 });
+  // onListened fires once when you've really listened: 4 different tracks (or all of a shorter
+  // release) heard for 20+ seconds each, judged from the embed's reported play position.
+  function watchPlayback(frame, rows, onHit, onListened) {
+    watchers.push({ frame, rows, onHit, onListened, prev: -1, heard: new Map(), fired: false });
     if (watchers.length > 1) return;
     window.addEventListener("message", (e) => {
       if (e.origin !== "https://open.spotify.com") return;
@@ -250,6 +252,16 @@
         const hit = w.rows[i];
         for (const r of w.rows) r.row.classList.toggle("rym-track-playing", r === hit);
         if (w.onHit) w.onHit(hit);
+        const d = e.data && typeof e.data === "object" ? e.data : {};
+        const p = d.payload || d.data || d;
+        if (w.onListened && !w.fired && typeof p.position === "number" && !p.isPaused) {
+          w.heard.set(i, Math.max(w.heard.get(i) || 0, p.position));
+          const done = [...w.heard.values()].filter((ms) => ms >= 20000).length;
+          if (done >= Math.min(4, w.rows.length)) {
+            w.fired = true;
+            w.onListened();
+          }
+        }
       }
     });
   }
@@ -394,7 +406,7 @@
           paintLike();
         };
         if (rows.length === 1) show(rows[0]); // a single track: nothing to detect
-        if (frame) watchPlayback(frame, rows, show);
+        if (frame) watchPlayback(frame, rows, show, opts && opts.onListened);
         return;
       }
       if (frame) watchPlayback(frame, rows);
@@ -517,22 +529,48 @@
   // Side panel asks for this page's "Suggestions": they load lazily, so press RYM's own refresh
   // button if they haven't, then read them. (One RYM request, only when you open Similar.)
   async function loadSimilar(id) {
-    const ul = document.querySelector(".section_suggestions ul.suggestions");
-    if (!ul || ul.getAttribute("data-assoc-id") !== String(id)) throw new Error("open this album's RYM page first");
-    const read = () => scrapeReleases(ul, 24, location.pathname);
-    let items = read();
-    if (!items.length) {
-      const btn = document.querySelector(".section_suggestions .page_object_section_suggestions_refresh");
-      if (btn) btn.click();
-      for (let i = 0; i < 30 && !items.length; i++) {
-        await new Promise((r) => setTimeout(r, 200));
-        items = read();
-      }
+    id = String(id);
+    const onPage = document.querySelector(".section_suggestions ul.suggestions");
+    const here = onPage && onPage.getAttribute("data-assoc-id") === id;
+    let ul = here ? onPage : null;
+    let temp = false;
+    if (!ul) {
+      // Any other RYM page: make a hidden list and have RYM's own code (main-bridge.js) fill it.
+      ul = document.createElement("ul");
+      ul.id = `suggestions_release_${id}`;
+      ul.dataset.object = "release";
+      ul.setAttribute("data-assoc-id", id);
+      ul.style.display = "none";
+      document.body.append(ul);
+      temp = true;
     }
-    if (!items.length) throw new Error("RYM hasn't loaded the suggestions");
-    ul.dataset.eymSim = "1";
-    saveSidebarData("sidebar:similar", { [id]: { t: Date.now(), items } }, 15);
-    return items;
+    const read = () => scrapeReleases(ul, 24, location.pathname);
+    try {
+      let items = read();
+      if (!items.length) {
+        if (here) {
+          const btn = document.querySelector(".section_suggestions .page_object_section_suggestions_refresh");
+          if (btn) btn.click();
+        } else {
+          document.dispatchEvent(new CustomEvent("eym-main", { detail: JSON.stringify({ action: "suggestions", id }) }));
+        }
+        for (let i = 0; i < 40 && !items.length; i++) {
+          await new Promise((r) => setTimeout(r, 200));
+          items = read();
+        }
+      }
+      if (!items.length) throw new Error("RYM didn't return suggestions");
+      if (here) ul.dataset.eymSim = "1";
+      saveSidebarData("sidebar:similar", { [id]: { t: Date.now(), items } }, 15);
+      return items;
+    } finally {
+      if (temp) ul.remove();
+    }
+  }
+
+  // RYM's own "Set listening" for a release (runs RYM's request in the page world).
+  function setListening(id) {
+    document.dispatchEvent(new CustomEvent("eym-main", { detail: JSON.stringify({ action: "listening", id: String(id) }) }));
   }
 
   // Side panel asked for a release by URL: its streaming links, id and your rating.
@@ -566,32 +604,32 @@
     };
   }
 
-  // Your 4+ star albums: one request to your collection page (the side panel caches the result).
-  async function fetchFavorites() {
+  // One page of your 4+ star albums (your collection filtered to 4.0-5.0; the side panel caches it).
+  // -> { items, pages }
+  async function fetchFavorites(page = 1) {
     const rel = globalThis.__eymRelease;
     if (rel && rel.blocked()) throw new Error(rel.blockMessage());
     const me = document.querySelector("a.header_profile_main[href^='/~']");
     if (!me) throw new Error("not signed in");
     const user = me.getAttribute("href").slice(2).replace(/\/.*$/, "");
-    const res = await fetch(`/collection/${user}/r4.0-5.0/`, { credentials: "same-origin" });
+    const res = await fetch(`/collection/${user}/r4.0-5.0${page > 1 ? `/${page}` : ""}`, { credentials: "same-origin" });
     if (!res.ok) {
       if (rel) rel.noteStatus(res.status);
       throw new Error(rel && rel.blocked() ? rel.blockMessage() : `HTTP ${res.status}`);
     }
     const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-    let items = scrapeReleases(doc, 300);
-    // If the page shows each row's rating, keep only 4+ (guards against an unfiltered list).
-    const rated = [];
-    for (const it of items) {
+    const items = [];
+    for (const it of scrapeReleases(doc, 300)) {
       const a = [...doc.querySelectorAll("a[href]")].find((x) => x.getAttribute("href") === new URL(it.href).pathname);
-      const row = a && (a.closest("tr") || a.closest("li"));
-      const m = row && /star-(\d+)m|data-rating="(\d+)"/.exec(row.innerHTML);
-      const v = m ? Number(m[1] || m[2]) : null;
-      if (v === null || v >= 8) rated.push(it);
+      const row = a && a.closest("tr");
+      const img = row && row.querySelector('img[alt$="stars"]');
+      const m = img && /([\d.]+) stars/.exec(img.getAttribute("alt"));
+      if (!m || Number(m[1]) >= 4) items.push(it); // the page is already filtered; this is a guard
     }
-    items = rated;
+    const nums = [...doc.querySelectorAll(".navlinknum, .navlinkcurrent")].map((n) => Number(n.textContent)).filter(Boolean);
+    const pages = Math.max(1, ...nums);
     if (!items.length) throw new Error("no albums found on your collection page");
-    return items;
+    return { items, pages };
   }
 
   // ---- Sidebar player (side panel) ----
@@ -664,9 +702,14 @@
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
       }
+      if (msg && msg.type === "set-listening") {
+        setListening(msg.id);
+        sendResponse({ ok: true });
+        return false;
+      }
       if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites")) {
-        (msg.type === "load-release" ? loadRelease(msg.item) : fetchFavorites())
-          .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : { items: r }))
+        (msg.type === "load-release" ? loadRelease(msg.item) : fetchFavorites(msg.page))
+          .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : r))
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
       }

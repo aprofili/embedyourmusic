@@ -180,7 +180,7 @@
           if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
           const frame = makeFrame(info.src, info.height, `${LABELS[service]} player`);
           slot.append(frame);
-          const list = service === "spotify" && trackList(info, frame, { compact: true });
+          const list = service === "spotify" && trackList(info, frame, { compact: true, onListened: () => markListening(payload) });
           if (list) slot.append(list);
           return;
         }
@@ -228,6 +228,16 @@
     refreshOpenList("similar");
   }
 
+  // After really listening (see watchPlayback), set the album as "currently listening" on RYM, once a day.
+  async function markListening(payload) {
+    if (!payload.id) return;
+    const seen = (await store.get("sidebar:listened")) || {};
+    if (seen[payload.id] && Date.now() - seen[payload.id] < 24 * 3600e3) return;
+    seen[payload.id] = Date.now();
+    store.set("sidebar:listened", seen);
+    api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "set-listening", id: payload.id } }).catch(() => {});
+  }
+
   // ---- History: only releases whose player you actually interacted with ----
   // Clicking play inside the (cross-origin) player moves focus into its iframe, which blurs this window.
   window.addEventListener("blur", () => {
@@ -273,7 +283,7 @@
       // Not saved yet: ask the album's RYM tab to load and read its Suggestions.
       let res;
       try {
-        res = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, urlPart: current.payload.href ? new URL(current.payload.href).pathname : "", msg: { type: "load-similar", id: current.payload.id } });
+        res = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, msg: { type: "load-similar", id: current.payload.id } });
       } catch {
         res = null;
       }
@@ -290,30 +300,42 @@
       const rec = all && all.challenge;
       return rec && rec.items.length ? { items: rec.items } : { message: "Open your recommendations page once to fill this list." };
     },
+    // Pages of your collection filtered to 4-5 stars. First open: page 1. After that at most one more
+    // random page per day (so the pick widens slowly without hammering RYM).
     async favorites() {
-      let rec = await store.get(FAVS_KEY);
+      let rec = (await store.get(FAVS_KEY)) || { pages: 0, got: {}, t: 0 };
+      if (!rec.got && rec.items) rec = { pages: 1, got: { 1: rec.items }, t: rec.t }; // older format
+      const loaded = Object.keys(rec.got || {}).length;
       const err = await store.get("sidebar:favs-err");
       const backoff = err && Date.now() - err < 15 * 60e3; // don't hammer RYM after a failure
-      if ((!rec || Date.now() - rec.t > FAVS_TTL) && !backoff) {
-        let res;
+      let want = 0;
+      if (!loaded) want = 1;
+      else if (loaded < rec.pages && Date.now() - rec.t > FAVS_TTL) {
+        const missing = [];
+        for (let p = 1; p <= rec.pages; p++) if (!rec.got[p]) missing.push(p);
+        want = missing[Math.floor(Math.random() * missing.length)];
+      }
+      let res = null;
+      if (want && !backoff) {
         try {
-          res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-favorites" } });
+          res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-favorites", page: want } });
         } catch {
           res = null;
         }
         if (res && res.items) {
-          rec = { t: Date.now(), items: res.items };
+          rec.got = { ...(rec.got || {}), [want]: res.items };
+          rec.pages = res.pages || rec.pages || 1;
+          rec.t = Date.now();
           store.set(FAVS_KEY, rec);
         } else if (res && res.error && !/open a rateyourmusic/.test(res.error)) {
           store.set("sidebar:favs-err", Date.now());
         }
-        if (!rec) {
-          return { message: `Couldn't load your 4+ star albums (${(res && res.error) || "no response"}).` };
-        }
-      } else if (!rec) {
-        return { message: "Couldn't load your 4+ star albums a moment ago; try again in a few minutes." };
       }
-      return { items: shuffle(rec.items) };
+      const items = Object.values(rec.got || {}).flat();
+      if (!items.length) {
+        return { message: backoff ? "Couldn't load your 4+ star albums a moment ago; try again in a few minutes." : `Couldn't load your 4+ star albums (${(res && res.error) || "no response"}).` };
+      }
+      return { items: shuffle(items) };
     },
     async history() {
       return played.length ? { items: played } : { message: "Albums you press play on will show up here." };

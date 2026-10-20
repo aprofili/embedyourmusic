@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "test": "node test/run.js && node test/dom.js && node test/hero.js && node test/tabs.js && node test/artist.js && node test/userscript.js && node test/reco.js && node test/reco-ratings.js && node test/spotify.js && node test/reco-mobile.js && node test/release-data.js && node test/sidepanel.js && node test/find.js && node test/page.js && node test/lists.js && node test/match.js"
+    "test": "node test/run.js && node test/dom.js && node test/hero.js && node test/tabs.js && node test/artist.js && node test/userscript.js && node test/reco.js && node test/reco-ratings.js && node test/spotify.js && node test/reco-mobile.js && node test/release-data.js && node test/sidepanel.js && node test/find.js && node test/page.js && node test/lists.js && node test/match.js && node test/favs.js"
   },
   "devDependencies": {
     "jsdom": "^26.0.0"

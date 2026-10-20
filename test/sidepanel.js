@@ -118,7 +118,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   head("favorites").click();
   await tick(5);
   assert.strictEqual(d.querySelectorAll('.acc[data-kind="favorites"] .item').length, 1);
-  assert.ok(store["sidebar:favs"] && store["sidebar:favs"].items.length === 1);
+  assert.ok(store["sidebar:favs"] && Object.values(store["sidebar:favs"].got).flat().length === 1);
   console.log("sidepanel tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
