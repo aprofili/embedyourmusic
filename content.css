@@ -752,3 +752,12 @@ html.page_recommendations:not(.eym-ready)::after {
     align-items: start;
   }
 }
+
+.rym-reco-error {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border: 1px solid #c0392b;
+  border-radius: 6px;
+  color: #e57368;
+  font-size: 0.85em;
+}

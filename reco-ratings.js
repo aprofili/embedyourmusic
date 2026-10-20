@@ -171,8 +171,29 @@
   }
 
 
+  // One bad row must not stop the rest; the first error is shown on the page for diagnosis.
+  function reportError(li, e) {
+    try {
+      console.warn("[EmbedYourMusic] star widget failed", li && li.id, e);
+      if (document.querySelector(".rym-reco-error")) return;
+      const note = document.createElement("div");
+      note.className = "rym-reco-error";
+      note.textContent = `Star widget error (${(li && li.id) || "?"}): ${(e && e.message) || e}`;
+      const list = document.querySelector("#page_recommendations_group_main_left") || document.body;
+      list.prepend(note);
+    } catch {
+      /* ignore */
+    }
+  }
+
   function scan() {
-    for (const li of document.querySelectorAll("li.component_discography_item")) enhance(li);
+    for (const li of document.querySelectorAll("li.component_discography_item")) {
+      try {
+        enhance(li);
+      } catch (e) {
+        reportError(li, e);
+      }
+    }
   }
 
   function start() {

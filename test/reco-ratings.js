@@ -54,6 +54,19 @@ let document_ids;
   wrap.querySelector(".my_catalog_rating").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   assert.deepStrictEqual(calls, ["click"]);
 
+  // A row whose widget throws doesn't stop the others and the error is shown
+  {
+    const dom3 = new JSDOM(`<body><div id="page_recommendations_group_main_left"><ol>${[1,2,3].map((n)=>`<li id="component_discography_item_${n}" class="component_discography_item"><a class="component_discography_item_link release" href="/release/x/${n}/"></a><div class="component_discography_item_exclude"></div></li>`).join("")}</ol></div></body>`, { runScripts: "outside-only", url: "https://rateyourmusic.com/recommendations/u/", virtualConsole: new VirtualConsole() });
+    let n = 0;
+    dom3.window.RYMrating = class { constructor() { if (++n === 2) throw new Error("boom"); } };
+    dom3.window.fetch = async () => ({ ok: false });
+    dom3.window.eval(fs.readFileSync(path.join(root, "release-data.js"), "utf8"));
+    dom3.window.eval(fs.readFileSync(path.join(root, "reco-ratings.js"), "utf8"));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.strictEqual(dom3.window.document.querySelectorAll(".rym-reco-rate").length, 3);
+    assert.ok(/boom/.test(dom3.window.document.querySelector(".rym-reco-error").textContent));
+  }
+
   // Missing RYMrating: loads release.js next to the bundle, never throws.
   const dom2 = new JSDOM(`<head><script src="//cdn.sonemic.net/dist/rym25/js/bundle.js?v=1"></script></head><body></body>`, { runScripts: "outside-only", url: "https://rateyourmusic.com/recommendations/u/", virtualConsole: new VirtualConsole() });
   dom2.window.eval(fs.readFileSync(path.join(root, "release-data.js"), "utf8"));
