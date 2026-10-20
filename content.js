@@ -604,7 +604,7 @@
     }
     if (!entries.length) {
       // RYM unavailable or no links listed: look the release up by name.
-      const res = await send({ type: "find-album", want: { artist: item.artist, title: item.title, year: 0 } });
+      const res = await send({ type: "find-album", want: { artist: item.artist || guessArtist(new URL(item.href).pathname), title: item.title, year: 0 } });
       entries = ((res && res.links) || [])
         .map((l) => ({ ...l, info: classifyAny(l.href) }))
         .filter((l) => l.info && l.info.service === l.service);
@@ -671,6 +671,20 @@
   }
 
   // Title / artist / art for a cover link: look in the surrounding row for the titled link to the same release.
+  // Artist when the cover has no artist link next to it (Previous/Next, etc.): the page's own artist on a
+  // release page (prev/next are the same artist's), else the artist slug of /release/<type>/<artist>/<title>/.
+  function guessArtist(path) {
+    const own = document.querySelector(".album_info a.artist");
+    if (own && /^\/release\//.test(location.pathname)) return own.textContent.replace(/\s+/g, " ").trim();
+    const m = /^\/release\/[^/]+\/([^/]+)\//.exec(path);
+    if (!m) return "";
+    try {
+      return decodeURIComponent(m[1]).replace(/-/g, " ");
+    } catch {
+      return m[1].replace(/-/g, " ");
+    }
+  }
+
   function describeCover(a) {
     const path = pathOf(a);
     const img = a.querySelector("img");
@@ -682,7 +696,7 @@
         const artist = node.querySelector("a.artist");
         return {
           title: t.textContent.replace(/\s+/g, " ").trim(),
-          artist: artist ? artist.textContent.replace(/\s+/g, " ").trim() : "",
+          artist: artist ? artist.textContent.replace(/\s+/g, " ").trim() : guessArtist(path),
           href: `https://rateyourmusic.com${path}`,
           artUrl: imgUrl(img),
         };
@@ -690,7 +704,7 @@
     }
     return {
       title: ((img && img.getAttribute("alt")) || "").replace(/^cover art for\s*/i, "").trim() || "Album",
-      artist: "",
+      artist: guessArtist(path),
       href: `https://rateyourmusic.com${path}`,
       artUrl: imgUrl(img),
     };
