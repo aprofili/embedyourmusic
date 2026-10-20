@@ -713,15 +713,15 @@ html.page_recommendations:not(.eym-ready)::after {
 
 .rym-art-play {
   position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 64px;
-  height: 64px;
+  right: 10px;
+  bottom: 10px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.62);
+  background: rgba(0, 0, 0, 0.7);
   color: #fff;
-  font-size: 28px;
-  line-height: 64px;
+  font-size: 22px;
+  line-height: 52px;
   text-align: center;
   padding-left: 4px;
   box-sizing: border-box;
@@ -767,10 +767,11 @@ html.page_recommendations:not(.eym-ready)::after {
   position: fixed;
   z-index: 99999;
   display: none;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 3px;
+  box-sizing: border-box;
   pointer-events: none; /* clicks reach the cover link underneath */
-  background: rgba(0, 0, 0, 0.3);
 }
 
 .rym-float-play span {
@@ -787,11 +788,15 @@ html.page_recommendations:not(.eym-ready)::after {
   box-sizing: border-box;
 }
 
+.rym-float-big {
+  padding: 8px;
+}
+
 .rym-float-big span {
-  width: 56px;
-  height: 56px;
-  font-size: 24px;
-  padding-left: 4px;
+  width: 44px;
+  height: 44px;
+  font-size: 19px;
+  padding-left: 3px;
 }
 
 a.rym-cover-loading {
