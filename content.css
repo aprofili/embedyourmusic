@@ -699,3 +699,56 @@ html.page_recommendations:not(.eym-ready)::after {
     display: none;
   }
 }
+
+/* ---- Star widget: empty stars drawn here so unrated rows always show them ---- */
+.rym-reco-rate .rating_stars.star-0m {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='16' viewBox='0 0 90 16' fill='none' stroke='%238a93a3' stroke-width='1.2'%3E%3Cg id='s'%3E%3Cpath d='M8 1.4l1.9 4.2 4.6.5-3.4 3.1 1 4.5L8 11.4l-4.1 2.3 1-4.5L1.5 6.1l4.6-.5z'/%3E%3C/g%3E%3Cuse href='%23s' x='18'/%3E%3Cuse href='%23s' x='36'/%3E%3Cuse href='%23s' x='54'/%3E%3Cuse href='%23s' x='72'/%3E%3C/svg%3E") no-repeat 0 0 !important;
+}
+
+/* ---- Big play button on a release page cover ---- */
+.rym-art-link {
+  position: relative;
+  display: inline-block;
+}
+
+.rym-art-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 28px;
+  line-height: 64px;
+  text-align: center;
+  padding-left: 4px;
+  box-sizing: border-box;
+  opacity: 0.85;
+  cursor: pointer;
+  transition: transform 0.12s, opacity 0.12s;
+}
+
+.rym-art-link:hover .rym-art-play {
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+/* ---- Side panel open: the page gives up the player column ---- */
+@media (min-width: 60em) {
+  html.eym-sidebar .rym-reco {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  html.eym-sidebar .rym-reco > #rym-reco-player {
+    display: none;
+  }
+
+  html.eym-sidebar .rym-reco > #page_recommendations_group_main_left ol {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 28px;
+    align-items: start;
+  }
+}

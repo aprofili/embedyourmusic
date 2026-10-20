@@ -205,6 +205,15 @@
     select(entries.find((e) => e.service === "spotify") || entries[0]);
   }
 
+  // The cover URL, whether or not RYM has lazy-loaded it yet; 300px version.
+  function artSrc(img) {
+    let s = img && (img.currentSrc || img.getAttribute("src") || img.getAttribute("data-src") || "");
+    if (!s || s.startsWith("data:")) s = (img && img.getAttribute("data-src")) || "";
+    if (!s) return "";
+    if (s.startsWith("//")) s = "https:" + s;
+    return s.replace(/\/i\/\d+\//, "/i/300/");
+  }
+
   function play(li) {
     const link = li.querySelector("a.component_discography_item_link.release");
     if (!link) return Promise.resolve();
@@ -241,7 +250,7 @@
             id: li.id.replace("component_discography_item_", ""),
             title: link.textContent.trim(),
             artist: artist ? artist.textContent.trim() : "",
-            artUrl: art && art.dataset.src ? `https:${art.dataset.src}`.replace("/i/150/", "/i/300/") : "",
+            artUrl: artSrc(art),
             href: link.href,
             rating: rec && rec.ratingKnown ? rec.rating : 0,
             entries: entries.map((e) => ({ service: e.service, href: e.href })),

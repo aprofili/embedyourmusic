@@ -40,6 +40,31 @@ a {
   align-items: start;
 }
 
+#nav {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+
+#nav button {
+  width: 32px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#nav button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 #art {
   width: 96px;
   height: 96px;

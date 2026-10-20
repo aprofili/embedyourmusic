@@ -12,13 +12,20 @@
 
   const $ = (id) => document.getElementById(id);
   let current = null; // { payload, tabId }
-  let history = [];
+  let hist = []; // newest first; pos is the one on screen (back = older, forward = newer)
+  let pos = 0;
   let token = 0;
 
   // Connected while open: this is how pages know to play here.
   const port = api.runtime.connect({ name: "sidepanel" });
   port.onMessage.addListener((msg) => {
-    if (msg.type === "play") show(msg.payload, msg.tabId);
+    if (msg.type === "play") {
+      const p = { ...msg.payload, tabId: msg.tabId };
+      hist = [p, ...hist.filter((x) => x.href !== p.href)].slice(0, HISTORY_MAX);
+      pos = 0;
+      save();
+      render(p);
+    }
     else if (msg.type === "rating" && current && current.payload.id === msg.id) setRating(msg.rating);
   });
 
@@ -57,7 +64,10 @@
   function setRating(value) {
     rating = value;
     hover = 0;
-    if (current) current.payload.rating = value;
+    if (current) {
+      current.payload.rating = value;
+      save();
+    }
     $("rating-note").textContent = value ? `Your rating: ${value / 2}` : "Not rated";
     drawStars();
   }
@@ -79,12 +89,16 @@
   }
 
   // ---- Player ----
-  function show(payload, tabId) {
+  function render(payload) {
     const my = ++token;
+    const tabId = payload.tabId == null ? null : payload.tabId;
     current = { payload, tabId };
     $("empty").hidden = true;
     $("now").hidden = false;
-    $("art").src = payload.artUrl || "";
+    setArt(payload);
+    $("back").disabled = pos >= hist.length - 1;
+    $("fwd").disabled = pos <= 0;
+    $("pos").textContent = hist.length > 1 ? `${pos + 1} / ${hist.length}` : "";
     const title = $("title");
     title.textContent = payload.title || "Untitled";
     title.href = payload.href || "#";
@@ -162,38 +176,70 @@
       select(entries.find((e) => e.service === payload.service) || entries.find((e) => e.service === "spotify") || entries[0]);
     }
 
-    remember(payload);
+    drawHistory();
   }
 
-  // ---- Recently played (kept across closing the panel) ----
-  function remember(payload) {
-    history = [payload, ...history.filter((p) => p.href !== payload.href)].slice(0, HISTORY_MAX);
-    api.storage.local.set({ [HISTORY_KEY]: history }).catch(() => {});
-    drawHistory();
+  // ---- Album art: RYM's image host may refuse our referrer; fall back to Spotify's thumbnail ----
+  function setArt(payload) {
+    const img = $("art");
+    img.referrerPolicy = "no-referrer";
+    img.onerror = async () => {
+      img.onerror = null;
+      const sp = (payload.entries || []).find((e) => e.service === "spotify");
+      if (!sp) return;
+      try {
+        const r = await fetch("https://open.spotify.com/oembed?url=" + encodeURIComponent(sp.href));
+        const j = await r.json();
+        if (j.thumbnail_url && current && current.payload === payload) img.src = j.thumbnail_url;
+      } catch {
+        /* no art */
+      }
+    };
+    img.src = payload.artUrl || "";
+    if (!payload.artUrl) img.onerror();
+  }
+
+  function go(delta) {
+    const next = pos + delta;
+    if (next < 0 || next >= hist.length) return;
+    pos = next;
+    render(hist[pos]);
+  }
+  $("back").addEventListener("click", () => go(1));
+  $("fwd").addEventListener("click", () => go(-1));
+
+  // ---- History (kept across closing the panel) ----
+  function save() {
+    api.storage.local.set({ [HISTORY_KEY]: hist }).catch(() => {});
   }
 
   function drawHistory() {
     const list = $("history");
     list.textContent = "";
-    $("history-box").hidden = history.length < 2;
-    for (const p of history.slice(1)) {
+    $("history-box").hidden = hist.length < 2;
+    hist.forEach((p, i) => {
+      if (i === pos) return;
       const li = document.createElement("li");
       const img = document.createElement("img");
+      img.referrerPolicy = "no-referrer";
       img.src = p.artUrl || "";
       const label = document.createElement("span");
       label.textContent = `${p.artist ? p.artist + " — " : ""}${p.title}`;
       li.append(img, label);
-      li.addEventListener("click", () => show(p, null)); // the originating tab is unknown: rating needs a fresh play
+      li.addEventListener("click", () => {
+        pos = i;
+        render(p);
+      });
       list.append(li);
-    }
+    });
   }
 
   api.storage.local
     .get(HISTORY_KEY)
     .then((got) => {
-      history = (got && got[HISTORY_KEY]) || [];
-      if (history.length && !current) show(history[0], null);
-      else drawHistory();
+      if (current) return;
+      hist = (got && got[HISTORY_KEY]) || [];
+      if (hist.length) render(hist[0]);
     })
     .catch(() => {});
 })();

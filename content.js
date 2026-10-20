@@ -307,6 +307,18 @@
     return !!(r && r.open);
   }
 
+  // html.eym-sidebar lets the CSS simplify pages while the panel is open.
+  function setSidebarClass(open) {
+    const cl = document.documentElement && document.documentElement.classList;
+    if (cl && cl.toggle) cl.toggle("eym-sidebar", !!open);
+  }
+  sidebarOpen().then(setSidebarClass);
+  if (api.runtime.onMessage) {
+    api.runtime.onMessage.addListener((msg) => {
+      if (msg && msg.type === "sidebar-changed") setSidebarClass(msg.open);
+    });
+  }
+
   async function sidebarPlay(payload) {
     const r = await send({ type: "sidebar-play", payload });
     return !!(r && r.handled);
@@ -670,11 +682,51 @@
     }
   }
 
+  // "recommended" next to new music / genres / charts / lists in the top bar.
+  function addNavLink() {
+    if (document.querySelector(".eym-nav-reco")) return;
+    const lists = document.querySelector('.header_links_inner a.header_item[href="/lists/"]');
+    const me = document.querySelector("a.header_profile_main[href^='/~']");
+    if (!lists || !me) return;
+    const user = me.getAttribute("href").slice(2).replace(/\/.*$/, "");
+    const a = document.createElement("a");
+    a.className = "header_item eym-nav-reco";
+    a.href = `/recommendations/${user}/release/`;
+    a.textContent = "recommended";
+    lists.after(a);
+  }
+
+  // A big ▶ on the cover of a release page starts the default player (sidebar if open).
+  function addArtPlay() {
+    const frame = document.querySelector(".release_page .page_release_art_frame");
+    const link = frame && [...frame.querySelectorAll("a")].find((a) => a.querySelector("img"));
+    if (!link || link.querySelector(".rym-art-play")) return;
+    const tabs = [...document.querySelectorAll(".media_link_container .rym-tab")];
+    if (!tabs.length) return;
+    link.classList.add("rym-art-link");
+    const btn = document.createElement("span");
+    btn.className = "rym-art-play";
+    btn.setAttribute("role", "button");
+    btn.setAttribute("aria-label", "Play");
+    btn.textContent = "▶";
+    link.append(btn);
+    link.addEventListener("click", (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      const pick = tabs.find((t) => t.id === "spotify") || tabs.find((t) => /spotify/i.test(t.href)) || tabs[0];
+      pick.click();
+      const panel = document.querySelector(".rym-embed-panel");
+      if (panel && !document.documentElement.classList.contains("eym-sidebar")) panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
   function run() {
+    addNavLink();
     buildHero();
     addCollapseToggles(document);
     for (const c of document.querySelectorAll(".media_link_container")) buildTabs(c);
     scan(document);
+    addArtPlay();
   }
 
   run();

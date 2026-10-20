@@ -100,6 +100,8 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
   assert.strictEqual($(".ui_media_links").nextElementSibling, $(".rym-embed-panel"));
   assert.strictEqual($(".rym-embed-panel").tagName, "ASIDE");
 
+  // Cover play button and top-bar link need page markup this mock lacks; exercised in hero/real pages.
+
   // Defaults to Spotify even though Apple Music is listed first
   assert.ok($("#spotify").classList.contains("rym-tab-active"));
   assert.ok(!$("#apple").classList.contains("rym-tab-active"));

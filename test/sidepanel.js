@@ -48,5 +48,16 @@ const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
   onMsg({ type: "rating", id: "123", rating: 3 });
   assert.strictEqual(d.getElementById("rating-note").textContent, "Your rating: 1.5");
   assert.ok(store["sidebar:history"].length === 1);
+  // Back / forward between releases
+  const second = { id: "456", title: "Second", artist: "Other", artUrl: "", href: "https://rym/r/2", rating: 0,
+    entries: [{ service: "tidal", href: "https://tidal.com/album/35146920" }] };
+  onMsg({ type: "play", tabId: 8, payload: second });
+  assert.strictEqual(d.getElementById("title").textContent, "Second");
+  assert.ok(d.getElementById("fwd").disabled && !d.getElementById("back").disabled);
+  d.getElementById("back").click();
+  assert.strictEqual(d.getElementById("title").textContent, "Album");
+  assert.ok(!d.getElementById("fwd").disabled);
+  d.getElementById("fwd").click();
+  assert.strictEqual(d.getElementById("title").textContent, "Second");
   console.log("sidepanel tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -354,8 +354,23 @@ const sidePorts = new Set();
 api.runtime.onConnect.addListener((port) => {
   if (port.name !== "sidepanel") return;
   sidePorts.add(port);
-  port.onDisconnect.addListener(() => sidePorts.delete(port));
+  announceSidebar();
+  port.onDisconnect.addListener(() => {
+    sidePorts.delete(port);
+    announceSidebar();
+  });
 });
+
+// Tell open RYM tabs whether the panel is open so they can simplify their layout.
+function announceSidebar() {
+  const open = sidePorts.size > 0;
+  api.tabs
+    .query({ url: ["*://rateyourmusic.com/*", "*://*.rateyourmusic.com/*"] })
+    .then((tabs) => {
+      for (const t of tabs) api.tabs.sendMessage(t.id, { type: "sidebar-changed", open }).catch(() => {});
+    })
+    .catch(() => {});
+}
 
 if (api.sidePanel && api.sidePanel.setPanelBehavior) {
   // Chromium: the toolbar button toggles the side panel.
