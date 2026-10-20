@@ -66,16 +66,17 @@
     store.set(COUNT_KEY, "0");
     const html = await res.text();
     const m = RATING.exec(html);
+    const rid = id != null ? id : m ? m[1] : "";
     const doc = new DOMParser().parseFromString(html, "text/html");
     const el = doc.querySelector("[data-links]");
     const rec = {
       t: Date.now(),
-      rating: m && m[1] === id ? Number(m[2]) : 0,
-      ratingKnown: !!(m && m[1] === id),
+      rating: m && m[1] === rid ? Number(m[2]) : 0,
+      ratingKnown: !!(m && m[1] === rid),
       links: el ? el.getAttribute("data-links") : null,
     };
-    store.set(key(id), JSON.stringify(rec));
-    return { ...rec, net: true }; // net: this call hit the network (not persisted)
+    if (rid) store.set(key(rid), JSON.stringify(rec));
+    return { ...rec, id: rid, net: true }; // net: this call hit the network (not persisted)
   }
 
   function blockMessage() {
@@ -108,6 +109,26 @@
     return inflight.get(id);
   }
 
+  // Same, when only the release URL is known (side panel lists). Returns { id, rating, ratingKnown, links }.
+  const hrefKey = (href) => {
+    try {
+      return `eym:href:${new URL(href, location.href).pathname}`;
+    } catch {
+      return `eym:href:${href}`;
+    }
+  };
+  async function getByHref(href) {
+    const known = store.get(hrefKey(href));
+    const hit = known && cached(known);
+    if (hit) return { ...hit, id: known };
+    if (blocked()) throw new Error(blockMessage());
+    const job = tail.then(() => network(null, href));
+    tail = job.catch(() => {});
+    const rec = await job;
+    if (rec.id) store.set(hrefKey(href), rec.id);
+    return rec;
+  }
+
   // Keep the cache right after you rate something on the page.
   function setRating(id, rating) {
     try {
@@ -116,5 +137,5 @@
     } catch {}
   }
 
-  globalThis.__eymRelease = { get, peek, setRating, blocked, blockMessage, clearBlock };
+  globalThis.__eymRelease = { get, getByHref, peek, setRating, blocked, blockMessage, clearBlock };
 })();

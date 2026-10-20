@@ -363,6 +363,167 @@
     return box;
   }
 
+
+  // ---- Streaming links from RYM's data-links JSON (shared by the reco page and the side panel) ----
+  const ORDER = ["spotify", "applemusic", "soundcloud", "bandcamp", "youtube", "tidal", "deezer"];
+
+  const url = (u) => (/^https?:\/\//.test(u) ? u : `https://${u}`);
+  // RYM's data-links JSON → plain URLs that classifyAny understands.
+  const HREF = {
+    spotify: (id, v) => `https://open.spotify.com/${v.type || "album"}/${id}`,
+    applemusic: (id, v) => `https://geo.music.apple.com/${v.loc || "us"}/album/${v.album || "album"}/${id}`,
+    soundcloud: (id, v) => (v.url ? url(v.url) : null),
+    tidal: (id, v) => `https://tidal.com/${v.type || "album"}/${id}`,
+    deezer: (id, v) => `https://www.deezer.com/${v.type || "album"}/${id}`,
+    youtube: (id, v) =>
+      v.type === "playlist" ? `https://www.youtube.com/playlist?list=${id}` : `https://www.youtube.com/watch?v=${id}`,
+    bandcamp: (id, v) => (v.url ? url(v.url) : /bandcamp\.com/.test(id) ? url(id) : null),
+  };
+
+  function parseLinks(json) {
+    let data;
+    try {
+      data = JSON.parse(json);
+    } catch {
+      return [];
+    }
+    const out = [];
+    for (const service of ORDER) {
+      const items = data[service];
+      if (!items) continue;
+      const ids = Object.keys(items);
+      const id = ids.find((k) => items[k] && items[k].default) || ids[0];
+      if (!id) continue;
+      const href = HREF[service](id, items[id] || {});
+      const info = href && classifyAny(href);
+      if (info && info.service === service) out.push({ service, href, info });
+    }
+    return out;
+  }
+
+
+  // ---- Album lists for the side panel ----
+  const imgUrl = (img) => {
+    let s = img && (img.currentSrc || img.getAttribute("src") || "");
+    if (!s || s.startsWith("data:")) s = (img && img.getAttribute("data-src")) || "";
+    if (!s) return "";
+    if (s.startsWith("//")) s = "https:" + s;
+    return s.replace(/\/i\/\d+\//, "/i/300/");
+  };
+
+  // Release links under `root` as [{ title, artist, href, artUrl }]. Tolerant of RYM's markup:
+  // a titled link to /release/<type>/<artist>/<title>/, with the artist link and cover in the same row.
+  function scrapeReleases(root, limit = 60, skipPath = "") {
+    const out = [];
+    const seen = new Set();
+    for (const a of root.querySelectorAll("a[href]")) {
+      let path;
+      try {
+        path = new URL(a.getAttribute("href"), "https://rateyourmusic.com").pathname;
+      } catch {
+        continue;
+      }
+      if (!/^\/release\/[^/]+\/[^/]+\/[^/]+\/?$/.test(path) || seen.has(path) || path === skipPath) continue;
+      const title = (a.textContent || "").replace(/\s+/g, " ").trim();
+      if (!title) continue; // image-only link
+      const row = a.closest("li, tr") || a.parentElement;
+      const artist = row && row.querySelector("a.artist");
+      seen.add(path);
+      out.push({
+        title,
+        artist: artist ? artist.textContent.replace(/\s+/g, " ").trim() : "",
+        href: `https://rateyourmusic.com${path}`,
+        artUrl: imgUrl(row && row.querySelector("img")),
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  // Small keyed store in storage.local (the side panel reads it).
+  async function saveSidebarData(key, patch, maxKeys) {
+    try {
+      if (!api.storage || !api.storage.local) return;
+      const got = await api.storage.local.get(key);
+      const map = { ...((got && got[key]) || {}), ...patch };
+      const keys = Object.keys(map);
+      if (maxKeys && keys.length > maxKeys) {
+        keys.sort((x, y) => (map[x].t || 0) - (map[y].t || 0));
+        for (const k of keys.slice(0, keys.length - maxKeys)) delete map[k];
+      }
+      await api.storage.local.set({ [key]: map });
+    } catch {
+      /* best effort */
+    }
+  }
+
+  // Release pages: the "Suggestions" list loads lazily; save it once it is there.
+  function publishSimilar() {
+    const ul = document.querySelector(".section_suggestions ul.suggestions");
+    if (!ul || ul.dataset.eymSim) return;
+    const id = ul.getAttribute("data-assoc-id");
+    const items = scrapeReleases(ul, 24, location.pathname);
+    if (!id || !items.length) return;
+    ul.dataset.eymSim = "1";
+    saveSidebarData("sidebar:similar", { [id]: { t: Date.now(), items } }, 15);
+  }
+
+  // Side panel asked for a release by URL: its streaming links, id and your rating.
+  async function loadRelease(item) {
+    const rel = globalThis.__eymRelease;
+    if (!rel || !rel.getByHref) throw new Error("not ready");
+    let rec;
+    let entries = [];
+    try {
+      rec = await rel.getByHref(item.href);
+      entries = rec.links ? parseLinks(rec.links) : [];
+    } catch (e) {
+      rec = null;
+      if (!/paused|HTTP|blocking/.test(String(e.message))) throw e;
+    }
+    if (!entries.length) {
+      // RYM unavailable or no links listed: look the release up by name.
+      const res = await send({ type: "find-album", want: { artist: item.artist, title: item.title, year: 0 } });
+      entries = ((res && res.links) || [])
+        .map((l) => ({ ...l, info: classifyAny(l.href) }))
+        .filter((l) => l.info && l.info.service === l.service);
+    }
+    return {
+      id: rec ? rec.id : "",
+      title: item.title,
+      artist: item.artist,
+      artUrl: item.artUrl,
+      href: item.href,
+      rating: rec && rec.ratingKnown ? rec.rating : 0,
+      entries: entries.map((e) => ({ service: e.service, href: e.href })),
+    };
+  }
+
+  // Your 4+ star albums: one request to your collection page (the side panel caches the result).
+  async function fetchFavorites() {
+    const rel = globalThis.__eymRelease;
+    if (rel && rel.blocked()) throw new Error(rel.blockMessage());
+    const me = document.querySelector("a.header_profile_main[href^='/~']");
+    if (!me) throw new Error("not signed in");
+    const user = me.getAttribute("href").slice(2).replace(/\/.*$/, "");
+    const res = await fetch(`/collection/${user}/r4.0-5.0/`, { credentials: "same-origin" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    let items = scrapeReleases(doc, 300);
+    // If the page shows each row's rating, keep only 4+ (guards against an unfiltered list).
+    const rated = [];
+    for (const it of items) {
+      const a = [...doc.querySelectorAll("a[href]")].find((x) => x.getAttribute("href") === new URL(it.href).pathname);
+      const row = a && (a.closest("tr") || a.closest("li"));
+      const m = row && /star-(\d+)m|data-rating="(\d+)"/.exec(row.innerHTML);
+      const v = m ? Number(m[1] || m[2]) : null;
+      if (v === null || v >= 8) rated.push(it);
+    }
+    items = rated;
+    if (!items.length) throw new Error("no albums found on your collection page");
+    return items;
+  }
+
   // ---- Sidebar player (side panel) ----
   // When the extension's side panel is open, "play" actions go there instead of embedding in the page.
   async function sidebarOpen() {
@@ -427,6 +588,12 @@
 
   if (typeof location !== "undefined" && /^https?:$/.test(location.protocol) && api.runtime.onMessage) {
     api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites")) {
+        (msg.type === "load-release" ? loadRelease(msg.item) : fetchFavorites())
+          .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : { items: r }))
+          .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
+        return true;
+      }
       if (!msg || msg.type !== "rate") return false;
       const box = document.getElementById(`my_catalog_rating_l_${msg.id}`);
       if (!box) sendResponse({ ok: false, error: "rating widget not found on that page" });
@@ -790,6 +957,7 @@
     for (const c of document.querySelectorAll(".media_link_container")) buildTabs(c);
     scan(document);
     addArtPlay();
+    publishSimilar();
   }
 
   run();
@@ -808,5 +976,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, LABELS, addCollapseToggles, buildHero, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, saveSidebarData, ORDER, LABELS, addCollapseToggles, buildHero, buildTabs, run };
 })();

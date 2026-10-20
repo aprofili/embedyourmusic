@@ -450,6 +450,22 @@ function handleSidebar(msg, sender, sendResponse) {
       for (const port of sidePorts) port.postMessage({ type: "rating", id: msg.id, rating: msg.rating });
       sendResponse({});
       return false;
+    case "to-rym": {
+      // Panel -> a rateyourmusic.com tab (it needs RYM's cookies / page): the given tab if it is
+      // still open, else any RYM tab.
+      (async () => {
+        const rym = await api.tabs.query({ url: ["*://rateyourmusic.com/*", "*://*.rateyourmusic.com/*"] });
+        const tab = rym.find((t) => t.id === msg.tabId) || rym.find((t) => t.active) || rym[0];
+        if (!tab) return { error: "open a rateyourmusic.com tab first" };
+        try {
+          const res = await api.tabs.sendMessage(tab.id, msg.msg);
+          return { ...(res || { error: "no response (reload the RYM tab)" }), tabId: tab.id };
+        } catch {
+          return { error: "no response (reload the RYM tab)" };
+        }
+      })().then(sendResponse);
+      return true;
+    }
     case "rate": // from the panel: forward to the page that started playback
       api.tabs
         .sendMessage(msg.tabId, { type: "rate", id: msg.id, rating: msg.rating })
@@ -461,7 +477,7 @@ function handleSidebar(msg, sender, sendResponse) {
 }
 
 api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg && ["sidebar-state", "sidebar-play", "rating-changed", "rate"].includes(msg.type)) {
+  if (msg && ["sidebar-state", "sidebar-play", "rating-changed", "rate", "to-rym"].includes(msg.type)) {
     return handleSidebar(msg, sender, sendResponse);
   }
   return false;

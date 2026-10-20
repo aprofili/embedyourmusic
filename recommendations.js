@@ -6,47 +6,11 @@
   const container = document.getElementById("page_sections_recommendations");
   if (!eym || !container) return;
 
-  const { classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, LABELS } = eym;
+  const { classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, saveSidebarData, LABELS } = eym;
   // Phone layout: no sticky side panel; the player opens inline under the tapped row.
   const mobile = matchMedia("(max-width: 59.99em)").matches;
   // The iOS userscript has no page-world script, so it reads ratings itself (see ratedScan).
   const standalone = !!globalThis.__eymBridge;
-  const ORDER = ["spotify", "applemusic", "soundcloud", "bandcamp", "youtube", "tidal", "deezer"];
-
-  const url = (u) => (/^https?:\/\//.test(u) ? u : `https://${u}`);
-  // RYM's data-links JSON → plain URLs that classifyAny understands.
-  const HREF = {
-    spotify: (id, v) => `https://open.spotify.com/${v.type || "album"}/${id}`,
-    applemusic: (id, v) => `https://geo.music.apple.com/${v.loc || "us"}/album/${v.album || "album"}/${id}`,
-    soundcloud: (id, v) => (v.url ? url(v.url) : null),
-    tidal: (id, v) => `https://tidal.com/${v.type || "album"}/${id}`,
-    deezer: (id, v) => `https://www.deezer.com/${v.type || "album"}/${id}`,
-    youtube: (id, v) =>
-      v.type === "playlist" ? `https://www.youtube.com/playlist?list=${id}` : `https://www.youtube.com/watch?v=${id}`,
-    bandcamp: (id, v) => (v.url ? url(v.url) : /bandcamp\.com/.test(id) ? url(id) : null),
-  };
-
-  function parseLinks(json) {
-    let data;
-    try {
-      data = JSON.parse(json);
-    } catch {
-      return [];
-    }
-    const out = [];
-    for (const service of ORDER) {
-      const items = data[service];
-      if (!items) continue;
-      const ids = Object.keys(items);
-      const id = ids.find((k) => items[k] && items[k].default) || ids[0];
-      if (!id) continue;
-      const href = HREF[service](id, items[id] || {});
-      const info = href && classifyAny(href);
-      if (info && info.service === service) out.push({ service, href, info });
-    }
-    return out;
-  }
-
   const rel = globalThis.__eymRelease;
   // Streaming links for a release, from the shared cache or one throttled request.
   function linksFor(path, id, want) {
@@ -307,6 +271,33 @@
     }
   }
 
+  // Save the Recommends / Challenge lists for the side panel (rows you've rated are left out).
+  let listTimer;
+  function publishLists() {
+    if (standalone) return;
+    clearTimeout(listTimer);
+    listTimer = setTimeout(() => {
+      const grab = (sel) => {
+        const ol = container.querySelector(sel);
+        if (!ol) return [];
+        const out = [];
+        for (const li of ol.querySelectorAll("li.component_discography_item")) {
+          if (li.classList.contains("rym-rated") || (li.dataset.eymRating && li.dataset.eymRating !== "0")) continue;
+          out.push(...scrapeReleases(li, 1));
+          if (out.length >= 60) break;
+        }
+        return out;
+      };
+      const t = Date.now();
+      saveSidebarData("sidebar:lists", {
+        recommended: { t, items: grab("#page_recommendations_list_main") },
+        challenge: { t, items: grab("#page_recommendations_list_non_affinity") },
+      });
+    }, 600);
+  }
+  document.addEventListener("eym-scan-done", publishLists);
+  document.addEventListener("eym-first-unrated", publishLists);
+
   // Reveal the page (content.css covers it with a spinner until then).
   const ready = () => document.documentElement.classList.add("eym-ready");
   setTimeout(ready, 7000); // never leave the page covered
@@ -376,6 +367,7 @@
   }
 
   decorate();
+  publishLists();
   if (standalone) ratedScan();
   let timer;
   new MutationObserver(() => {

@@ -1,35 +1,37 @@
-// Side panel player: shows what you started playing on rateyourmusic.com (service
-// tabs, player, your star rating, and for Spotify the track list with ♥). Pages send the release
-// through background.js while this panel is open; with it closed, pages embed players in the page.
+// Side panel player: what you started playing on rateyourmusic.com (RYM link, service tabs,
+// player, your star rating, a Like-current-song button for Spotify) plus lists of other albums to
+// play: Similar, Recommended, Challenge, Favorites and History. Pages send the release through
+// background.js while this panel is open; with it closed, pages embed players in the page.
 // content.js is loaded first for its embed helpers (it finds nothing to do on this page).
 (() => {
   const api = globalThis.browser ?? globalThis.chrome;
   const eym = globalThis.__embedYourMusic;
-  const { classifyAny, makeFrame, resolveBandcamp, trackList, LABELS } = eym;
-  const ORDER = ["spotify", "applemusic", "soundcloud", "bandcamp", "youtube", "tidal", "deezer"];
-  const HISTORY_KEY = "sidebar:history";
-  const HISTORY_MAX = 10;
+  const { classifyAny, makeFrame, resolveBandcamp, trackList, ORDER, LABELS } = eym;
+  const PLAYED_KEY = "sidebar:played";
+  const LAST_KEY = "sidebar:last";
+  const PLAYED_MAX = 100;
+  const FAVS_KEY = "sidebar:favs";
+  const FAVS_TTL = 24 * 3600 * 1000;
+  const ROW = 44; // px, see .item in sidepanel.css
 
   const $ = (id) => document.getElementById(id);
-  let current = null; // { payload, tabId }
-  let hist = []; // newest first; pos is the one on screen
-  let pos = 0;
+  const store = {
+    get: (k) => api.storage.local.get(k).then((o) => (o && o[k]) || null).catch(() => null),
+    set: (k, v) => api.storage.local.set({ [k]: v }).catch(() => {}),
+  };
+  let current = null; // { payload, tabId, counted }
+  let played = []; // newest first, no duplicates
   let token = 0;
 
-  // Connected while open: this is how pages know to play here. The background worker can be
-  // stopped and restarted by the browser (which drops this port and forgets it), so reconnect on
-  // disconnect and ping periodically to keep it alive.
+  // ---- Connection to the background worker ----
+  // Connected while open: this is how pages know to play here. The worker can be stopped and
+  // restarted by the browser (which drops this port), so reconnect and ping to keep it alive.
   let port;
   function connect() {
     port = api.runtime.connect({ name: "sidepanel" });
     port.onMessage.addListener((msg) => {
-      if (msg.type === "play") {
-        const p = { ...msg.payload, tabId: msg.tabId };
-        hist = [p, ...hist.filter((x) => x.href !== p.href)].slice(0, HISTORY_MAX);
-        pos = 0;
-        save();
-        render(p);
-      } else if (msg.type === "rating" && current && current.payload.id === msg.id) setRating(msg.rating);
+      if (msg.type === "play") render({ ...msg.payload, tabId: msg.tabId });
+      else if (msg.type === "rating" && current && current.payload.id === msg.id) setRating(msg.rating);
     });
     port.onDisconnect.addListener(() => setTimeout(connect, 200));
   }
@@ -92,7 +94,7 @@
     hover = 0;
     if (current) {
       current.payload.rating = value;
-      save();
+      store.set(LAST_KEY, current.payload);
     }
     $("rating-note").textContent = value ? `Your rating: ${value / 2}` : "Not rated";
     drawStars();
@@ -110,27 +112,34 @@
     if (res && res.ok) {
       setRating(value); // confirmed by the page's own widget a moment later
     } else {
-      $("rating-note").textContent = `Couldn't rate from here (${(res && res.error) || "no response"}). Open the release page to rate.`;
+      $("rating-note").textContent = `Couldn't rate from here (${(res && res.error) || "no response"}). Use the RYM tab.`;
     }
   }
 
   // ---- Player ----
   function render(payload) {
     const my = ++token;
-    const tabId = payload.tabId == null ? null : payload.tabId;
-    current = { payload, tabId };
+    current = { payload, tabId: payload.tabId == null ? null : payload.tabId, counted: false };
     $("empty").hidden = true;
     $("now").hidden = false;
-    const title = $("title");
-    title.textContent = payload.title || "Untitled";
-    title.href = payload.href || "#";
-    $("artist").textContent = payload.artist || "";
     setRating(payload.rating || 0);
+    store.set(LAST_KEY, payload);
 
     const tabs = $("tabs");
     const body = $("body");
     tabs.textContent = "";
     body.textContent = "";
+    body.className = "";
+
+    // First tab: RYM, a plain link to the album page.
+    const rym = document.createElement("a");
+    rym.className = "rym-reco-tab rym-link";
+    rym.textContent = "RYM";
+    rym.href = payload.href || "#";
+    rym.target = "_blank";
+    rym.rel = "noopener";
+    rym.title = "Open the album page on RYM";
+    tabs.append(rym);
 
     const entries = [];
     for (const service of ORDER) {
@@ -138,11 +147,29 @@
       const info = e && classifyAny(e.href);
       if (info && info.service === service) entries.push({ service, href: e.href, info });
     }
+
     if (!entries.length) {
-      body.textContent = "No streaming links for this release.";
-      body.className = "hint";
+      // Nothing to embed: still show what this is.
+      const box = document.createElement("div");
+      box.className = "fallback";
+      if (payload.artUrl) {
+        const img = document.createElement("img");
+        img.referrerPolicy = "no-referrer";
+        img.src = payload.artUrl;
+        box.append(img);
+      }
+      const text = document.createElement("div");
+      const t = document.createElement("strong");
+      t.textContent = payload.title || "Untitled";
+      const a = document.createElement("div");
+      a.textContent = payload.artist || "";
+      const note = document.createElement("div");
+      note.className = "hint";
+      note.textContent = "No streaming links found for this release.";
+      text.append(t, a, note);
+      box.append(text);
+      body.append(box);
     } else {
-      body.className = "";
       const slots = new Map();
       const buttons = new Map();
       let active = null;
@@ -198,58 +225,198 @@
       select(entries.find((e) => e.service === payload.service) || entries.find((e) => e.service === "spotify") || entries[0]);
     }
 
-    drawHistory();
+    refreshOpenList("similar");
   }
 
-  // ---- History (kept across closing the panel) ----
-  function save() {
-    api.storage.local.set({ [HISTORY_KEY]: hist }).catch(() => {});
-  }
-
-  // Open "Recently played" when it fits without scrolling; otherwise keep it collapsed.
-  // Once you toggle it yourself, it stays as you left it.
-  let userToggled = false;
-  function fitHistory() {
-    const box = $("history-box");
-    if (userToggled || box.hidden) return;
-    box.open = true;
-    if (document.documentElement.scrollHeight > window.innerHeight + 1) box.open = false;
-  }
-  $("history-box").addEventListener("toggle", () => {
-    if (document.activeElement && document.activeElement.tagName === "SUMMARY") userToggled = true;
+  // ---- History: only releases whose player you actually interacted with ----
+  // Clicking play inside the (cross-origin) player moves focus into its iframe, which blurs this window.
+  window.addEventListener("blur", () => {
+    setTimeout(() => {
+      const el = document.activeElement;
+      if (current && !current.counted && el && el.tagName === "IFRAME" && $("body").contains(el)) {
+        current.counted = true;
+        addPlayed(current.payload);
+      }
+    }, 0);
   });
-  window.addEventListener("resize", fitHistory);
-  // The player iframe changes the page height after it loads.
-  setInterval(fitHistory, 1500);
 
-  function drawHistory() {
-    const list = $("history");
-    list.textContent = "";
-    $("history-box").hidden = hist.length < 2;
-    fitHistory();
-    hist.forEach((p, i) => {
-      if (i === pos) return;
-      const li = document.createElement("li");
-      const img = document.createElement("img");
-      img.referrerPolicy = "no-referrer";
-      img.src = p.artUrl || "";
-      const label = document.createElement("span");
-      label.textContent = `${p.artist ? p.artist + " — " : ""}${p.title}`;
-      li.append(img, label);
-      li.addEventListener("click", () => {
-        pos = i;
-        render(p);
-      });
-      list.append(li);
+  function addPlayed(payload) {
+    const entry = {
+      id: payload.id,
+      title: payload.title,
+      artist: payload.artist,
+      artUrl: payload.artUrl,
+      href: payload.href,
+    };
+    played = [entry, ...played.filter((p) => p.href !== entry.href)].slice(0, PLAYED_MAX);
+    store.set(PLAYED_KEY, played);
+    refreshOpenList("history");
+  }
+
+  // ---- Lists ----
+  const shuffle = (arr) => {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  // -> { items } or { message }
+  const SOURCES = {
+    async similar() {
+      if (!current || !current.payload.id) return { message: "Play an album from its RYM page to see similar albums." };
+      const all = await store.get("sidebar:similar");
+      const rec = all && all[current.payload.id];
+      return rec && rec.items.length ? { items: rec.items } : { message: "Open this album's RYM page to load its suggestions." };
+    },
+    async recommended() {
+      const all = await store.get("sidebar:lists");
+      const rec = all && all.recommended;
+      return rec && rec.items.length ? { items: rec.items } : { message: "Open your recommendations page once to fill this list." };
+    },
+    async challenge() {
+      const all = await store.get("sidebar:lists");
+      const rec = all && all.challenge;
+      return rec && rec.items.length ? { items: rec.items } : { message: "Open your recommendations page once to fill this list." };
+    },
+    async favorites() {
+      let rec = await store.get(FAVS_KEY);
+      if (!rec || Date.now() - rec.t > FAVS_TTL) {
+        let res;
+        try {
+          res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-favorites" } });
+        } catch {
+          res = null;
+        }
+        if (res && res.items) {
+          rec = { t: Date.now(), items: res.items };
+          store.set(FAVS_KEY, rec);
+        } else if (!rec) {
+          return { message: `Couldn't load your 4+ star albums (${(res && res.error) || "no response"}).` };
+        }
+      }
+      return { items: shuffle(rec.items) };
+    },
+    async history() {
+      return played.length ? { items: played } : { message: "Albums you press play on will show up here." };
+    },
+  };
+
+  async function playItem(item) {
+    const my = ++token;
+    $("empty").hidden = true;
+    $("now").hidden = false;
+    $("tabs").textContent = "";
+    $("body").textContent = "Loading…";
+    $("body").className = "hint";
+    let res;
+    try {
+      res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "load-release", item } });
+    } catch {
+      res = null;
+    }
+    if (my !== token) return;
+    if (res && res.payload) render({ ...res.payload, tabId: res.tabId });
+    else $("body").textContent = `Couldn't load that album (${(res && res.error) || "no response"}).`;
+  }
+
+  function fillList(acc, kind, result) {
+    const body = acc.querySelector(".acc-body");
+    body.textContent = "";
+    if (!result.items) {
+      const p = document.createElement("p");
+      p.className = "hint";
+      p.textContent = result.message;
+      body.append(p);
+      return;
+    }
+    const items = result.items;
+    // Show as many rows as fit in the window; "Show more" extends past it (the page then scrolls).
+    const top = body.getBoundingClientRect().top;
+    const fit = Math.max(3, Math.floor((window.innerHeight - top - 48) / ROW));
+    let shown = Math.min(items.length, fit);
+    const list = document.createElement("div");
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "more";
+    more.textContent = "Show more";
+    const paint = () => {
+      list.textContent = "";
+      for (const item of items.slice(0, shown)) {
+        const row = document.createElement("div");
+        row.className = "item";
+        row.title = `${item.artist ? item.artist + " — " : ""}${item.title}`;
+        const img = document.createElement("img");
+        img.referrerPolicy = "no-referrer";
+        img.loading = "lazy";
+        img.src = item.artUrl || "";
+        const label = document.createElement("span");
+        label.textContent = row.title;
+        row.append(img, label);
+        row.addEventListener("click", () => playItem(item));
+        list.append(row);
+      }
+      more.hidden = shown >= items.length;
+    };
+    more.addEventListener("click", () => {
+      shown = Math.min(items.length, 200);
+      paint();
+    });
+    paint();
+    body.append(list, more);
+  }
+
+  async function openList(acc) {
+    for (const other of document.querySelectorAll(".acc.open")) {
+      if (other !== acc) closeList(other);
+    }
+    acc.classList.add("open");
+    const body = acc.querySelector(".acc-body");
+    body.hidden = false;
+    body.textContent = "Loading…";
+    const kind = acc.dataset.kind;
+    let result;
+    try {
+      result = await SOURCES[kind]();
+    } catch (e) {
+      result = { message: String((e && e.message) || e) };
+    }
+    if (acc.classList.contains("open")) fillList(acc, kind, result);
+  }
+
+  function closeList(acc) {
+    acc.classList.remove("open");
+    acc.querySelector(".acc-body").hidden = true;
+  }
+
+  function refreshOpenList(kind) {
+    const acc = document.querySelector(`.acc[data-kind="${kind}"].open`);
+    if (acc) openList(acc);
+  }
+
+  for (const acc of document.querySelectorAll(".acc")) {
+    acc.querySelector(".acc-head").addEventListener("click", () => {
+      if (acc.classList.contains("open")) closeList(acc);
+      else openList(acc);
     });
   }
 
-  api.storage.local
-    .get(HISTORY_KEY)
-    .then((got) => {
-      if (current) return;
-      hist = (got && got[HISTORY_KEY]) || [];
-      if (hist.length) render(hist[0]);
-    })
-    .catch(() => {});
+  // Lists the RYM pages publish while this panel is open.
+  if (api.storage.onChanged) {
+    api.storage.onChanged.addListener((changes) => {
+      if (changes["sidebar:lists"]) {
+        refreshOpenList("recommended");
+        refreshOpenList("challenge");
+      }
+      if (changes["sidebar:similar"]) refreshOpenList("similar");
+    });
+  }
+
+  // ---- Restore ----
+  Promise.all([store.get(PLAYED_KEY), store.get(LAST_KEY)]).then(([p, last]) => {
+    played = p || [];
+    if (!current && last) render(last);
+  });
 })();

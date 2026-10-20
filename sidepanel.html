@@ -9,25 +9,22 @@
 </head>
 <body>
   <main id="player">
-    <p id="empty">Nothing playing. Open a release on rateyourmusic.com and click a streaming icon (or an album cover on the recommendations page) to play it here.</p>
+    <p id="empty">Nothing playing. Open a release on rateyourmusic.com and click a streaming icon (or an album cover on the recommendations page) to play it here, or pick from the lists below.</p>
     <section id="now" hidden>
-      <div id="meta">
-        <div id="names">
-          <a id="title" target="_blank" rel="noopener"></a>
-          <div id="artist"></div>
-        </div>
-        <div id="rate-box">
-          <div id="rating" role="group" aria-label="Your rating"></div>
-          <div id="rating-note"></div>
-        </div>
+      <div id="rate-box">
+        <div id="rating" role="group" aria-label="Your rating"></div>
+        <div id="rating-note"></div>
       </div>
       <div id="tabs"></div>
       <div id="body"></div>
     </section>
-    <details id="history-box" hidden>
-      <summary>Recently played</summary>
-      <ul id="history"></ul>
-    </details>
+    <section id="lists">
+      <div class="acc" data-kind="similar"><button type="button" class="acc-head">Similar</button><div class="acc-body" hidden></div></div>
+      <div class="acc" data-kind="recommended"><button type="button" class="acc-head">Recommended</button><div class="acc-body" hidden></div></div>
+      <div class="acc" data-kind="challenge"><button type="button" class="acc-head">Challenge</button><div class="acc-body" hidden></div></div>
+      <div class="acc" data-kind="favorites"><button type="button" class="acc-head">Favorites</button><div class="acc-body" hidden></div></div>
+      <div class="acc" data-kind="history"><button type="button" class="acc-head">History</button><div class="acc-body" hidden></div></div>
+    </section>
   </main>
   <script src="content.js"></script>
   <script src="sidepanel.js"></script>
