@@ -295,3 +295,31 @@ button.rym-like-count.rym-open {
 .rym-tracks .rym-tracks-list {
   max-height: 40vh;
 }
+
+.acc-bar {
+  display: flex;
+  align-items: center;
+}
+
+.acc-bar .acc-head {
+  flex: 1;
+}
+
+.dice {
+  flex: none;
+  order: -1;
+  margin-right: 6px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.dice:hover {
+  opacity: 1;
+  background: rgba(128, 128, 128, 0.18);
+}

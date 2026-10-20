@@ -122,6 +122,19 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   assert.strictEqual(d.querySelector("#tabs a").getAttribute("href"), "https://rateyourmusic.com/release/album/a/r1/"); // r0 was excluded
   assert.ok(sent.some((m) => m.type === "to-rym" && m.msg.type === "load-release"));
 
+  // Dice: skips rated entries (list flag), plays a random unrated one
+  {
+    const items = store["sidebar:lists"].recommended.items;
+    items.forEach((it) => (it.rated = true));
+    items[5].rated = false;
+    sent.length = 0;
+    d.querySelector('.acc[data-kind="recommended"] .dice').click();
+    await tick(8);
+    const loads = sent.filter((m) => m.type === "to-rym" && m.msg.type === "load-release");
+    assert.strictEqual(loads.length, 1);
+    assert.strictEqual(loads[0].msg.item.href, items[5].href);
+  }
+
   // Favorites fetched once and cached
   head("favorites").click();
   await tick(5);

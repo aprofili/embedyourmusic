@@ -22,6 +22,7 @@
   let current = null; // { payload, tabId, counted }
   let played = []; // newest first, no duplicates
   let token = 0;
+  let ratings = {}; // release URL -> your rating (0-10) for albums seen here; lets the dice skip rated ones without a request
 
   // ---- Connection to the background worker ----
   // Connected while open: this is how pages know to play here. The worker can be stopped and
@@ -89,6 +90,13 @@
   }
   buildStars();
 
+  function noteRating(href, value, known) {
+    if (!href || !known) return;
+    if (ratings[href] === value) return;
+    ratings[href] = value;
+    store.set("sidebar:ratings", ratings);
+  }
+
   function setRating(value, known = true) {
     rating = value;
     hover = 0;
@@ -96,6 +104,7 @@
       current.payload.rating = value;
       if (known) current.payload.ratingKnown = true;
       store.set(LAST_KEY, current.payload);
+      noteRating(current.payload.href, value, known);
     }
     const note = $("rating-note");
     note.textContent = "";
@@ -154,6 +163,7 @@
     $("now").hidden = false;
     setRating(payload.rating || 0, payload.ratingKnown !== false);
     store.set(LAST_KEY, payload);
+    noteRating(payload.href, payload.rating, payload.ratingKnown !== false);
 
     const tabs = $("tabs");
     const body = $("body");
@@ -372,6 +382,59 @@
     },
   };
 
+  // 🎲: play a random entry. In lists of new music, skip albums you've already rated: known from the
+  // list itself or from ratings seen before, otherwise from loading the album (a few tries at most).
+  async function dice(kind, acc) {
+    const my = ++token;
+    let result;
+    try {
+      result = await SOURCES[kind]();
+    } catch (e) {
+      result = { message: String((e && e.message) || e) };
+    }
+    if (my !== token) return;
+    if (!result.items) {
+      openList(acc); // shows the message
+      return;
+    }
+    $("empty").hidden = true;
+    $("now").hidden = false;
+    $("tabs").textContent = "";
+    $("body").className = "hint";
+    $("body").textContent = "Picking something…";
+    const skipRated = kind !== "history" && kind !== "favorites";
+    let tries = 0;
+    for (const item of shuffle(result.items)) {
+      if (skipRated && (item.rated || ratings[item.href] > 0)) continue;
+      if (tries++ >= 8) {
+        $("body").textContent = "Tried 8 albums and they were all rated. Try again.";
+        return;
+      }
+      let res;
+      try {
+        res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "load-release", item } });
+      } catch {
+        res = null;
+      }
+      if (my !== token) return;
+      if (!res || !res.payload) {
+        if (res && /open a rateyourmusic|paused/.test(res.error || "")) {
+          $("body").textContent = `Couldn't load (${res.error}).`;
+          return;
+        }
+        continue;
+      }
+      const p = res.payload;
+      if (skipRated && p.ratingKnown && p.rating > 0) {
+        noteRating(item.href, p.rating, true);
+        continue;
+      }
+      render({ ...p, tabId: res.tabId });
+      return;
+    }
+    $("body").textContent = skipRated ? "Everything in this list is already rated." : "Nothing to play.";
+  }
+
   async function playItem(item) {
     const my = ++token;
     $("empty").hidden = true;
@@ -424,7 +487,7 @@
         label.textContent = row.title;
         row.append(img, label);
         row.addEventListener("click", () => playItem(item));
-        if (item.rated) row.classList.add("rated");
+        if (kind !== "history" && kind !== "favorites" && (item.rated || ratings[item.href] > 0)) row.classList.add("rated");
         if (kind === "recommended" || kind === "challenge") {
           const x = document.createElement("button");
           x.type = "button";
@@ -492,7 +555,19 @@
   }
 
   for (const acc of document.querySelectorAll(".acc")) {
-    acc.querySelector(".acc-head").addEventListener("click", () => {
+    const head = acc.querySelector(".acc-head");
+    const bar = document.createElement("div");
+    bar.className = "acc-bar";
+    head.before(bar);
+    bar.append(head);
+    const die = document.createElement("button");
+    die.type = "button";
+    die.className = "dice";
+    die.textContent = "🎲";
+    die.title = "Play a random one";
+    die.addEventListener("click", () => dice(acc.dataset.kind, acc));
+    bar.append(die);
+    head.addEventListener("click", () => {
       if (acc.classList.contains("open")) closeList(acc);
       else openList(acc);
     });
@@ -511,6 +586,9 @@
 
   // ---- Restore ----
   // Releases before the lists existed kept their history under another key; fold it in once.
+  store.get("sidebar:ratings").then((r) => {
+    ratings = { ...(r || {}), ...ratings };
+  });
   Promise.all([store.get(PLAYED_KEY), store.get(LAST_KEY), store.get("sidebar:history"), store.get("sidebar:migrated")]).then(([p, last, old, done]) => {
     played = p || [];
     if (!done && old && old.length) {
