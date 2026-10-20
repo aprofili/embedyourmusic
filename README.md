@@ -50,6 +50,16 @@ One-time setup: the extension uses the Spotify app with client ID `c66c2741c3284
 
 If Spotify has retired `/me/tracks`, the code falls back to `/me/library`.
 
+## Releases and updates
+
+Push a tag (`git tag v1.1.0 && git push --tags`) and GitHub Actions (`.github/workflows/release.yml`) runs the tests and publishes a release with:
+- `embedyourmusic-edge.zip`: Edge and other Chromium browsers (unzip, Load unpacked)
+- `embedyourmusic.user.js`: Safari on iOS via the Userscripts app
+
+iOS: the userscript has `@updateURL`/`@downloadURL` pointing at the latest release, so the Userscripts app can update it from there (Userscripts settings → check for updates).
+
+Edge: unpacked extensions never auto-update. For automatic updates, publish the extension to Microsoft Edge Add-ons as an unlisted listing (free): create the listing once in Partner Center, then add repo secrets `EDGE_PRODUCT_ID`, `EDGE_CLIENT_ID`, `EDGE_API_KEY` and each tagged release is also submitted to the store (`embedyourmusic-edge-store.zip`, built without the pinned `key`, since the store assigns its own extension id; the OAuth redirect URI for Spotify saving then changes to the store id's `chromiumapp.org` URL).
+
 ## Install
 
 Run `node build.js` first. It writes `dist/chromium` and `dist/firefox`; the two differ only in `manifest.json` (Edge rejects `background.scripts`, Firefox has no service worker).

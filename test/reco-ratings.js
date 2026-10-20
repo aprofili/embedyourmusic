@@ -5,9 +5,9 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const root = path.join(__dirname, "..");
 const real = "/root/.claude/uploads/9f0b7094-47c7-58f0-bb8e-5a0c55e1425f/06783218-attachment.txt";
-const html = fs.existsSync(real)
+const html = (!process.env.EYM_NO_REAL && fs.existsSync(real))
   ? fs.readFileSync(real, "utf8")
-  : `<body><ol><li id="component_discography_item_5" class="component_discography_item"><div class="component_discography_item_exclude">x</div></li></ol></body>`;
+  : `<html><body><ol>${[1, 2, 3].map((n) => `<li id="component_discography_item_${n}" class="component_discography_item"><a class="component_discography_item_link release" href="/release/a/b/${n}/">T</a><div class="component_discography_item_exclude">x</div></li>`).join("")}</ol></body></html>`;
 
 let document_ids;
 (async () => {

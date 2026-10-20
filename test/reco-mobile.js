@@ -10,7 +10,7 @@ const src = fs.readFileSync(path.join(root, "dist/userscript/embedyourmusic.user
 assert.ok(/@run-at\s+document-start/.test(src));
 
 const real = "/root/.claude/uploads/9f0b7094-47c7-58f0-bb8e-5a0c55e1425f/06783218-attachment.txt";
-const html = fs.existsSync(real)
+const html = (!process.env.EYM_NO_REAL && fs.existsSync(real))
   ? fs.readFileSync(real, "utf8")
   : `<html class="page_recommendations"><body><div id="page_sections_recommendations"><ol>${[1, 2, 3]
       .map((n) => `<li id="component_discography_item_${n}" class="component_discography_item"><a class="component_discography_item_image_link" href="/release/a/b/${n}/"></a><div class="component_discography_item_info"><div class="component_discography_item_info_inner"><a class="component_discography_item_link release" href="/release/a/b/${n}/">T${n}</a><a class="artist" href="/artist/b">B</a></div></div></li>`)

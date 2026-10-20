@@ -7,6 +7,8 @@ const path = require("path");
 const root = __dirname;
 const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "release-data.js", "rules.json"];
 const base = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+// Releases set EYM_VERSION from the git tag.
+if (process.env.EYM_VERSION) base.version = process.env.EYM_VERSION;
 
 const { key: _key, ...baseNoKey } = base; // `key` pins the Chromium extension id (stable OAuth redirect URI)
 const firefox = {
@@ -31,6 +33,11 @@ function emit(name, manifest) {
 }
 
 emit("chromium", base);
+// Edge Add-ons assigns its own extension id, so the store package must not carry the pinned `key`.
+{
+  const { key: _k, ...storeManifest } = base;
+  emit("edge-store", storeManifest);
+}
 emit("firefox", firefox);
 
 // ---- iOS / Safari userscript (Userscripts app) ----
@@ -48,6 +55,8 @@ const header = `// ==UserScript==
 // @name         EmbedYourMusic
 // @description  Inline players, tabs and collapsed sections on rateyourmusic.com
 // @version      ${base.version}
+// @updateURL    https://github.com/aprofili/embedyourmusic/releases/latest/download/embedyourmusic.user.js
+// @downloadURL  https://github.com/aprofili/embedyourmusic/releases/latest/download/embedyourmusic.user.js
 // @match        *://rateyourmusic.com/*
 // @match        *://*.rateyourmusic.com/*
 // @grant        GM_xmlhttpRequest

@@ -7,12 +7,11 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 const root = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
 const real = "/root/.claude/uploads/9f0b7094-47c7-58f0-bb8e-5a0c55e1425f/06783218-attachment.txt";
-const html = fs.existsSync(real)
+const html = (!process.env.EYM_NO_REAL && fs.existsSync(real))
   ? fs.readFileSync(real, "utf8")
-  : `<body><div id="page_sections_recommendations"><group id="page_recommendations_group_main_left"><ol>
-<li class="component_discography_item"><a class="component_discography_item_image_link" href="/release/a/b/c/"><picture></picture></a>
-<div class="component_discography_item_info"><div class="component_discography_item_info_inner"><a class="component_discography_item_link release" href="/release/a/b/c/">T</a><a class="artist" href="/artist/b">B</a></div></div>
-<span class="component_discography_item_details_average">3.87</span><span class="component_discography_item_details_ratings"><span class="full">3,197</span></span></li></ol></group></div></body>`;
+  : `<html class="page_recommendations"><body><div id="page_sections_recommendations"><group id="page_recommendations_group_main_left"><ol>${[1, 2, 3]
+      .map((n) => `<li id="component_discography_item_${n}" class="component_discography_item"><a class="component_discography_item_image_link" href="/release/a/b/${n}/"><picture></picture></a><div class="component_discography_item_info"><div class="component_discography_item_info_inner"><a class="component_discography_item_link release" href="/release/a/b/${n}/">T${n}</a><a class="artist" href="/artist/b">B</a></div></div><span class="component_discography_item_details_average">3.87</span><span class="component_discography_item_details_ratings"><span class="full">3,197</span></span><div class="component_discography_item_exclude">x</div></li>`)
+      .join("")}</ol></group></div></body></html>`;
 
 const links = {
   spotify: { "49JP": { default: true, type: "album" } },
