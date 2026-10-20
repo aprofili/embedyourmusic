@@ -155,6 +155,27 @@
     }
   }
 
+  // The rating box moves into the custom player (under the art); anything that clears the body puts it back first.
+  const rateBox = $("rate-box");
+  const rateHome = rateBox.parentNode;
+  const restoreRate = () => {
+    if (rateBox.parentNode !== rateHome) rateHome.append(rateBox);
+  };
+  {
+    const bodyEl = $("body");
+    const desc = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
+    Object.defineProperty(bodyEl, "textContent", {
+      configurable: true,
+      get() {
+        return desc.get.call(this);
+      },
+      set(v) {
+        restoreRate();
+        desc.set.call(this, v);
+      },
+    });
+  }
+
   // ---- Player ----
   function render(payload) {
     const my = ++token;
@@ -216,12 +237,40 @@
 
       const load = (entry, slot) => {
         const { info, service } = entry;
-        if (info.kind !== "bandcamp") {
+        const plain = () => {
           if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
           const frame = makeFrame(info.src, info.height, `${LABELS[service]} player`);
           slot.append(frame);
           const list = service === "spotify" && trackList(info, frame, { compact: true, onListened: () => markListening(payload) });
           if (list) slot.append(list);
+        };
+        if (service === "spotify" && globalThis.__eymSpPlayer) {
+          // Our own player (hidden embed + track list) when Spotify is connected; else the plain embed.
+          slot.textContent = "Loading…";
+          globalThis.__eymSpPlayer
+            .build(info, payload, { onListened: () => markListening(payload), onPlay: () => {
+              if (current && current.payload === payload && !current.counted) {
+                current.counted = true;
+                addPlayed(payload);
+              }
+            } })
+            .then((node) => {
+              if (my !== token) return;
+              slot.textContent = "";
+              if (node) {
+                slot.append(node);
+                node.rateSlot.append(rateBox);
+              } else plain();
+            })
+            .catch(() => {
+              if (my !== token) return;
+              slot.textContent = "";
+              plain();
+            });
+          return;
+        }
+        if (info.kind !== "bandcamp") {
+          plain();
           return;
         }
         slot.textContent = "Loading…";

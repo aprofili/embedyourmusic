@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 const root = __dirname;
-const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "main-bridge.js", "release-data.js", "sidepanel.html", "sidepanel.js", "sidepanel.css", "rules.json"];
+const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "main-bridge.js", "release-data.js", "sidepanel.html", "spplayer.js", "sidepanel.js", "sidepanel.css", "rules.json"];
 const base = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 // Releases set EYM_VERSION from the git tag.
 if (process.env.EYM_VERSION) base.version = process.env.EYM_VERSION;

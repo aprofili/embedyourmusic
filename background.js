@@ -285,6 +285,24 @@ async function spotifyJson(path, query) {
 
 const FALLBACK_STATUSES = [400, 403, 404, 410];
 
+async function albumSaved(id) {
+  let res = await spotifyFetch("GET", "/me/albums/contains", { ids: id });
+  if (!res.ok && FALLBACK_STATUSES.includes(res.status)) {
+    res = await spotifyFetch("GET", "/me/library/contains", { uris: `spotify:album:${id}` });
+  }
+  if (!res.ok) throw new Error(`Spotify API ${res.status}`);
+  return !!(await res.json())[0];
+}
+
+async function setAlbumSaved(id, save) {
+  const method = save ? "PUT" : "DELETE";
+  let res = await spotifyFetch(method, "/me/albums", { ids: id });
+  if (!res.ok && FALLBACK_STATUSES.includes(res.status)) {
+    res = await spotifyFetch(method, "/me/library", { uris: `spotify:album:${id}` });
+  }
+  if (!res.ok) throw new Error(`Spotify API ${res.status}`);
+}
+
 // Library endpoints exist in two generations (/me/tracks and the newer /me/library); try both.
 async function savedFlags(ids) {
   const flags = [];
@@ -395,6 +413,16 @@ async function handleSpotify(msg) {
         return { tracks: await spotifyTracks(msg.kind, msg.id) };
       case "spotify-save":
         await setSaved(msg.id, !!msg.save);
+        return { ok: true };
+      case "spotify-art": {
+        const j = await spotifyJson(msg.kind === "track" ? `/tracks/${msg.id}` : `/albums/${msg.id}`);
+        const imgs = (msg.kind === "track" ? j.album : j).images || [];
+        return { url: (imgs[imgs.length > 1 ? 1 : 0] || {}).url || "" };
+      }
+      case "spotify-album":
+        return { saved: await albumSaved(msg.id) };
+      case "spotify-album-save":
+        await setAlbumSaved(msg.id, !!msg.save);
         return { ok: true };
     }
   } catch (e) {

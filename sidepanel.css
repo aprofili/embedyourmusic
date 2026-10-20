@@ -323,3 +323,290 @@ button.rym-like-count.rym-open {
   opacity: 1;
   background: rgba(128, 128, 128, 0.18);
 }
+
+/* ---- Custom Spotify player ---- */
+.sp {
+  --sp-a: var(--accent);
+  position: relative;
+  padding: 12px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--sp-a) 30%, transparent), transparent 70%);
+  transition: background 0.8s ease;
+  animation: sp-in 0.5s ease both;
+}
+
+@keyframes sp-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.sp-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.sp-art {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--sp-a) 45%, transparent);
+  transition: box-shadow 0.8s ease, transform 0.6s ease;
+}
+
+.sp-playing .sp-art {
+  animation: sp-breathe 3.2s ease-in-out infinite;
+}
+
+@keyframes sp-breathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 6px 22px color-mix(in srgb, var(--sp-a) 40%, transparent); }
+  50% { transform: scale(1.025); box-shadow: 0 10px 34px color-mix(in srgb, var(--sp-a) 70%, transparent); }
+}
+
+.sp-meta {
+  min-width: 0;
+}
+
+.sp-title {
+  font-size: 1.15em;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sp-artist {
+  color: var(--muted);
+}
+
+.sp-now {
+  margin-top: 6px;
+  font-size: 0.8em;
+  color: color-mix(in srgb, var(--sp-a) 75%, var(--fg));
+  min-height: 1.2em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.sp-play {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sp-a);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--sp-a) 55%, transparent);
+  transition: transform 0.15s ease, background 0.8s ease;
+}
+
+.sp-play:hover {
+  transform: scale(1.08);
+}
+
+.sp-play:active {
+  transform: scale(0.95);
+}
+
+.sp-album,
+.sp-embed-toggle {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.sp-album:hover,
+.sp-embed-toggle:hover {
+  background: color-mix(in srgb, var(--sp-a) 18%, transparent);
+}
+
+.sp-album.sp-saved {
+  color: var(--sp-a);
+  border-color: var(--sp-a);
+}
+
+.sp-count {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.sp-embed-toggle {
+  margin-left: auto;
+  opacity: 0.6;
+}
+
+.sp-bar {
+  height: 4px;
+  margin-top: 12px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--sp-a) 18%, var(--line));
+  overflow: hidden;
+}
+
+.sp-bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--sp-a);
+  transition: width 0.6s linear, background 0.8s ease;
+}
+
+.sp-msg {
+  margin-top: 8px;
+  font-size: 0.85em;
+  color: #e57368;
+}
+
+.sp-rate {
+  margin-top: 10px;
+}
+
+.sp-rate #rate-box {
+  margin: 0;
+}
+
+.sp-list {
+  margin-top: 8px;
+  display: grid;
+}
+
+.sp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.sp-row:hover {
+  background: color-mix(in srgb, var(--sp-a) 14%, transparent);
+}
+
+.sp-row.sp-current {
+  background: color-mix(in srgb, var(--sp-a) 22%, transparent);
+  box-shadow: inset 3px 0 0 var(--sp-a);
+}
+
+.sp-heart {
+  flex: none;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.15s ease, color 0.15s;
+}
+
+.sp-heart:hover {
+  transform: scale(1.2);
+}
+
+.sp-heart.sp-saved {
+  color: #1db954;
+}
+
+.sp-num {
+  flex: none;
+  position: relative;
+  width: 1.6em;
+  text-align: center;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-eq {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  padding: 3px 0;
+  background: var(--bg);
+}
+
+.sp-row.sp-current .sp-eq {
+  background: transparent;
+}
+
+.sp-on .sp-eq {
+  display: flex;
+}
+
+.sp-on .sp-n {
+  visibility: hidden;
+}
+
+.sp-eq i {
+  width: 3px;
+  height: 40%;
+  border-radius: 1px;
+  background: var(--sp-a);
+  animation: sp-eq 0.9s ease-in-out infinite;
+}
+
+.sp-eq i:nth-child(2) { animation-delay: -0.3s; }
+.sp-eq i:nth-child(3) { animation-delay: -0.6s; }
+
+@keyframes sp-eq {
+  0%, 100% { height: 25%; }
+  50% { height: 95%; }
+}
+
+.sp-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-dur {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Spotify's own embed stays out of sight (it still plays); the button shows it. */
+.sp-frame {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 400px;
+  height: 152px;
+  border: 0;
+}
+
+.sp-frame.sp-frame-shown {
+  position: static;
+  width: 100%;
+  margin-top: 10px;
+  border-radius: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sp, .sp-playing .sp-art, .sp-eq i {
+    animation: none;
+  }
+}
