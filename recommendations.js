@@ -95,6 +95,19 @@
       a.textContent = "Open release page";
       body.append(a);
     }
+    if (rel.blocked()) {
+      body.append(" · ");
+      const retry = document.createElement("a");
+      retry.href = "#";
+      retry.textContent = "Retry now";
+      retry.title = "Clear the pause (repeated failures just extend RYM's block)";
+      retry.addEventListener("click", (e) => {
+        e.preventDefault();
+        rel.clearBlock();
+        if (currentLi) play(currentLi);
+      });
+      body.append(retry);
+    }
   }
 
   function show(entries, releaseHref, my) {
@@ -250,50 +263,41 @@
 
   // ---- iOS userscript: read your ratings from the release pages (same logic as reco-ratings.js) ----
   function ratedScan() {
-    const ratingOf = (li) => {
-      const link = li.querySelector("a.component_discography_item_link.release");
-      const id = li.id.replace("component_discography_item_", "");
-      if (!link) return Promise.resolve(null);
-      return rel
-        .get(id, link.getAttribute("href"))
-        .then((x) => (x.ratingKnown ? x.rating : null))
-        .catch(() => null);
-    };
-
+    const NET_BUDGET = 3; // network requests the walk may make per page load
+    let netUsed = 0;
+    const idOf = (li) => li.id.replace("component_discography_item_", "");
     const mark = (li, rating) => {
       li.dataset.eymRating = String(rating);
       li.classList.toggle("rym-rated", rating > 0);
     };
 
-    // Rows that scroll into view get dimmed if rated.
-    const visible = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        visible.unobserve(e.target);
-        ratingOf(e.target).then((r) => r !== null && mark(e.target, r));
-      }
-    });
-    const watched = new WeakSet();
-    const watchRows = () => {
-      for (const li of container.querySelectorAll("li.component_discography_item")) {
-        if (!watched.has(li)) {
-          watched.add(li);
-          visible.observe(li);
-        }
-      }
-    };
-    watchRows();
-    new MutationObserver(watchRows).observe(container, { childList: true, subtree: true });
+    // Rows already in the cache are dimmed for free; nothing is fetched just because a row is visible.
+    for (const li of container.querySelectorAll("li.component_discography_item")) {
+      const rec = rel.peek(idOf(li));
+      if (rec && rec.ratingKnown) mark(li, rec.rating);
+    }
 
-    // In-order pass from the top to find the first unrated row.
+    // In-order walk from the top to the first unrated row, bounded.
     (async () => {
       let looked = 0;
       for (const li of container.querySelectorAll("li.component_discography_item")) {
-        if (looked++ >= 40 || rel.blocked()) break; // bounded: never walk the whole list
-        const r = await ratingOf(li);
-        if (r === null) continue;
-        mark(li, r);
-        if (r === 0) {
+        if (looked++ >= 40 || rel.blocked()) break;
+        const id = idOf(li);
+        const link = li.querySelector("a.component_discography_item_link.release");
+        if (!link) continue;
+        let rec = rel.peek(id);
+        if (!rec) {
+          if (netUsed >= NET_BUDGET) break;
+          netUsed++;
+          try {
+            rec = await rel.get(id, link.getAttribute("href"));
+          } catch {
+            break;
+          }
+        }
+        if (!rec.ratingKnown) continue;
+        mark(li, rec.rating);
+        if (rec.rating === 0) {
           li.dataset.eymFirstUnrated = "";
           break;
         }

@@ -63,11 +63,29 @@ function make() {
 
   // 429 pauses everything
   setStatus(429);
-  await assert.rejects(() => w.__eymRelease.get("10", "/release/x/10"), /rate-limiting/);
+  await assert.rejects(() => w.__eymRelease.get("10", "/release/x/10"), /HTTP 429; paused/);
   assert.ok(w.__eymRelease.blocked());
   const n = log.length;
-  await assert.rejects(() => w.__eymRelease.get("11", "/release/x/11"), /rate-limiting/);
+  await assert.rejects(() => w.__eymRelease.get("11", "/release/x/11"), /HTTP 429; paused/);
   assert.strictEqual(log.length, n, "no requests while paused");
+  // repeated failures back off: 15 min -> 1 h -> 6 h -> 24 h; a success resets the ladder
+  const until = () => Number(w.localStorage.getItem("eym:blocked-until")) - Date.now();
+  assert.ok(until() > 14 * 60e3 && until() <= 15 * 60e3);
+  w.localStorage.setItem("eym:blocked-until", "0");
+  await assert.rejects(() => w.__eymRelease.get("12", "/release/x/12"), /paused/);
+  assert.ok(until() > 59 * 60e3 && until() <= 60 * 60e3, "second failure: 1 h");
+  w.localStorage.setItem("eym:blocked-until", "0");
+  await assert.rejects(() => w.__eymRelease.get("13", "/release/x/13"), /paused/);
+  assert.ok(until() > 5.9 * 3600e3, "third failure: 6 h");
+  w.__eymRelease.clearBlock();
+  assert.ok(!w.__eymRelease.blocked(), "manual retry clears the pause");
+  setStatus(200);
+  await w.__eymRelease.get("14", "/release/x/14");
+  assert.strictEqual(w.localStorage.getItem("eym:block-count"), "0", "success resets the ladder");
+  // peek never touches the network
+  const before = log.length;
+  assert.strictEqual(w.__eymRelease.peek("999"), null);
+  assert.strictEqual(log.length, before);
   console.log("release-data tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

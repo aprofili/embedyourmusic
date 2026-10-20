@@ -3,15 +3,18 @@
 // Goal: as few requests to rateyourmusic.com as possible.
 //   - Results live in localStorage (shared by every tab): rated releases 14 days, unrated 20 min.
 //   - One request at a time, ~400ms apart; concurrent callers for a release share one request.
-//   - A 403/429/503 pauses all fetching for 15 minutes.
+//   - A 403/429/503 pauses all fetching: 15 min, then 1 h, 6 h, 24 h if it keeps happening, so a
+//     blocked browser isn't poked every 15 minutes. Any success resets the ladder.
 (() => {
   if (globalThis.__eymRelease) return;
 
   const RATED_TTL = 14 * 24 * 3600 * 1000;
   const UNRATED_TTL = 20 * 60 * 1000;
-  const BLOCK_MS = 15 * 60 * 1000;
+  const BLOCK_LADDER = [15 * 60e3, 3600e3, 6 * 3600e3, 24 * 3600e3];
   const GAP_MS = globalThis.__eymGapMs ?? 400; // (tests set 0)
   const BLOCK_KEY = "eym:blocked-until";
+  const COUNT_KEY = "eym:block-count";
+  const STATUS_KEY = "eym:block-status";
   const RATING = /new RYMrating\(\s*['"]l['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/;
 
   const key = (id) => `eym:rel:${id}`;
@@ -52,9 +55,15 @@
     lastFetch = Date.now();
     const res = await fetch(href, { credentials: "same-origin" });
     if (!res.ok) {
-      if ([403, 429, 503].includes(res.status)) store.set(BLOCK_KEY, String(Date.now() + BLOCK_MS));
+      if ([403, 429, 503].includes(res.status)) {
+        const count = (Number(store.get(COUNT_KEY)) || 0) + 1;
+        store.set(COUNT_KEY, String(count));
+        store.set(STATUS_KEY, String(res.status));
+        store.set(BLOCK_KEY, String(Date.now() + BLOCK_LADDER[Math.min(count, BLOCK_LADDER.length) - 1]));
+      }
       throw new Error(res.status === 404 ? "not found" : blocked() ? blockMessage() : `HTTP ${res.status}`);
     }
+    store.set(COUNT_KEY, "0");
     const html = await res.text();
     const m = RATING.exec(html);
     const doc = new DOMParser().parseFromString(html, "text/html");
@@ -66,12 +75,21 @@
       links: el ? el.getAttribute("data-links") : null,
     };
     store.set(key(id), JSON.stringify(rec));
-    return rec;
+    return { ...rec, net: true }; // net: this call hit the network (not persisted)
   }
 
   function blockMessage() {
     const mins = Math.max(1, Math.ceil((blockedUntil() - Date.now()) / 60000));
-    return `RYM is rate-limiting requests; paused for ${mins} more min`;
+    const when = mins >= 120 ? `${Math.round(mins / 60)} h` : `${mins} min`;
+    return `RYM answered HTTP ${store.get(STATUS_KEY) || "429"}; paused for ${when}`;
+  }
+
+  // Cached record only; never touches the network.
+  const peek = (id) => cached(id);
+
+  function clearBlock() {
+    store.set(BLOCK_KEY, "0");
+    store.set(COUNT_KEY, "0");
   }
 
   // -> Promise<{ rating, ratingKnown, links }>; rejects on failure.
@@ -98,5 +116,5 @@
     } catch {}
   }
 
-  globalThis.__eymRelease = { get, setRating, blocked, blockMessage };
+  globalThis.__eymRelease = { get, peek, setRating, blocked, blockMessage, clearBlock };
 })();

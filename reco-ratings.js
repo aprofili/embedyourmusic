@@ -73,7 +73,7 @@
         { passive: type.startsWith("touch") ? false : undefined }
       );
     }
-    watchVisible(li, id, box);
+    loadFromCache(li, id, box);
   }
 
   // The list doesn't include your own ratings, so read each one from the release page
@@ -92,22 +92,40 @@
     if (num) num.textContent = (rating / 2).toFixed(1);
   }
 
-  // Cached, throttled, de-duplicated by release-data.js. null = unknown.
-  function ratingOf(li, id) {
-    const link = li.querySelector("a.component_discography_item_link.release");
-    if (!link) return Promise.resolve(null);
-    return rel
-      .get(id, link.getAttribute("href"))
-      .then((r) => (r.ratingKnown ? r.rating : null))
-      .catch(() => null);
-  }
+  // Network requests the first-unrated walk may make per page load.
+  const NET_BUDGET = 3;
+  let netUsed = 0;
 
-  async function loadRating(li, id, box) {
-    const rating = await ratingOf(li, id);
-    if (rating === null) return;
+  function showRating(li, id, box, rating) {
     li.dataset.eymRating = String(rating);
     li.classList.toggle("rym-rated", rating > 0);
     if (rating > 0) applyRating(id, box, rating);
+  }
+
+  // Rows already in the cache are decorated for free; nothing is fetched for rows just because
+  // they scrolled into view.
+  function loadFromCache(li, id, box) {
+    const rec = rel.peek(id);
+    if (rec && rec.ratingKnown) showRating(li, id, box, rec.rating);
+  }
+
+  async function loadRating(li, id, box) {
+    const link = li.querySelector("a.component_discography_item_link.release");
+    if (!link) return;
+    let rec = rel.peek(id);
+    if (!rec) {
+      if (netUsed >= NET_BUDGET) return;
+      netUsed++;
+      try {
+        rec = await rel.get(id, link.getAttribute("href"));
+      } catch {
+        return;
+      }
+    }
+    if (!rec.ratingKnown) return;
+    const rating = rec.rating;
+    if (rating === null) return;
+    showRating(li, id, box, rating);
   }
 
   // Walk the list from the top until the first row you haven't rated; recommendations.js loads it.
@@ -123,6 +141,7 @@
     let looked = 0;
     for (const li of document.querySelectorAll("li.component_discography_item")) {
       if (looked >= MAX_SCAN || rel.blocked()) return; // bounded: never walk the whole list
+      if (netUsed >= NET_BUDGET && !rel.peek((/^component_discography_item_(\d+)$/.exec(li.id) || [])[1])) return;
       const m = /^component_discography_item_(\d+)$/.exec(li.id);
       const box = li.querySelector(".my_catalog_rating");
       if (!m || !box) continue;
@@ -137,22 +156,6 @@
     }
   }
 
-  const visible =
-    typeof IntersectionObserver === "function"
-      ? new IntersectionObserver((entries) => {
-          for (const e of entries) {
-            if (!e.isIntersecting) continue;
-            visible.unobserve(e.target);
-            e.target.__eymLoad();
-          }
-        })
-      : null;
-
-  function watchVisible(li, id, box) {
-    li.__eymLoad = () => loadRating(li, id, box);
-    if (visible) visible.observe(li);
-    else li.__eymLoad();
-  }
 
   function scan() {
     for (const li of document.querySelectorAll("li.component_discography_item")) enhance(li);

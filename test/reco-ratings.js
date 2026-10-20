@@ -46,7 +46,7 @@ let document_ids;
   assert.strictEqual(JSON.stringify(made[0]), JSON.stringify(["l", Number(id), 0]));
   // saved rating is fetched from the release page and shown
   await new Promise((r) => setTimeout(r, 50));
-  assert.ok(fetched.length > 0 && fetched.length <= 2 + 200);
+  assert.ok(fetched.length > 0 && fetched.length <= 3, "at most 3 network requests per load: " + fetched.length);
   assert.strictEqual(JSON.stringify(made.find((a, i) => i > 0 && a[1] === Number(id))), JSON.stringify(["l", Number(id), 7]));
   assert.strictEqual(d.getElementById(`rating_stars_l_${id}`).className, "rating_stars star-7m");
   assert.strictEqual(d.getElementById(`rating_num_l_${id}`).textContent, "3.5");

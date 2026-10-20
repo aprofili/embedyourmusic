@@ -88,4 +88,8 @@ Loading cover: release and recommendations pages are covered with a spinner (pur
 
 ## Request volume (rateyourmusic.com)
 
-Reading ratings and streaming links needs a release-page request per album, so `release-data.js` keeps this small: results are cached in `localStorage` (rated releases 14 days, unrated 20 minutes, shared by all tabs and the page-world and content-script halves); requests go out one at a time ~400ms apart; callers for the same release share one request; the "find first unrated" walk stops after 40 rows; and a 403/429/503 pauses all extension requests for 15 minutes (the player says so). Ratings you give from the list update the cache.
+Reading ratings and streaming links needs a release-page request per album, so `release-data.js` keeps this small:
+- Results are cached in `localStorage` (rated releases 14 days, unrated 20 minutes; shared by all tabs and both script worlds). Ratings you give from the list update the cache.
+- Nothing is fetched just because a row scrolled into view. On load, rows already in the cache are decorated for free, and the "find first unrated" walk may make at most 3 network requests (it continues from the cache next load). Otherwise a request happens only when you click a cover.
+- Requests are one at a time, ~400ms apart, and callers for the same release share one.
+- A 403/429/503 pauses all extension requests: 15 min, then 1 h, 6 h, 24 h if it keeps happening (a success resets this). The player shows the HTTP status and a "Retry now" link that clears the pause.
