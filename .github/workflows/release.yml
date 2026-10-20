@@ -2,6 +2,7 @@ name: Release
 # Runs on every push to main. If manifest.json's "version" has no release yet (tag v<version>),
 # it builds and publishes one, so releasing = bump "version" in manifest.json and merge.
 #   embedyourmusic-edge.zip     Edge (and other Chromium browsers): unzip, then Load unpacked
+#   embedyourmusic-edge-store.zip  same build without the pinned key, for uploading to Edge Add-ons
 #   embedyourmusic.user.js      Safari on iOS (Userscripts app); auto-updates via @updateURL
 # If the Edge Add-ons secrets are set, the same build is also submitted to the Edge Add-ons store
 # (which auto-updates installed copies).
@@ -58,6 +59,7 @@ jobs:
         run: |
           gh release create "v${{ steps.ver.outputs.version }}" \
             out/embedyourmusic-edge.zip \
+            out/embedyourmusic-edge-store.zip \
             out/embedyourmusic.user.js \
             --target "$GITHUB_SHA" --title "v${{ steps.ver.outputs.version }}" --generate-notes
       - name: Submit to Edge Add-ons
