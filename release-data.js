@@ -33,6 +33,25 @@
     },
   };
 
+  // Everything useful on a release page, read from a parsed document (a fetched page, or the open one).
+  function extractMeta(doc) {
+    const q = (s) => doc.querySelector(s);
+    const titleEl = q(".album_title");
+    const textNode = titleEl && [...titleEl.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+    const artistEl = q(".album_artist_small a.artist, [itemprop='byArtist'] a, a.artist");
+    const og = q('meta[property="og:image"]');
+    const released = [...doc.querySelectorAll(".album_info th, .album_info_outer th")].find((th) => /^released/i.test(th.textContent.trim()));
+    const year = released && /\b(19|20)\d\d\b/.exec(released.nextElementSibling ? released.nextElementSibling.textContent : "");
+    const links = q("[data-links]");
+    return {
+      title: textNode ? textNode.textContent.trim() : titleEl ? titleEl.textContent.trim() : "",
+      artist: artistEl ? artistEl.textContent.trim() : "",
+      art: og && og.content ? og.content.replace(/\/i\/\d+\//, "/i/300/") : "",
+      year: year ? Number(year[0]) : 0,
+      links: links ? links.getAttribute("data-links") : null,
+    };
+  }
+
   function cached(id) {
     try {
       const rec = JSON.parse(store.get(key(id)));
@@ -82,12 +101,12 @@
     const m = RATING.exec(html);
     const rid = id != null ? id : m ? m[1] : "";
     const doc = new DOMParser().parseFromString(html, "text/html");
-    const el = doc.querySelector("[data-links]");
+    // One request, everything: links, your rating, title / artist / art / year.
     const rec = {
       t: Date.now(),
       rating: m && m[1] === rid ? Number(m[2]) : 0,
       ratingKnown: !!(m && m[1] === rid),
-      links: el ? el.getAttribute("data-links") : null,
+      ...extractMeta(doc),
     };
     if (rid) store.set(key(rid), JSON.stringify(rec));
     return { ...rec, id: rid, net: true }; // net: this call hit the network (not persisted)
@@ -186,5 +205,5 @@
     } catch {}
   }
 
-  globalThis.__eymRelease = { get, getLinks, getByHref, put, noteStatus, peek, setRating, blocked, blockMessage, clearBlock };
+  globalThis.__eymRelease = { get, getLinks, getByHref, put, extractMeta, noteStatus, peek, setRating, blocked, blockMessage, clearBlock };
 })();

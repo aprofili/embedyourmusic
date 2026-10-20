@@ -611,9 +611,9 @@
     }
     return {
       id: rec ? rec.id : "",
-      title: item.title,
-      artist: item.artist,
-      artUrl: item.artUrl,
+      title: item.title || (rec && rec.title) || "",
+      artist: item.artist || (rec && rec.artist) || "",
+      artUrl: item.artUrl || (rec && rec.art) || "",
       href: item.href,
       rating: rec && rec.ratingKnown ? rec.rating : 0,
       ratingKnown: !!(rec && rec.ratingKnown),
@@ -1237,7 +1237,8 @@
     const m = stars && /star-(\d+)m/.exec(stars.className);
     if (!m) return;
     document.documentElement.dataset.eymRecorded = "1";
-    rel.put(id, { rating: Number(m[1]), ratingKnown: true, links: holder ? holder.getAttribute("data-links") : null });
+    const meta = rel.extractMeta ? rel.extractMeta(document) : { links: holder ? holder.getAttribute("data-links") : null };
+    rel.put(id, { rating: Number(m[1]), ratingKnown: true, ...meta });
   }
 
   function run() {

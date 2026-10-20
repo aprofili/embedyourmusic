@@ -25,5 +25,13 @@ w.chrome.runtime.sendMessage = async (m) => { if (m.type === "sidebar-play") got
 play.click();
 await new Promise((r) => setTimeout(r, 0));
 assert.ok(got && got.payload.entries[0].service === "spotify", "cover click plays");
+// everything one release-page fetch can supply
+const rel = w.__eymRelease || (w.eval(fs.readFileSync(__dirname + "/../release-data.js", "utf8")), w.__eymRelease);
+const meta = rel.extractMeta(new w.DOMParser().parseFromString(fs.readFileSync(f, "utf8"), "text/html"));
+assert.strictEqual(meta.title, "Nothingface");
+assert.strictEqual(meta.artist, "Voivod");
+assert.strictEqual(meta.year, 1989);
+assert.ok(/\/i\/300\//.test(meta.art), meta.art);
+assert.ok(meta.links && meta.links.includes("spotify"));
 console.log("page tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });
