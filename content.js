@@ -315,7 +315,8 @@
         let cur = null;
         const paintCount = () => {
           count.textContent = `♥ ${rows.filter((r) => r.t.saved).length}/${rows.length}`;
-          count.title = "Songs from this release in your Liked Songs";
+          const liked = rows.filter((r) => r.t.saved).map((r) => `♥ ${r.t.number ? r.t.number + ". " : ""}${r.t.name}`);
+          count.title = liked.length ? liked.join("\n") : "None of this release is in your Liked Songs yet";
           count.hidden = false;
         };
         paintCount();
