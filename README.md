@@ -52,7 +52,7 @@ If Spotify has retired `/me/tracks`, the code falls back to `/me/library`.
 
 ## Releases and updates
 
-Push a tag (`git tag v1.1.0 && git push --tags`) and GitHub Actions (`.github/workflows/release.yml`) runs the tests and publishes a release with:
+Every push to `main` runs `.github/workflows/release.yml`: if the `version` in `manifest.json` has no release yet, it runs the tests and publishes release `v<version>` (bump the version and merge to release). Assets:
 - `embedyourmusic-edge.zip`: Edge and other Chromium browsers (unzip, Load unpacked)
 - `embedyourmusic.user.js`: Safari on iOS via the Userscripts app
 
