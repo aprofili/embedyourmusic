@@ -621,6 +621,44 @@
     };
   }
 
+  // Your RYM play history (what "Set listening" records): newest first, one entry per release.
+  function scrapeHistory(doc) {
+    const out = [];
+    const seen = new Set();
+    for (const it of doc.querySelectorAll(".play_history_item")) {
+      const a = it.querySelector("a.album");
+      if (!a) continue;
+      const href = new URL(a.getAttribute("href"), "https://rateyourmusic.com").href;
+      if (seen.has(href)) continue;
+      seen.add(href);
+      const artist = it.querySelector("a.artist");
+      const m = /\[Album(\d+)\]/.exec(a.getAttribute("title") || "");
+      out.push({
+        id: m ? m[1] : "",
+        title: a.textContent.replace(/\s+/g, " ").trim(),
+        artist: artist ? artist.textContent.replace(/\s+/g, " ").trim() : "",
+        href,
+        artUrl: imgUrl(it.querySelector("img")),
+      });
+    }
+    return out;
+  }
+
+  async function fetchHistory() {
+    const rel = globalThis.__eymRelease;
+    if (rel && rel.blocked()) throw new Error(rel.blockMessage());
+    const me = document.querySelector("a.header_profile_main[href^='/~']");
+    if (!me) throw new Error("not signed in");
+    const user = me.getAttribute("href").slice(2).replace(/\/.*$/, "");
+    const res = await fetch(`/play-history/${user}/`, { credentials: "same-origin" });
+    if (!res.ok) {
+      if (rel) rel.noteStatus(res.status);
+      throw new Error(rel && rel.blocked() ? rel.blockMessage() : `HTTP ${res.status}`);
+    }
+    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    return { items: scrapeHistory(doc) };
+  }
+
   // One page of your 4+ star albums (your collection filtered to 4.0-5.0; the side panel caches it).
   // -> { items, pages }
   async function fetchFavorites(page = 1) {
@@ -865,8 +903,8 @@
         sendResponse({ ok: true });
         return false;
       }
-      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites")) {
-        (msg.type === "load-release" ? loadRelease(msg.item) : fetchFavorites(msg.page))
+      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history")) {
+        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-history" ? fetchHistory() : fetchFavorites(msg.page))
           .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : r))
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
@@ -1285,5 +1323,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, saveSidebarData, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, buildTabs, run };
 })();

@@ -337,6 +337,7 @@
     seen[payload.id] = Date.now();
     store.set("sidebar:listened", seen);
     api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "set-listening", id: payload.id } }).catch(() => {});
+    setTimeout(() => store.set("sidebar:rymhist", { t: 0, items: [] }), 4000); // re-read RYM's history next time
   }
 
   // ---- History: only releases whose player you actually interacted with ----
@@ -438,8 +439,24 @@
       }
       return { items: shuffle(items) };
     },
+    // Your RYM play history (newest first; cached 10 min) followed by albums played here that aren't in it yet.
     async history() {
-      return played.length ? { items: played } : { message: "Albums you press play on will show up here." };
+      let rec = await store.get("sidebar:rymhist");
+      const err = await store.get("sidebar:rymhist-err");
+      if ((!rec || Date.now() - rec.t > 10 * 60e3) && !(err && Date.now() - err < 15 * 60e3)) {
+        let res = null;
+        try {
+          res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-history" } });
+        } catch {}
+        if (res && res.items) {
+          rec = { t: Date.now(), items: res.items };
+          store.set("sidebar:rymhist", rec);
+        } else if (res && res.error && !/open a rateyourmusic/.test(res.error)) store.set("sidebar:rymhist-err", Date.now());
+      }
+      const theirs = (rec && rec.items) || [];
+      const have = new Set(theirs.map((i) => i.href));
+      const items = [...played.filter((p) => !have.has(p.href)), ...theirs]; // just-played, not yet in RYM's history, first
+      return items.length ? { items } : { message: "Albums you listen to will show up here." };
     },
   };
 
