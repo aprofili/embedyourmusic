@@ -457,7 +457,7 @@ function handleSidebar(msg, sender, sendResponse) {
         const rym = await api.tabs.query({ url: ["*://rateyourmusic.com/*", "*://*.rateyourmusic.com/*"] });
         const pool = msg.urlPart ? rym.filter((t) => (t.url || "").includes(msg.urlPart)) : rym;
         const tab = pool.find((t) => t.id === msg.tabId) || pool.find((t) => t.active) || pool[0];
-        if (!tab) return { error: msg.urlPart ? "open your recommendations page first" : "open a rateyourmusic.com tab first" };
+        if (!tab) return { error: msg.urlPart === "/recommendations/" ? "open your recommendations page first" : msg.urlPart ? "open that album's RYM page first" : "open a rateyourmusic.com tab first" };
         try {
           const res = await api.tabs.sendMessage(tab.id, msg.msg);
           return { ...(res || { error: "no response (reload the RYM tab)" }), tabId: tab.id };

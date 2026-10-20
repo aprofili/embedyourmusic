@@ -269,7 +269,16 @@
       if (!current || !current.payload.id) return { message: "Play an album from its RYM page to see similar albums." };
       const all = await store.get("sidebar:similar");
       const rec = all && all[current.payload.id];
-      return rec && rec.items.length ? { items: rec.items } : { message: "Open this album's RYM page to load its suggestions." };
+      if (rec && rec.items.length) return { items: rec.items };
+      // Not saved yet: ask the album's RYM tab to load and read its Suggestions.
+      let res;
+      try {
+        res = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, urlPart: current.payload.href ? new URL(current.payload.href).pathname : "", msg: { type: "load-similar", id: current.payload.id } });
+      } catch {
+        res = null;
+      }
+      if (res && res.items && res.items.length) return { items: res.items };
+      return { message: `Couldn't load suggestions (${(res && res.error) || "no response"}).` };
     },
     async recommended() {
       const all = await store.get("sidebar:lists");
@@ -449,8 +458,21 @@
   }
 
   // ---- Restore ----
-  Promise.all([store.get(PLAYED_KEY), store.get(LAST_KEY)]).then(([p, last]) => {
+  // Releases before the lists existed kept their history under another key; fold it in once.
+  Promise.all([store.get(PLAYED_KEY), store.get(LAST_KEY), store.get("sidebar:history"), store.get("sidebar:migrated")]).then(([p, last, old, done]) => {
     played = p || [];
+    if (!done && old && old.length) {
+      const have = new Set(played.map((x) => x.href));
+      for (const o of old) {
+        if (o.href && !have.has(o.href)) {
+          played.push({ id: o.id, title: o.title, artist: o.artist, artUrl: o.artUrl, href: o.href });
+          have.add(o.href);
+        }
+      }
+      played = played.slice(0, PLAYED_MAX);
+      store.set(PLAYED_KEY, played);
+    }
+    if (!done) store.set("sidebar:migrated", true);
     if (!current && last) render(last);
   });
 })();

@@ -39,6 +39,7 @@ a {
 }
 
 #rate-box {
+  margin-top: 2px;
   display: flex;
   align-items: center;
   gap: 10px;

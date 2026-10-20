@@ -180,8 +180,60 @@
   // (the same messages its iFrame API uses). Match by track URI when present, else by duration.
   // Set localStorage.eymDebug = "1" to log the raw messages.
   const watchers = [];
+
+  // Which row is the embed playing? It posts playback updates to the parent window; their shape is
+  // undocumented, so try several things in order: a track id anywhere in the message, the track
+  // name, a track-number field, then the duration (closest match; ties go to the track after the
+  // previous one, since albums play in order). Returns an index into rows, or -1.
+  const normTitle = (s) =>
+    String(s || "")
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\p{L}\p{N}]+/gu, "");
+
+  function matchTrack(rows, data, prev = -1) {
+    let text = "";
+    try {
+      text = JSON.stringify(data) || "";
+    } catch {
+      /* not serializable */
+    }
+    const d = data && typeof data === "object" ? data : {};
+    const p = d.payload || d.data || d;
+    // 1. a track id anywhere in the message
+    const byId = rows.findIndex((r) => r.t.id && text.includes(r.t.id));
+    if (byId >= 0) return byId;
+    // 2. the track name (long enough to be distinctive)
+    const flat = normTitle(text);
+    const byName = rows.map((r, i) => [i, normTitle(r.t.name)]).filter(([, n]) => n.length >= 4 && flat.includes(n));
+    if (byName.length === 1) return byName[0][0];
+    // 3. a track-number field
+    for (const k of Object.keys(p || {})) {
+      if (/track.?(num|no|index)/i.test(k) && Number.isInteger(p[k])) {
+        const i = rows.findIndex((r) => r.t.number === p[k]);
+        if (i >= 0) return i;
+      }
+    }
+    // 4. duration
+    const dur = typeof p.duration === "number" ? p.duration : typeof p.durationMs === "number" ? p.durationMs : 0;
+    if (dur > 0) {
+      const near = rows
+        .map((r, i) => ({ i, diff: Math.abs(r.t.ms - dur) }))
+        .filter((x) => x.diff <= 2500)
+        .sort((x, y) => x.diff - y.diff);
+      if (near.length === 1) return near[0].i;
+      if (near.length > 1) {
+        if (near[1].diff - near[0].diff >= 400) return near[0].i; // clearly closest
+        const after = near.filter((x) => x.i > prev).sort((x, y) => x.i - y.i)[0];
+        return (after || near[0]).i;
+      }
+    }
+    return -1;
+  }
+
   function watchPlayback(frame, rows, onHit) {
-    watchers.push({ frame, rows, onHit });
+    watchers.push({ frame, rows, onHit, prev: -1 });
     if (watchers.length > 1) return;
     window.addEventListener("message", (e) => {
       if (e.origin !== "https://open.spotify.com") return;
@@ -190,20 +242,12 @@
       } catch {}
       for (const w of watchers) {
         if (!w.frame.isConnected || e.source !== w.frame.contentWindow) continue;
-        const d = e.data;
-        const p = (d && (d.payload || d.data)) || d || {};
-        const uri = typeof p.playingURI === "string" ? p.playingURI : typeof p.uri === "string" ? p.uri : "";
-        let hit = null;
-        const m = uri.match(/track[:/]([A-Za-z0-9]+)/);
-        if (m) hit = w.rows.find((r) => r.t.id === m[1]);
-        else if (typeof p.duration === "number" && p.duration > 0) {
-          const near = w.rows.filter((r) => Math.abs(r.t.ms - p.duration) <= 1500);
-          if (near.length === 1) hit = near[0];
-        }
-        if (hit) {
-          for (const r of w.rows) r.row.classList.toggle("rym-track-playing", r === hit);
-          if (w.onHit) w.onHit(hit);
-        }
+        const i = matchTrack(w.rows, e.data, w.prev);
+        if (i < 0) continue;
+        w.prev = i;
+        const hit = w.rows[i];
+        for (const r of w.rows) r.row.classList.toggle("rym-track-playing", r === hit);
+        if (w.onHit) w.onHit(hit);
       }
     });
   }
@@ -468,6 +512,27 @@
     saveSidebarData("sidebar:similar", { [id]: { t: Date.now(), items } }, 15);
   }
 
+  // Side panel asks for this page's "Suggestions": they load lazily, so press RYM's own refresh
+  // button if they haven't, then read them. (One RYM request, only when you open Similar.)
+  async function loadSimilar(id) {
+    const ul = document.querySelector(".section_suggestions ul.suggestions");
+    if (!ul || ul.getAttribute("data-assoc-id") !== String(id)) throw new Error("open this album's RYM page first");
+    const read = () => scrapeReleases(ul, 24, location.pathname);
+    let items = read();
+    if (!items.length) {
+      const btn = document.querySelector(".section_suggestions .page_object_section_suggestions_refresh");
+      if (btn) btn.click();
+      for (let i = 0; i < 30 && !items.length; i++) {
+        await new Promise((r) => setTimeout(r, 200));
+        items = read();
+      }
+    }
+    if (!items.length) throw new Error("RYM hasn't loaded the suggestions");
+    ul.dataset.eymSim = "1";
+    saveSidebarData("sidebar:similar", { [id]: { t: Date.now(), items } }, 15);
+    return items;
+  }
+
   // Side panel asked for a release by URL: its streaming links, id and your rating.
   async function loadRelease(item) {
     const rel = globalThis.__eymRelease;
@@ -591,6 +656,12 @@
 
   if (typeof location !== "undefined" && /^https?:$/.test(location.protocol) && api.runtime.onMessage) {
     api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      if (msg && msg.type === "load-similar") {
+        loadSimilar(msg.id)
+          .then((items) => sendResponse({ items }))
+          .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
+        return true;
+      }
       if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites")) {
         (msg.type === "load-release" ? loadRelease(msg.item) : fetchFavorites())
           .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : { items: r }))
@@ -1001,5 +1072,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, saveSidebarData, ORDER, LABELS, addCollapseToggles, buildHero, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, saveSidebarData, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, buildTabs, run };
 })();
