@@ -16,18 +16,31 @@
   let pos = 0;
   let token = 0;
 
-  // Connected while open: this is how pages know to play here.
-  const port = api.runtime.connect({ name: "sidepanel" });
-  port.onMessage.addListener((msg) => {
-    if (msg.type === "play") {
-      const p = { ...msg.payload, tabId: msg.tabId };
-      hist = [p, ...hist.filter((x) => x.href !== p.href)].slice(0, HISTORY_MAX);
-      pos = 0;
-      save();
-      render(p);
+  // Connected while open: this is how pages know to play here. The background worker can be
+  // stopped and restarted by the browser (which drops this port and forgets it), so reconnect on
+  // disconnect and ping periodically to keep it alive.
+  let port;
+  function connect() {
+    port = api.runtime.connect({ name: "sidepanel" });
+    port.onMessage.addListener((msg) => {
+      if (msg.type === "play") {
+        const p = { ...msg.payload, tabId: msg.tabId };
+        hist = [p, ...hist.filter((x) => x.href !== p.href)].slice(0, HISTORY_MAX);
+        pos = 0;
+        save();
+        render(p);
+      } else if (msg.type === "rating" && current && current.payload.id === msg.id) setRating(msg.rating);
+    });
+    port.onDisconnect.addListener(() => setTimeout(connect, 200));
+  }
+  connect();
+  setInterval(() => {
+    try {
+      port.postMessage({ type: "ping" });
+    } catch {
+      /* reconnects via onDisconnect */
     }
-    else if (msg.type === "rating" && current && current.payload.id === msg.id) setRating(msg.rating);
-  });
+  }, 20000);
 
   // ---- Rating ----
   let rating = 0;

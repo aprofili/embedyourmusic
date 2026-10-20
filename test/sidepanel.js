@@ -16,7 +16,7 @@ const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
   const store = {};
   w.chrome = {
     runtime: {
-      connect: () => ({ onMessage: { addListener: (fn) => (onMsg = fn) } }),
+      connect: () => ({ onMessage: { addListener: (fn) => (onMsg = fn) }, onDisconnect: { addListener() {} }, postMessage() {} }),
       sendMessage: async (m) => { sent.push(m); return m.type === "rate" ? { ok: true } : {}; },
     },
     storage: { local: { get: async () => store, set: async (o) => Object.assign(store, o) } },
@@ -60,4 +60,5 @@ const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
   d.getElementById("fwd").click();
   assert.strictEqual(d.getElementById("title").textContent, "Second");
   console.log("sidepanel tests passed");
+  process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
