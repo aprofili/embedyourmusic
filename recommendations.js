@@ -15,7 +15,7 @@
   // Streaming links for a release, from the shared cache or one throttled request.
   function linksFor(path, id, want) {
     return rel
-      .get(id, path)
+      .getLinks(id, path)
       .then((r) => (r.links ? parseLinks(r.links) : []))
       .catch((e) => {
         if (!want) throw e;

@@ -86,6 +86,36 @@ function make() {
   const before = log.length;
   assert.strictEqual(w.__eymRelease.peek("999"), null);
   assert.strictEqual(log.length, before);
+  // ---- Extra savings ----
+  {
+    const m = make();
+    const R = m.w.__eymRelease;
+    // a release page you open yourself fills the cache: later lookups cost nothing
+    R.put("50", { rating: 8, ratingKnown: true, links: '{"spotify":{}}' });
+    await R.get("50", "/release/x/50");
+    assert.strictEqual(m.log.length, 0, "put fills the cache");
+    // links survive the 20 min unrated expiry
+    R.put("51", { rating: 0, ratingKnown: true, links: '{"spotify":{}}' });
+    m.w.localStorage.setItem("eym:rel:51", JSON.stringify({ t: Date.now() - 3 * 3600e3, rating: 0, ratingKnown: true, links: '{"spotify":{}}' }));
+    const l = await R.getLinks("51", "/release/x/51");
+    assert.strictEqual(m.log.length, 0, "stale links reused for playing");
+    assert.ok(l.links.includes("spotify"));
+    // by-URL lookups dedupe and are remembered
+    const [x, y] = await Promise.all([R.getByHref("/release/a/b/7"), R.getByHref("/release/a/b/7")]);
+    assert.strictEqual(m.log.length, 1);
+    assert.strictEqual(x.id, "7");
+    await R.getByHref("/release/a/b/7");
+    assert.strictEqual(m.log.length, 1, "second click costs nothing");
+    // a failing page isn't re-requested for 5 minutes
+    m.setStatus(404);
+    await assert.rejects(() => R.get("60", "/release/x/60"));
+    const n2 = m.log.length;
+    await assert.rejects(() => R.get("60", "/release/x/60"));
+    assert.strictEqual(m.log.length, n2, "failure remembered");
+    // other requests to RYM can trip the same pause
+    R.noteStatus(429);
+    assert.ok(R.blocked());
+  }
   console.log("release-data tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

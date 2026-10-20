@@ -507,7 +507,10 @@
     if (!me) throw new Error("not signed in");
     const user = me.getAttribute("href").slice(2).replace(/\/.*$/, "");
     const res = await fetch(`/collection/${user}/r4.0-5.0/`, { credentials: "same-origin" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      if (rel) rel.noteStatus(res.status);
+      throw new Error(rel && rel.blocked() ? rel.blockMessage() : `HTTP ${res.status}`);
+    }
     const doc = new DOMParser().parseFromString(await res.text(), "text/html");
     let items = scrapeReleases(doc, 300);
     // If the page shows each row's rating, keep only 4+ (guards against an unfiltered list).
@@ -957,7 +960,22 @@
     });
   }
 
+  // Opening a release page tells the shared cache its rating and links, so nothing needs fetching later.
+  function recordThisRelease() {
+    const rel = globalThis.__eymRelease;
+    const box = document.querySelector('[id^="my_catalog_rating_l_"]');
+    const holder = document.querySelector(".media_link_container[data-links]");
+    if (!rel || !rel.put || !box || document.documentElement.dataset.eymRecorded) return;
+    const id = box.id.replace("my_catalog_rating_l_", "");
+    const stars = document.getElementById(`rating_stars_l_${id}`);
+    const m = stars && /star-(\d+)m/.exec(stars.className);
+    if (!m) return;
+    document.documentElement.dataset.eymRecorded = "1";
+    rel.put(id, { rating: Number(m[1]), ratingKnown: true, links: holder ? holder.getAttribute("data-links") : null });
+  }
+
   function run() {
+    recordThisRelease();
     addNavLink();
     buildHero();
     addCollapseToggles(document);

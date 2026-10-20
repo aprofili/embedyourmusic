@@ -41,12 +41,31 @@
     return null;
   }
 
+  // Streaming links never change, so for "just play it" a record of any age (up to 30 days) will do.
+  const LINKS_TTL = 30 * 24 * 3600 * 1000;
+  function cachedAny(id) {
+    try {
+      const rec = JSON.parse(store.get(key(id)));
+      if (rec && rec.links && Date.now() - rec.t < LINKS_TTL) return rec;
+    } catch {}
+    return null;
+  }
+
   const blockedUntil = () => Number(store.get(BLOCK_KEY)) || 0;
   const blocked = () => blockedUntil() > Date.now();
 
   let tail = Promise.resolve();
   const inflight = new Map();
   let lastFetch = 0;
+
+  // Any request to RYM (ours or the collection fetch) reports its status here.
+  function noteStatus(status) {
+    if (![403, 429, 503].includes(status)) return;
+    const count = (Number(store.get(COUNT_KEY)) || 0) + 1;
+    store.set(COUNT_KEY, String(count));
+    store.set(STATUS_KEY, String(status));
+    store.set(BLOCK_KEY, String(Date.now() + BLOCK_LADDER[Math.min(count, BLOCK_LADDER.length) - 1]));
+  }
 
   async function network(id, href) {
     const wait = lastFetch + GAP_MS - Date.now();
@@ -55,12 +74,7 @@
     lastFetch = Date.now();
     const res = await fetch(href, { credentials: "same-origin" });
     if (!res.ok) {
-      if ([403, 429, 503].includes(res.status)) {
-        const count = (Number(store.get(COUNT_KEY)) || 0) + 1;
-        store.set(COUNT_KEY, String(count));
-        store.set(STATUS_KEY, String(res.status));
-        store.set(BLOCK_KEY, String(Date.now() + BLOCK_LADDER[Math.min(count, BLOCK_LADDER.length) - 1]));
-      }
+      noteStatus(res.status);
       throw new Error(res.status === 404 ? "not found" : blocked() ? blockMessage() : `HTTP ${res.status}`);
     }
     store.set(COUNT_KEY, "0");
@@ -94,12 +108,25 @@
   }
 
   // -> Promise<{ rating, ratingKnown, links }>; rejects on failure.
+  const failed = new Map(); // key -> { until, message }: don't re-ask RYM about a page that just failed
+  const remember = (k, e) => {
+    if (!blocked()) failed.set(k, { until: Date.now() + 5 * 60e3, message: String((e && e.message) || e) });
+    throw e;
+  };
+  const recall = (k) => {
+    const f = failed.get(k);
+    if (!f || f.until < Date.now()) return null;
+    return Promise.reject(new Error(f.message));
+  };
+
   function get(id, href) {
     const hit = cached(id);
     if (hit) return Promise.resolve(hit);
     if (blocked()) return Promise.reject(new Error(blockMessage()));
+    const bad = recall(id);
+    if (bad) return bad;
     if (!inflight.has(id)) {
-      const job = tail.then(() => network(id, href));
+      const job = tail.then(() => network(id, href)).catch((e) => remember(id, e));
       tail = job.catch(() => {});
       inflight.set(
         id,
@@ -107,6 +134,12 @@
       );
     }
     return inflight.get(id);
+  }
+
+  // For playing: stale records are fine (links don't change); otherwise like get().
+  function getLinks(id, href) {
+    const any = cachedAny(id);
+    return any ? Promise.resolve(any) : get(id, href);
   }
 
   // Same, when only the release URL is known (side panel lists). Returns { id, rating, ratingKnown, links }.
@@ -117,16 +150,32 @@
       return `eym:href:${href}`;
     }
   };
-  async function getByHref(href) {
+  const hrefJobs = new Map();
+  function getByHref(href) {
     const known = store.get(hrefKey(href));
-    const hit = known && cached(known);
-    if (hit) return { ...hit, id: known };
-    if (blocked()) throw new Error(blockMessage());
-    const job = tail.then(() => network(null, href));
-    tail = job.catch(() => {});
-    const rec = await job;
-    if (rec.id) store.set(hrefKey(href), rec.id);
-    return rec;
+    const hit = known && cachedAny(known);
+    if (hit) return Promise.resolve({ ...hit, id: known });
+    if (blocked()) return Promise.reject(new Error(blockMessage()));
+    const bad = recall(href);
+    if (bad) return bad;
+    if (!hrefJobs.has(href)) {
+      const job = tail
+        .then(() => network(null, href))
+        .then((rec) => {
+          if (rec.id) store.set(hrefKey(href), rec.id);
+          return rec;
+        })
+        .catch((e) => remember(href, e));
+      tail = job.catch(() => {});
+      hrefJobs.set(href, job.finally(() => hrefJobs.delete(href)));
+    }
+    return hrefJobs.get(href);
+  }
+
+  // A release page you open yourself already holds everything: store it, zero requests.
+  function put(id, rec) {
+    if (!id) return;
+    store.set(key(id), JSON.stringify({ t: Date.now(), rating: 0, ratingKnown: false, links: null, ...rec }));
   }
 
   // Keep the cache right after you rate something on the page.
@@ -137,5 +186,5 @@
     } catch {}
   }
 
-  globalThis.__eymRelease = { get, getByHref, peek, setRating, blocked, blockMessage, clearBlock };
+  globalThis.__eymRelease = { get, getLinks, getByHref, put, noteStatus, peek, setRating, blocked, blockMessage, clearBlock };
 })();

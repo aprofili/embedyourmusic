@@ -283,7 +283,9 @@
     },
     async favorites() {
       let rec = await store.get(FAVS_KEY);
-      if (!rec || Date.now() - rec.t > FAVS_TTL) {
+      const err = await store.get("sidebar:favs-err");
+      const backoff = err && Date.now() - err < 15 * 60e3; // don't hammer RYM after a failure
+      if ((!rec || Date.now() - rec.t > FAVS_TTL) && !backoff) {
         let res;
         try {
           res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-favorites" } });
@@ -293,9 +295,14 @@
         if (res && res.items) {
           rec = { t: Date.now(), items: res.items };
           store.set(FAVS_KEY, rec);
-        } else if (!rec) {
+        } else if (res && res.error && !/open a rateyourmusic/.test(res.error)) {
+          store.set("sidebar:favs-err", Date.now());
+        }
+        if (!rec) {
           return { message: `Couldn't load your 4+ star albums (${(res && res.error) || "no response"}).` };
         }
+      } else if (!rec) {
+        return { message: "Couldn't load your 4+ star albums a moment ago; try again in a few minutes." };
       }
       return { items: shuffle(rec.items) };
     },
