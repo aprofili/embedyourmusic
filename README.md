@@ -1,5 +1,7 @@
 # EmbedYourMusic
 
+<img src="store/logo-300.png" width="96" alt="EmbedYourMusic logo">
+
 Browser extension (Edge, Firefox) that replaces Spotify and Bandcamp links on rateyourmusic.com with inline players. Personal use.
 
 ## How it works

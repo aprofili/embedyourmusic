@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "EmbedYourMusic",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Turns Spotify and Bandcamp links on rateyourmusic.com into inline embedded players.",
   "permissions": [
     "storage",
@@ -67,5 +67,11 @@
       }
     ]
   },
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw8by23Xvi66fRuBZQwSWhe/aGzKb9hJjTiremdcyTYywOt7vSbzafckG7wJUlcjjCBhoW2RYItQv74Ln1xnZsZSXkqOn97dFnKLpIggR5od7E7Gr792P84ZCQ9pKLyrXLPuhvHWZRqkcwQ4WewB7MBDzPUZ5lFudjmugSnyv7lphmzXFU6X9WFTAR1NFXCKZHE/7lougqxMcMvLLscvOTpQfrAyp/vIyv3q8g+c53/I1LzYK6gthL2bcTn8ENFHM9aEb/3CqTtXigEVv8GF30HrusE0KFb1JUrpfVMym6BdWqnlkhaWIyR7m7yO6dao0cucS31cUROq9y/NvU1T6xQIDAQAB"
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw8by23Xvi66fRuBZQwSWhe/aGzKb9hJjTiremdcyTYywOt7vSbzafckG7wJUlcjjCBhoW2RYItQv74Ln1xnZsZSXkqOn97dFnKLpIggR5od7E7Gr792P84ZCQ9pKLyrXLPuhvHWZRqkcwQ4WewB7MBDzPUZ5lFudjmugSnyv7lphmzXFU6X9WFTAR1NFXCKZHE/7lougqxMcMvLLscvOTpQfrAyp/vIyv3q8g+c53/I1LzYK6gthL2bcTn8ENFHM9aEb/3CqTtXigEVv8GF30HrusE0KFb1JUrpfVMym6BdWqnlkhaWIyR7m7yO6dao0cucS31cUROq9y/NvU1T6xQIDAQAB",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
 }

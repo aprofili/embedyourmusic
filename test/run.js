@@ -23,6 +23,8 @@ JSON.parse(read("rules.json"));
 assert.deepStrictEqual(manifest.background, { service_worker: "background.js" });
 assert.ok(!("browser_specific_settings" in manifest));
 
+for (const s of [16, 32, 48, 128]) assert.ok(fs.existsSync(path.join(root, manifest.icons[s])), `icon ${s} missing`);
+
 // Build outputs
 require("child_process").execFileSync("node", [path.join(root, "build.js")], { stdio: "ignore" });
 const ff = JSON.parse(read("dist/firefox/manifest.json"));
@@ -34,6 +36,7 @@ for (const d of ["chromium", "firefox"]) {
   for (const f of ["manifest.json", "background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "release-data.js", "rules.json"]) {
     assert.ok(fs.existsSync(path.join(root, "dist", d, f)), `dist/${d}/${f} missing`);
   }
+  assert.ok(fs.existsSync(path.join(root, "dist", d, "icons/icon-128.png")), `dist/${d} icons missing`);
 }
 
 (async () => {

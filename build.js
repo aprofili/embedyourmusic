@@ -28,6 +28,7 @@ function emit(name, manifest, files = FILES) {
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
   for (const f of files) fs.copyFileSync(path.join(root, f), path.join(dir, f));
+  fs.cpSync(path.join(root, "icons"), path.join(dir, "icons"), { recursive: true });
   fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   console.log(`built dist/${name}`);
 }
