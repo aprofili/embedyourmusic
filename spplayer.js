@@ -277,19 +277,23 @@
         if (idx + 1 < tracks.length) return select(idx + 1, true);
         want = false;
       }
-      if (!st.paused) {
-        heard.set(idx, Math.max(heard.get(idx) || 0, st.pos));
-        const done = [...heard.values()].filter((ms) => ms >= 20000).length;
-        if (!fired && opts.onListened && done >= Math.min(4, tracks.length)) {
-          fired = true;
-          opts.onListened();
-        }
-      }
       paint();
     });
 
+    // Wall-clock listening time per song (doesn't depend on the embed's progress messages).
+    setInterval(() => {
+      if (!root.isConnected || idx < 0 || !want || (st.seen && st.paused)) return;
+      const secs = (heard.get(idx) || 0) + 1000;
+      heard.set(idx, secs);
+      if (!fired && opts.onListened && [...heard.values()].filter((ms) => ms >= 20000).length >= Math.min(4, tracks.length)) {
+        fired = true;
+        opts.onListened();
+      }
+    }, 1000);
+
     paint();
     tint(root, payload, kind, id);
+    if (opts.autoplay !== false) setTimeout(() => idx < 0 && select(0, true), 0);
     return root;
   }
 

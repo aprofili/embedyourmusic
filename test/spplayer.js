@@ -54,7 +54,8 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   assert.ok(d.querySelector(".sp-album").textContent.includes("Save album"));
   // hidden iframe until a song is chosen; clicking a row loads that track in it
   const frame = d.querySelector(".sp-frame");
-  assert.ok(!frame.src);
+  assert.ok(frame.src.includes("/embed/track/t1"), "autoplays the first song");
+  assert.ok(d.querySelectorAll(".sp-row")[0].classList.contains("sp-current"));
   const posted = [];
   d.querySelectorAll(".sp-row")[1].click();
   assert.ok(frame.src.includes("/embed/track/t2"));

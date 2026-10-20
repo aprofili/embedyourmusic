@@ -241,6 +241,18 @@
           if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
           const frame = makeFrame(info.src, info.height, `${LABELS[service]} player`);
           slot.append(frame);
+          if (service === "spotify") {
+            // Best effort: once the embed reports it is paused, press play for the user.
+            const kick = (e) => {
+              if (e.origin !== "https://open.spotify.com" || e.source !== frame.contentWindow) return;
+              const d = e.data && typeof e.data === "object" ? e.data : {};
+              const q = d.payload || d.data || d;
+              if (typeof q.isPaused !== "boolean") return;
+              window.removeEventListener("message", kick);
+              if (q.isPaused) frame.contentWindow.postMessage({ command: "toggle" }, "*");
+            };
+            window.addEventListener("message", kick);
+          }
           const list = service === "spotify" && trackList(info, frame, { compact: true, onListened: () => markListening(payload) });
           if (list) slot.append(list);
         };
