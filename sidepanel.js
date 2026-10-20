@@ -33,13 +33,13 @@
   let rating = 0;
   let hover = 0;
 
-  function drawStars() {
+  // Built once and updated in place: rebuilding on hover would remove the element under the
+  // pointer, so its mouseleave would never fire and the hover value would stick.
+  const starEls = [];
+  function buildStars() {
     const box = $("rating");
-    box.textContent = "";
-    const shown = hover || rating;
     for (let i = 1; i <= 5; i++) {
       const star = document.createElement("span");
-      star.className = "star " + (shown >= i * 2 ? "full" : shown === i * 2 - 1 ? "half" : "");
       star.textContent = "★";
       for (const [side, value] of [["l", i * 2 - 1], ["r", i * 2]]) {
         const b = document.createElement("button");
@@ -50,16 +50,29 @@
           hover = value;
           drawStars();
         });
-        b.addEventListener("mouseleave", () => {
-          hover = 0;
-          drawStars();
-        });
         b.addEventListener("click", () => rate(value));
         star.append(b);
       }
+      starEls.push(star);
       box.append(star);
     }
+    const clear = () => {
+      hover = 0;
+      drawStars();
+    };
+    box.addEventListener("mouseleave", clear);
+    document.documentElement.addEventListener("mouseleave", clear);
+    window.addEventListener("blur", clear);
   }
+
+  function drawStars() {
+    const shown = hover || rating;
+    starEls.forEach((star, idx) => {
+      const i = idx + 1;
+      star.className = "star " + (shown >= i * 2 ? "full" : shown === i * 2 - 1 ? "half" : "");
+    });
+  }
+  buildStars();
 
   function setRating(value) {
     rating = value;
