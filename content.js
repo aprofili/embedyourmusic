@@ -1252,7 +1252,10 @@
     if (!m) return;
     document.documentElement.dataset.eymRecorded = "1";
     const meta = rel.extractMeta ? rel.extractMeta(document) : { links: holder ? holder.getAttribute("data-links") : null };
-    rel.put(id, { rating: Number(m[1]), ratingKnown: true, ...meta });
+    rel.put(id, { rating: Number(m[1]), ratingKnown: true, ...meta }, location.pathname);
+    try {
+      api.runtime.sendMessage({ type: "release-recorded" }).catch(() => {});
+    } catch {}
   }
 
   function run() {

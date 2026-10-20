@@ -86,12 +86,37 @@
     store.set(BLOCK_KEY, String(Date.now() + BLOCK_LADDER[Math.min(count, BLOCK_LADDER.length) - 1]));
   }
 
+  // Background-tab fallback (extension only). The tab's content script stores the record; read it back.
+  async function openInTab(href) {
+    try {
+      const rt = globalThis.chrome && chrome.runtime;
+      if (!rt || !rt.sendMessage || !rt.id) return null;
+      const res = await rt.sendMessage({ type: "open-release", href });
+      if (!res || !res.ok) return null;
+      const id = store.get(hrefKey(href));
+      let rec = null;
+      try {
+        rec = id && JSON.parse(store.get(key(id)));
+      } catch {}
+      if (!rec) return null;
+      store.set(COUNT_KEY, "0");
+      return { ...rec, id, net: true };
+    } catch {
+      return null;
+    }
+  }
+
   async function network(id, href) {
     const wait = lastFetch + GAP_MS - Date.now();
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     if (blocked()) throw new Error(blockMessage());
     lastFetch = Date.now();
     const res = await fetch(href, { credentials: "same-origin" });
+    if (res.status === 403) {
+      // Bot check on a script request: a real page load in a background tab usually gets through.
+      const viaTab = await openInTab(href);
+      if (viaTab) return viaTab;
+    }
     if (!res.ok) {
       noteStatus(res.status);
       throw new Error(res.status === 404 ? "not found" : blocked() ? blockMessage() : `HTTP ${res.status}`);
@@ -192,8 +217,9 @@
   }
 
   // A release page you open yourself already holds everything: store it, zero requests.
-  function put(id, rec) {
+  function put(id, rec, path) {
     if (!id) return;
+    if (path) store.set(hrefKey(path), id);
     store.set(key(id), JSON.stringify({ t: Date.now(), rating: 0, ratingKnown: false, links: null, ...rec }));
   }
 

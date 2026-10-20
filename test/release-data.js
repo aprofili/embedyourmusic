@@ -116,6 +116,28 @@ function make() {
     R.noteStatus(429);
     assert.ok(R.blocked());
   }
+  // 403 on a script fetch: fall back to a background tab, whose page records itself in the cache
+  {
+    const m = make();
+    const R = m.w.__eymRelease;
+    m.setStatus(403);
+    const asked = [];
+    m.w.chrome = {
+      runtime: {
+        id: "x",
+        sendMessage: async (msg) => {
+          asked.push(msg);
+          m.w.localStorage.setItem("eym:rel:555", JSON.stringify({ t: Date.now(), rating: 0, ratingKnown: true, links: '{"spotify":{}}', title: "T" }));
+          m.w.localStorage.setItem("eym:href:/release/album/a/t/", "555");
+          return { ok: true };
+        },
+      },
+    };
+    const rec = await R.getByHref("https://rateyourmusic.com/release/album/a/t/");
+    assert.strictEqual(asked[0].type, "open-release");
+    assert.strictEqual(rec.id, "555");
+    assert.ok(!R.blocked(), "tab success means no pause");
+  }
   console.log("release-data tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

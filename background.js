@@ -435,7 +435,8 @@ if (api.sidePanel && api.sidePanel.setPanelBehavior) {
 // open, else any RYM tab. Resolves to the tab's reply plus { tabId }, or { error }.
 async function relay(tabId, urlPart, message) {
   const rym = await api.tabs.query({ url: ["*://rateyourmusic.com/*", "*://*.rateyourmusic.com/*"] });
-  const pool = urlPart ? rym.filter((t) => (t.url || "").includes(urlPart)) : rym;
+  const real = rym.filter((t) => !scratch.has(t.id));
+  const pool = urlPart ? real.filter((t) => (t.url || "").includes(urlPart)) : real;
   const tab = pool.find((t) => t.id === tabId) || pool.find((t) => t.active) || pool[0];
   if (!tab) {
     return { error: urlPart === "/recommendations/" ? "open your recommendations page first" : urlPart ? "open that album's RYM page first" : "open a rateyourmusic.com tab first" };
@@ -446,6 +447,36 @@ async function relay(tabId, urlPart, message) {
   } catch {
     return { error: "no response (reload the RYM tab)" };
   }
+}
+
+// Fallback when RYM refuses a background fetch (bot check): load the release page the way you would,
+// in a background tab. Its content script records the page into the shared cache, then the tab closes.
+const scratch = new Map(); // tabId -> resolve
+function openRelease(href) {
+  if (!/^https:\/\/([\w-]+\.)?rateyourmusic\.com\/release\//.test(href)) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let tabId;
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (tabId != null) {
+        scratch.delete(tabId);
+        api.tabs.remove(tabId).catch(() => {});
+      }
+      resolve(ok);
+    };
+    const timer = setTimeout(() => finish(false), 25000);
+    api.tabs
+      .create({ url: href, active: false })
+      .then((tab) => {
+        tabId = tab.id;
+        if (done) return api.tabs.remove(tabId).catch(() => {});
+        scratch.set(tabId, finish);
+      })
+      .catch(() => finish(false));
+  });
 }
 
 function handleSidebar(msg, sender, sendResponse) {
@@ -488,6 +519,16 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && typeof msg.type === "string" && msg.type.startsWith("spotify-")) {
     handleSpotify(msg).then(sendResponse);
     return true;
+  }
+  if (msg && msg.type === "open-release") {
+    openRelease(msg.href).then((ok) => sendResponse({ ok }));
+    return true;
+  }
+  if (msg && msg.type === "release-recorded") {
+    const fin = _sender.tab && scratch.get(_sender.tab.id);
+    if (fin) fin(true);
+    sendResponse({});
+    return false;
   }
   if (msg && msg.type === "find-album") {
     findAlbum(msg.want)
