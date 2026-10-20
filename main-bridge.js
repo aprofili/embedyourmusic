@@ -4,7 +4,7 @@
 //  - "suggestions": run RYM's own SuggestionsLoad for a release into the hidden list
 //    #suggestions_release_<id> that the requester created (the album page doesn't need to be open).
 //  - "rate": RYM's own CatalogSetRating for a release.
-//  - "listening": RYM's own "Set listening" request (AddPlayHistory) for a release.
+//  - "listening": RYM's own "Set listening" request (AddPlayHistoryFromText) for a release.
 (() => {
   const loadScript = (path, ready, cb) => {
     if (ready()) return cb();
@@ -34,8 +34,8 @@
 
   function listening(id) {
     try {
-      // Same request as RYM's "Set listening" with no track selected (the album itself).
-      window.rym.request.post("AddPlayHistory", { object: "release", assoc_id: id, track_id: "", comments: "" }, null, "script");
+      // Same request as the "Set" box on your profile: AddPlayHistoryFromText with the [AlbumID] shortcut.
+      window.rym.request.post("AddPlayHistoryFromText", { play_str: `[Album${id}]` }, null, "script");
     } catch (e) {
       console.warn("[EmbedYourMusic] set listening failed", e);
     }
