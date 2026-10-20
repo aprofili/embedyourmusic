@@ -251,3 +251,27 @@ a {
   font: inherit;
   cursor: pointer;
 }
+
+.item.rated img,
+.item.rated span {
+  opacity: 0.4;
+}
+
+.item .x {
+  flex: none;
+  margin-left: auto;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.item .x:hover {
+  color: var(--fg);
+}
+
+.item span {
+  flex: 1;
+}

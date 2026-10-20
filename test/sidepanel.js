@@ -97,10 +97,21 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   more.click();
   assert.strictEqual(d.querySelectorAll('.acc[data-kind="recommended"] .item').length, 30);
 
+  // Rated rows are dimmed; the X excludes through the recommendations tab and removes the row
+  store["sidebar:lists"].recommended.items[0].rated = true;
+  store["sidebar:lists"].recommended.items[0].id = "101";
+  head("recommended").click(); head("recommended").click(); await tick(); // close + reopen
+  assert.ok(d.querySelector('.acc[data-kind="recommended"] .item').classList.contains("rated"));
+  const before = d.querySelectorAll('.acc[data-kind="recommended"] .item').length;
+  d.querySelector('.acc[data-kind="recommended"] .item .x').click();
+  await tick();
+  assert.ok(sent.some((m) => m.type === "to-rym" && m.urlPart === "/recommendations/" && m.msg.type === "exclude" && m.msg.id === "101"));
+  assert.ok(d.querySelectorAll('.acc[data-kind="recommended"] .item').length <= before);
+
   // Playing a list item loads it through the RYM tab and plays it here
   d.querySelector('.acc[data-kind="recommended"] .item').click();
   await tick(5);
-  assert.strictEqual(d.querySelector("#tabs a").getAttribute("href"), "https://rateyourmusic.com/release/album/a/r0/");
+  assert.strictEqual(d.querySelector("#tabs a").getAttribute("href"), "https://rateyourmusic.com/release/album/a/r1/"); // r0 was excluded
   assert.ok(sent.some((m) => m.type === "to-rym" && m.msg.type === "load-release"));
 
   // Favorites fetched once and cached

@@ -271,7 +271,7 @@
     }
   }
 
-  // Save the Recommends / Challenge lists for the side panel (rows you've rated are left out).
+  // Save the Recommends / Challenge lists for the side panel (rated rows are flagged so it can dim them).
   let listTimer;
   function publishLists() {
     if (standalone) return;
@@ -282,9 +282,12 @@
         if (!ol) return [];
         const out = [];
         for (const li of ol.querySelectorAll("li.component_discography_item")) {
-          if (li.classList.contains("rym-rated") || (li.dataset.eymRating && li.dataset.eymRating !== "0")) continue;
-          out.push(...scrapeReleases(li, 1));
-          if (out.length >= 60) break;
+          const [item] = scrapeReleases(li, 1);
+          if (!item) continue;
+          item.id = (li.id || "").replace("component_discography_item_", "");
+          item.rated = li.classList.contains("rym-rated") || (!!li.dataset.eymRating && li.dataset.eymRating !== "0");
+          out.push(item);
+          if (out.length >= 80) break;
         }
         return out;
       };

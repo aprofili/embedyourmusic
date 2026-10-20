@@ -356,6 +356,21 @@
         label.textContent = row.title;
         row.append(img, label);
         row.addEventListener("click", () => playItem(item));
+        if (item.rated) row.classList.add("rated");
+        if (kind === "recommended" || kind === "challenge") {
+          const x = document.createElement("button");
+          x.type = "button";
+          x.className = "x";
+          x.textContent = "✕";
+          x.title = "Exclude from recommendations";
+          x.addEventListener("click", (e) => {
+            e.stopPropagation();
+            exclude(kind, item, items);
+            shown = Math.min(shown, items.length);
+            paint();
+          });
+          row.append(x);
+        }
         list.append(row);
       }
       more.hidden = shown >= items.length;
@@ -366,6 +381,18 @@
     });
     paint();
     body.append(list, more);
+  }
+
+  // The X: press the exclude button on your recommendations page, and drop it from the saved list.
+  async function exclude(kind, item, items) {
+    const at = items.indexOf(item);
+    if (at >= 0) items.splice(at, 1);
+    api.runtime.sendMessage({ type: "to-rym", urlPart: "/recommendations/", msg: { type: "exclude", id: item.id } }).catch(() => {});
+    const all = await store.get("sidebar:lists");
+    if (all && all[kind]) {
+      all[kind].items = all[kind].items.filter((i) => i.id !== item.id);
+      store.set("sidebar:lists", all);
+    }
   }
 
   async function openList(acc) {

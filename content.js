@@ -594,6 +594,13 @@
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
       }
+      if (msg && msg.type === "exclude") {
+        // Side panel's X: press the row's own exclude button on the recommendations page.
+        const x = document.querySelector(`#component_discography_item_${CSS.escape(String(msg.id))} .component_discography_item_exclude i, #component_discography_item_${CSS.escape(String(msg.id))} .component_discography_item_exclude`);
+        if (x) x.click();
+        sendResponse({ ok: !!x });
+        return false;
+      }
       if (!msg || msg.type !== "rate") return false;
       const box = document.getElementById(`my_catalog_rating_l_${msg.id}`);
       if (!box) sendResponse({ ok: false, error: "rating widget not found on that page" });
