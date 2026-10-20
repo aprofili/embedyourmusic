@@ -276,3 +276,22 @@ a {
 .item span {
   flex: 1;
 }
+
+button.rym-like-count {
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.rym-like-count:hover,
+button.rym-like-count.rym-open {
+  border-color: var(--line);
+  color: var(--fg);
+}
+
+.rym-tracks .rym-tracks-list {
+  max-height: 40vh;
+}

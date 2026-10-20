@@ -292,14 +292,24 @@
     like.type = "button";
     like.className = "rym-like-current";
     like.hidden = true;
-    const count = document.createElement("span");
+    const count = document.createElement(compact ? "button" : "span");
     count.className = "rym-like-count";
     count.hidden = true;
+    // Compact mode: clicking the count opens the full track list with a ♥ per song.
+    const panel = document.createElement("div");
+    panel.className = "rym-tracks-list";
+    panel.hidden = true;
+    let onSaved = () => {};
     if (compact) {
+      count.type = "button";
+      count.addEventListener("click", () => {
+        panel.hidden = !panel.hidden;
+        count.classList.toggle("rym-open", !panel.hidden);
+      });
       const bar = document.createElement("div");
       bar.className = "rym-like-bar";
       bar.append(count, like);
-      box.append(bar);
+      box.append(bar, panel);
     }
 
     const note = (text) => {
@@ -357,27 +367,33 @@
           const want = !t.saved;
           t.saved = want; // optimistic
           paint();
+          onSaved();
           const r = await send({ type: "spotify-save", id: t.id, save: want });
           if (r.error) {
             t.saved = !want;
             paint();
+            onSaved();
             heart.title = `Failed: ${r.error}`;
           }
         });
         const label = document.createElement("span");
         label.textContent = `${res.tracks.length > 1 ? `${t.number}. ` : ""}${t.name}  ${fmtTime(t.ms)}`;
         row.append(heart, label);
-        if (!compact) list.append(row);
+        (compact ? panel : list).append(row);
       }
       if (compact) {
         let cur = null;
         const paintCount = () => {
           count.textContent = `♥ ${rows.filter((r) => r.t.saved).length}/${rows.length}`;
           const liked = rows.filter((r) => r.t.saved).map((r) => `♥ ${r.t.number ? r.t.number + ". " : ""}${r.t.name}`);
-          count.title = liked.length ? liked.join("\n") : "None of this release is in your Liked Songs yet";
+          count.title = (liked.length ? liked.join("\n") : "None of this release is in your Liked Songs yet") + "\n(click for the track list)";
           count.hidden = false;
         };
         paintCount();
+        onSaved = () => {
+          paintCount();
+          if (cur) paintLike();
+        };
         const paintLike = () => {
           paintCount();
           const t = cur.t;

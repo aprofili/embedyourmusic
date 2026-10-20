@@ -96,8 +96,20 @@ const header = '<a class="header_profile_main" href="/~jkprilfools"></a>';
       if (m.type === "spotify-tracks") return { tracks: rows.map((r) => ({ ...r.t, saved: false })) };
       return {};
     };
-    trackList({ key: "spotify:album:abc" }, frame, { compact: true, onListened: () => fired++ });
+    const box = trackList({ key: "spotify:album:abc" }, frame, { compact: true, onListened: () => fired++ });
+    w.document.body.append(box);
     await tick(10);
+    // Clicking the liked count opens the per-song list with a heart each
+    const cnt = box.querySelector(".rym-like-count");
+    const panel = [...box.querySelectorAll(".rym-tracks-list")].find((p) => !p.querySelector(".rym-embed-msg") && p.hidden !== undefined && p.previousElementSibling && p.previousElementSibling.classList.contains("rym-like-bar"));
+    assert.ok(panel.hidden && cnt.textContent === "♥ 0/5");
+    cnt.click();
+    assert.ok(!panel.hidden);
+    assert.strictEqual(panel.querySelectorAll(".rym-heart").length, 5);
+    panel.querySelectorAll(".rym-heart")[1].click();
+    await tick(5);
+    assert.strictEqual(cnt.textContent, "♥ 1/5", "count follows the hearts");
+    assert.ok(/2\. Track 2/.test(cnt.title));
     const post = (uri, position, isPaused = false) => {
       const ev = new w.MessageEvent("message", { data: { type: "playback_update", payload: { playingURI: `spotify:track:${uri}`, position, isPaused } }, origin: "https://open.spotify.com", source: frame.contentWindow });
       w.dispatchEvent(ev);
