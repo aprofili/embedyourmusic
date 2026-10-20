@@ -28,5 +28,13 @@ vm.runInContext(block + "\nthis.pickAlbum = pickAlbum; this.findAlbumLinks = fin
   // A failing service doesn't break the other
   const half = await ctx.findAlbumLinks(want, async (u) => { if (u.includes("itunes")) throw new Error("x"); return getText(u); });
   assert.strictEqual(half.length, 1);
+  // Romanized artist + native-script title (RYM: "Long Goodbye [ロングッドバイ]" by Kinoko Teikoku)
+  const w2 = { artist: "Kinoko Teikoku きのこ帝国", title: "Long Goodbye ローグッドバイ", year: 2013 };
+  const hit = ctx.pickAlbum(w2, [
+    { title: "Eureka", artist: "Kinoko Teikoku", year: 2015, href: "no" },
+    { title: "ロングッドバイ", artist: "Kinokoteikoku", year: 2013, href: "yes" },
+  ]);
+  assert.ok(hit && hit.href === "yes", "fuzzy native-script match");
+  assert.strictEqual(ctx.pickAlbum(w2, [{ title: "ロングッドバイ", artist: "Someone Else", year: 2013, href: "x" }]), null);
   console.log("find tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });

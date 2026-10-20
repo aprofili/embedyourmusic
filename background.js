@@ -74,6 +74,8 @@ function parseBandcampEmbed(html) {
 
 // <shared:find>
 // Finds streaming links for a release by artist/title/year when RYM's own page can't be fetched.
+// Keeps letters/digits of any script (Japanese titles etc.); drops punctuation, bracketed notes
+// and edition words. Spaces are removed so "Kinoko Teikoku" == "Kinokoteikoku".
 const normName = (s) =>
   String(s || "")
     .toLowerCase()
@@ -81,23 +83,57 @@ const normName = (s) =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\(.*?\)|\[.*?\]/g, " ")
     .replace(/\b(ep|single|deluxe|remaster(ed)?|edition)\b/g, " ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+    .replace(/[^\p{L}\p{N}]+/gu, "");
 
-// Best candidate {title, artist, year, href} for the wanted release, or null.
+// RYM shows "Latin name [native name]"; textContent runs them together. Try each part.
+function nameVariants(s) {
+  const str = String(s || "");
+  const native = (str.match(/[^\u0000-\u024F]+/g) || []).join(" ");
+  const latin = str.replace(/[^\u0000-\u024F]+/g, " ");
+  return [...new Set([str, latin, native].map(normName).filter(Boolean))];
+}
+
+function bigrams(s) {
+  const out = new Map();
+  for (let i = 0; i < s.length - 1; i++) {
+    const g = s.slice(i, i + 2);
+    out.set(g, (out.get(g) || 0) + 1);
+  }
+  return out;
+}
+
+// 0..1 similarity between two normalized names.
+function similar(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.length > 3 && b.length > 3 && (a.includes(b) || b.includes(a))) return 0.9;
+  if (a.length < 2 || b.length < 2) return 0;
+  const A = bigrams(a);
+  const B = bigrams(b);
+  let hit = 0;
+  for (const [g, n] of A) hit += Math.min(n, B.get(g) || 0);
+  return (2 * hit) / (a.length - 1 + b.length - 1);
+}
+
+const bestSim = (xs, ys) => Math.max(0, ...xs.flatMap((x) => ys.map((y) => similar(x, y))));
+
+// Best candidate {title, artist, year, href} for the wanted release, or null. Fuzzy: romanization
+// and native-script names, small spelling differences. If the artist matches well and the year
+// agrees but the titles are in different scripts, that still counts (weakest tier).
 function pickAlbum(want, cands) {
-  const wt = normName(want.title);
-  const wa = normName(want.artist);
+  const wt = nameVariants(want.title);
+  const wa = nameVariants(want.artist);
   let best = null;
   let bestScore = 0;
   for (const c of cands) {
-    const ct = normName(c.title);
-    const ca = normName(c.artist);
-    if (!ct || !ca || !c.href) continue;
-    const titleOk = ct === wt || (wt.length > 3 && (ct.startsWith(wt) || wt.startsWith(ct)));
-    const artistOk = ca === wa || ca.includes(wa) || wa.includes(ca);
-    if (!titleOk || !artistOk) continue;
-    const score = (ct === wt ? 4 : 2) + (ca === wa ? 2 : 1) + (want.year && c.year && Math.abs(want.year - c.year) <= 1 ? 1 : 0);
+    if (!c.href) continue;
+    const a = bestSim(wa, nameVariants(c.artist));
+    if (a < 0.7) continue;
+    const t = bestSim(wt, nameVariants(c.title));
+    const yearOk = want.year && c.year && Math.abs(want.year - c.year) <= 1;
+    let score = 0;
+    if (t >= 0.6) score = 2 + t + a + (yearOk ? 0.5 : 0);
+    else if (yearOk && a >= 0.9) score = 1 + a * 0.1; // different script, same artist and year
     if (score > bestScore) {
       best = c;
       bestScore = score;
@@ -108,7 +144,8 @@ function pickAlbum(want, cands) {
 
 // getText(url) → response text. Returns [{service, href}] (Apple Music, Deezer).
 async function findAlbumLinks(want, getText) {
-  const term = `${want.artist} ${want.title}`;
+  const latin = (s) => String(s).replace(/[^\u0000-\u024F]+/g, " ").replace(/\s+/g, " ").trim();
+  const term = `${latin(want.artist) || want.artist} ${latin(want.title) || want.title}`;
   const out = [];
   const tasks = [
     async () => {
@@ -305,18 +342,35 @@ async function spotifyTracks(type, id) {
 // Spotify search (needs the account connected); returns [{service, href}].
 async function findSpotify(want) {
   if (!(await spotifyAuth())) return [];
-  const q = `album:${want.title} artist:${want.artist}`;
-  const j = await spotifyJson("/search", { q, type: "album", limit: "10" });
-  const hit = pickAlbum(
+  const latin = (s) => String(s).replace(/[^\u0000-\u024F]+/g, " ").replace(/\s+/g, " ").trim();
+  const artist = latin(want.artist) || want.artist;
+  const title = latin(want.title) || want.title;
+  // Several loose queries (fielded queries miss romanized / native-script names).
+  const queries = [`${artist} ${title}`, `artist:${artist}`, `${artist} ${want.year || ""}`.trim()];
+  const seen = new Map();
+  for (const q of queries) {
+    try {
+      const j = await spotifyJson("/search", { q, type: "album", limit: "10" });
+      for (const a of (j.albums && j.albums.items) || []) seen.set(a.id, a);
+    } catch {
+      /* try the next query */
+    }
+    const hit = pick(want, seen);
+    if (hit) return [{ service: "spotify", href: hit.href }];
+  }
+  return [];
+}
+
+function pick(want, seen) {
+  return pickAlbum(
     want,
-    ((j.albums && j.albums.items) || []).map((a) => ({
+    [...seen.values()].map((a) => ({
       title: a.name,
       artist: a.artists && a.artists[0] && a.artists[0].name,
       year: parseInt(a.release_date, 10),
       href: a.id ? `https://open.spotify.com/album/${a.id}` : null,
     }))
   );
-  return hit ? [{ service: "spotify", href: hit.href }] : [];
 }
 
 async function findAlbum(want) {
