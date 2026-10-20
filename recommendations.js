@@ -49,8 +49,40 @@
 
   const rel = globalThis.__eymRelease;
   // Streaming links for a release, from the shared cache or one throttled request.
-  function linksFor(path, id) {
-    return rel.get(id, path).then((r) => (r.links ? parseLinks(r.links) : []));
+  function linksFor(path, id, want) {
+    return rel
+      .get(id, path)
+      .then((r) => (r.links ? parseLinks(r.links) : []))
+      .catch((e) => {
+        if (!want) throw e;
+        return [];
+      })
+      .then(async (entries) => {
+        if (entries.length || !want) return entries;
+        // RYM unavailable (blocked, 403) or no links listed: look the release up by name.
+        const found = await searchLinks(want);
+        if (!found.length && rel.blocked()) throw new Error("RYM is blocking requests");
+        return found;
+      });
+  }
+
+  const searched = new Map();
+  function searchLinks(want) {
+    const key = `${want.artist}|${want.title}`;
+    if (!searched.has(key)) {
+      searched.set(
+        key,
+        (globalThis.__eymBridge || globalThis.browser || globalThis.chrome).runtime
+          .sendMessage({ type: "find-album", want })
+          .then((res) =>
+            ((res && res.links) || [])
+              .map((l) => ({ ...l, info: classifyAny(l.href) }))
+              .filter((l) => l.info && l.info.service === l.service)
+          )
+          .catch(() => [])
+      );
+    }
+    return searched.get(key);
   }
 
   // ---- Player panel ----
@@ -191,7 +223,13 @@
     body.textContent = "Loading…";
     body.classList.add("rym-reco-hint");
 
-    return linksFor(link.getAttribute("href"), li.id.replace("component_discography_item_", ""))
+    const yearEl = li.querySelector(".component_discography_item_details > span");
+    const want = {
+      artist: artist ? artist.textContent.trim() : "",
+      title: link.textContent.trim(),
+      year: yearEl ? parseInt(yearEl.textContent, 10) || 0 : 0,
+    };
+    return linksFor(link.getAttribute("href"), li.id.replace("component_discography_item_", ""), want)
       .then(async (entries) => {
         if (my !== token) return;
         // Side panel open: play there (nothing is embedded in the page).

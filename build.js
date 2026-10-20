@@ -58,6 +58,8 @@ emit("firefox", firefox);
 const bg = fs.readFileSync(path.join(root, "background.js"), "utf8");
 const shared = bg.match(/\/\/ <shared:bandcamp>([\s\S]*?)\/\/ <\/shared:bandcamp>/);
 if (!shared) throw new Error("shared:bandcamp markers missing in background.js");
+const sharedFind = bg.match(/\/\/ <shared:find>([\s\S]*?)\/\/ <\/shared:find>/);
+if (!sharedFind) throw new Error("shared:find markers missing in background.js");
 let content = fs.readFileSync(path.join(root, "content.js"), "utf8");
 const API_LINE = "const api = globalThis.browser ?? globalThis.chrome;";
 if (!content.includes(API_LINE)) throw new Error("api line missing in content.js");
@@ -76,6 +78,8 @@ const header = `// ==UserScript==
 // @grant        GM.xmlHttpRequest
 // @connect      bandcamp.com
 // @connect      *.bandcamp.com
+// @connect      itunes.apple.com
+// @connect      api.deezer.com
 // @run-at       document-start
 // @inject-into  content
 // @noframes
@@ -85,6 +89,7 @@ const header = `// ==UserScript==
 const prelude = `(() => {
 const CACHE_PREFIX = "bc:";
 ${shared[1]}
+${sharedFind[1]}
 function gmGet(url) {
   return new Promise((resolve, reject) => {
     const opts = {
@@ -118,6 +123,9 @@ globalThis.__eymBridge = {
     sendMessage: async (msg) => {
       if (msg && msg.type === "resolve-bandcamp") {
         try { return { embed: await resolveBandcamp(msg.url) }; } catch { return { embed: null }; }
+      }
+      if (msg && msg.type === "find-album") {
+        try { return { links: await findAlbumLinks(msg.want, gmGet) }; } catch { return { links: [] }; }
       }
       return { unsupported: true };
     },

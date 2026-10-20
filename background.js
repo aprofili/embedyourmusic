@@ -72,6 +72,72 @@ function parseBandcampEmbed(html) {
 
 // </shared:bandcamp>
 
+// <shared:find>
+// Finds streaming links for a release by artist/title/year when RYM's own page can't be fetched.
+const normName = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\(.*?\)|\[.*?\]/g, " ")
+    .replace(/\b(ep|single|deluxe|remaster(ed)?|edition)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+// Best candidate {title, artist, year, href} for the wanted release, or null.
+function pickAlbum(want, cands) {
+  const wt = normName(want.title);
+  const wa = normName(want.artist);
+  let best = null;
+  let bestScore = 0;
+  for (const c of cands) {
+    const ct = normName(c.title);
+    const ca = normName(c.artist);
+    if (!ct || !ca || !c.href) continue;
+    const titleOk = ct === wt || (wt.length > 3 && (ct.startsWith(wt) || wt.startsWith(ct)));
+    const artistOk = ca === wa || ca.includes(wa) || wa.includes(ca);
+    if (!titleOk || !artistOk) continue;
+    const score = (ct === wt ? 4 : 2) + (ca === wa ? 2 : 1) + (want.year && c.year && Math.abs(want.year - c.year) <= 1 ? 1 : 0);
+    if (score > bestScore) {
+      best = c;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+// getText(url) → response text. Returns [{service, href}] (Apple Music, Deezer).
+async function findAlbumLinks(want, getText) {
+  const term = `${want.artist} ${want.title}`;
+  const out = [];
+  const tasks = [
+    async () => {
+      const j = JSON.parse(await getText(`https://itunes.apple.com/search?entity=album&limit=10&term=${encodeURIComponent(term)}`));
+      const hit = pickAlbum(
+        want,
+        (j.results || []).map((r) => ({
+          title: r.collectionName,
+          artist: r.artistName,
+          year: parseInt(r.releaseDate, 10),
+          href: r.collectionViewUrl,
+        }))
+      );
+      if (hit && /^https:\/\/(music|itunes)\.apple\.com\//.test(hit.href)) out.push({ service: "applemusic", href: hit.href.replace(/\?.*$/, "") });
+    },
+    async () => {
+      const j = JSON.parse(await getText(`https://api.deezer.com/search/album?limit=10&q=${encodeURIComponent(term)}`));
+      const hit = pickAlbum(
+        want,
+        (j.data || []).map((r) => ({ title: r.title, artist: r.artist && r.artist.name, href: r.id ? `https://www.deezer.com/album/${r.id}` : null }))
+      );
+      if (hit) out.push({ service: "deezer", href: hit.href });
+    },
+  ];
+  await Promise.all(tasks.map((t) => t().catch(() => {})));
+  return out;
+}
+// </shared:find>
+
 async function resolveBandcamp(url) {
   if (!isBandcampItemUrl(url)) return null;
 
@@ -235,6 +301,34 @@ async function spotifyTracks(type, id) {
   }));
 }
 
+
+// Spotify search (needs the account connected); returns [{service, href}].
+async function findSpotify(want) {
+  if (!(await spotifyAuth())) return [];
+  const q = `album:${want.title} artist:${want.artist}`;
+  const j = await spotifyJson("/search", { q, type: "album", limit: "10" });
+  const hit = pickAlbum(
+    want,
+    ((j.albums && j.albums.items) || []).map((a) => ({
+      title: a.name,
+      artist: a.artists && a.artists[0] && a.artists[0].name,
+      year: parseInt(a.release_date, 10),
+      href: a.id ? `https://open.spotify.com/album/${a.id}` : null,
+    }))
+  );
+  return hit ? [{ service: "spotify", href: hit.href }] : [];
+}
+
+async function findAlbum(want) {
+  const getText = async (u) => {
+    const r = await fetch(u, { credentials: "omit" });
+    if (!r.ok) throw new Error(String(r.status));
+    return r.text();
+  };
+  const [spotify, others] = await Promise.all([findSpotify(want).catch(() => []), findAlbumLinks(want, getText)]);
+  return [...spotify, ...others];
+}
+
 async function handleSpotify(msg) {
   try {
     switch (msg.type) {
@@ -307,6 +401,12 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && typeof msg.type === "string" && msg.type.startsWith("spotify-")) {
     handleSpotify(msg).then(sendResponse);
+    return true;
+  }
+  if (msg && msg.type === "find-album") {
+    findAlbum(msg.want)
+      .then((links) => sendResponse({ links }))
+      .catch(() => sendResponse({ links: [] }));
     return true;
   }
   if (msg && msg.type === "resolve-bandcamp") {
