@@ -10,13 +10,13 @@ w.chrome = { runtime: { sendMessage: async () => ({}) } };
 w.eval(fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8"));
 const { matchTrack } = w.__embedYourMusic;
 const rows = [
-  { t: { id: "A1", name: "Intro", number: 1, ms: 120000 } },
-  { t: { id: "B2", name: "Now It's On", number: 2, ms: 248000 } },
-  { t: { id: "C3", name: "I'm On Standby", number: 3, ms: 192000 } },
-  { t: { id: "D4", name: "Same Length", number: 4, ms: 192500 } },
+  { t: { id: "A1aaaaaaaaaaaaaaaaaaaa", name: "Intro", number: 1, ms: 120000 } },
+  { t: { id: "B2bbbbbbbbbbbbbbbbbbbb", name: "Now It's On", number: 2, ms: 248000 } },
+  { t: { id: "C3cccccccccccccccccccc", name: "I'm On Standby", number: 3, ms: 192000 } },
+  { t: { id: "D4dddddddddddddddddddd", name: "Same Length", number: 4, ms: 192500 } },
 ];
-assert.strictEqual(matchTrack(rows, { payload: { playingURI: "spotify:track:B2" } }), 1, "uri");
-assert.strictEqual(matchTrack(rows, { type: "x", payload: { nested: { uri: "spotify:track:C3" } } }), 2, "id anywhere");
+assert.strictEqual(matchTrack(rows, { payload: { playingURI: "spotify:track:B2bbbbbbbbbbbbbbbbbbbb" } }), 1, "uri");
+assert.strictEqual(matchTrack(rows, { type: "x", payload: { nested: { uri: "spotify:track:C3cccccccccccccccccccc" } } }), 2, "id anywhere");
 assert.strictEqual(matchTrack(rows, { payload: { title: "Now it's on!" } }), 1, "name, fuzzy");
 assert.strictEqual(matchTrack(rows, { payload: { trackNumber: 3 } }), 2, "track number");
 assert.strictEqual(matchTrack(rows, { payload: { duration: 248400 } }), 1, "duration, tolerant");

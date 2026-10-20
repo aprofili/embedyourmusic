@@ -202,7 +202,9 @@
     const d = data && typeof data === "object" ? data : {};
     const p = d.payload || d.data || d;
     // 1. a track id anywhere in the message
-    const byId = rows.findIndex((r) => r.t.id && text.includes(r.t.id));
+    const byId = rows.findIndex(
+      (r) => r.t.id && (text.includes(`track:${r.t.id}`) || text.includes(`track/${r.t.id}`) || (r.t.id.length >= 12 && text.includes(r.t.id)))
+    );
     if (byId >= 0) return byId;
     // 2. the track name (long enough to be distinctive)
     const flat = normTitle(text);
