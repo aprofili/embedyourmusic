@@ -105,3 +105,7 @@ Reading ratings and streaming links needs a release-page request per album, so `
 - Nothing is fetched just because a row scrolled into view. On load, rows already in the cache are decorated for free, and the "find first unrated" walk may make at most 3 network requests (it continues from the cache next load). Otherwise a request happens only when you click a cover.
 - Requests are one at a time, ~400ms apart, and callers for the same release share one.
 - A 403/429/503 pauses all extension requests: 15 min, then 1 h, 6 h, 24 h if it keeps happening (a success resets this). The player shows the HTTP status and a "Retry now" link that clears the pause.
+
+## Side panel player
+
+Click the toolbar button to open the side panel (Firefox: View → Sidebars, or the toolbar button). While it is open, clicking a streaming tab on a release page, or an album cover on the recommendations page, plays in the panel instead of the page: art, service tabs, player, your star rating, and Spotify's ♥ track list. With the panel closed, players embed in the page as before. Ratings made in the panel are applied through the originating RYM tab, so keep that tab open.

@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "EmbedYourMusic",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Turns Spotify and Bandcamp links on rateyourmusic.com into inline embedded players.",
   "permissions": [
     "storage",
     "declarativeNetRequest",
-    "identity"
+    "identity",
+    "sidePanel"
   ],
   "host_permissions": [
     "*://rateyourmusic.com/*",
@@ -73,5 +74,17 @@
     "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "EmbedYourMusic player",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   }
 }

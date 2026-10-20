@@ -5,14 +5,23 @@ const fs = require("fs");
 const path = require("path");
 
 const root = __dirname;
-const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "release-data.js", "rules.json"];
+const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "release-data.js", "sidepanel.html", "sidepanel.js", "sidepanel.css", "rules.json"];
 const base = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 // Releases set EYM_VERSION from the git tag.
 if (process.env.EYM_VERSION) base.version = process.env.EYM_VERSION;
 
 const { key: _key, ...baseNoKey } = base; // `key` pins the Chromium extension id (stable OAuth redirect URI)
+// Firefox has a sidebar instead of a side panel.
+const { side_panel: _sp, ...baseNoPanel } = baseNoKey;
 const firefox = {
-  ...baseNoKey,
+  ...baseNoPanel,
+  permissions: base.permissions.filter((p) => p !== "sidePanel"),
+  sidebar_action: {
+    default_panel: "sidepanel.html",
+    default_title: "EmbedYourMusic player",
+    default_icon: base.icons,
+    open_at_install: false,
+  },
   background: { scripts: ["background.js"] },
   browser_specific_settings: {
     gecko: {

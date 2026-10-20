@@ -300,6 +300,69 @@
     return box;
   }
 
+  // ---- Sidebar player (side panel) ----
+  // When the extension's side panel is open, "play" actions go there instead of embedding in the page.
+  async function sidebarOpen() {
+    const r = await send({ type: "sidebar-state" });
+    return !!(r && r.open);
+  }
+
+  async function sidebarPlay(payload) {
+    const r = await send({ type: "sidebar-play", payload });
+    return !!(r && r.handled);
+  }
+
+  // What the side panel needs to show this release page.
+  function releasePayload(entries, service) {
+    const box = document.querySelector('[id^="my_catalog_rating_l_"]');
+    const id = box ? box.id.replace("my_catalog_rating_l_", "") : "";
+    const titleEl = document.querySelector(".album_title");
+    const textNode = titleEl && [...titleEl.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+    const artistEl = document.querySelector(".album_artist_small a.artist, [itemprop='byArtist'] a, a.artist");
+    const og = document.querySelector('meta[property="og:image"]');
+    const stars = id && document.getElementById(`rating_stars_l_${id}`);
+    const m = stars && /star-(\d+)m/.exec(stars.className);
+    return {
+      id,
+      title: textNode ? textNode.textContent.trim() : titleEl ? titleEl.textContent.trim() : document.title,
+      artist: artistEl ? artistEl.textContent.trim() : "",
+      artUrl: og ? og.content.replace("/i/1200/", "/i/300/") : "",
+      href: location.href.split("#")[0],
+      rating: m ? Number(m[1]) : 0,
+      service,
+      entries: entries.map((e) => ({ service: e.info.service, href: e.a.href })),
+    };
+  }
+
+  // The side panel's stars drive the page's own rating widget (same widget, same request RYM
+  // makes when you click it): hover and click at the position of the wanted half-star.
+  function rateOnPage(box, id, rating) {
+    const rect = box.getBoundingClientRect();
+    const cs = getComputedStyle(box);
+    const x0 = rect.left + (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.borderLeftWidth) || 0);
+    const init = { bubbles: true, cancelable: true, clientX: x0 + (rating - 0.5) * 9, clientY: rect.top + rect.height / 2, view: window };
+    for (const type of ["mouseover", "mousemove"]) box.dispatchEvent(new MouseEvent(type, init));
+    box.dispatchEvent(new MouseEvent("click", { ...init, button: 0 }));
+    setTimeout(() => {
+      const s = document.getElementById(`rating_stars_l_${id}`);
+      const m = s && /star-(\d+)m/.exec(s.className);
+      if (m) send({ type: "rating-changed", id, rating: Number(m[1]) });
+    }, 1500);
+  }
+
+  if (typeof location !== "undefined" && /^https?:$/.test(location.protocol) && api.runtime.onMessage) {
+    api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      if (!msg || msg.type !== "rate") return false;
+      const box = document.getElementById(`my_catalog_rating_l_${msg.id}`);
+      if (!box) sendResponse({ ok: false, error: "rating widget not found on that page" });
+      else {
+        rateOnPage(box, msg.id, Number(msg.rating));
+        sendResponse({ ok: true });
+      }
+      return false;
+    });
+  }
+
   const seen = new Set();
   const lazy = new IntersectionObserver(
     (entries) => {
@@ -444,11 +507,21 @@
         // Let modified clicks (new tab, etc.) behave like normal links.
         if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
         e.preventDefault();
-        select(entry);
+        // Sidebar open: play there and keep the page free of embeds. Otherwise embed in the page.
+        sidebarPlay(releasePayload(entries, entry.info.service)).then((handled) => {
+          if (!handled) select(entry);
+          else
+            for (const x of entries) {
+              x.a.classList.toggle("rym-tab-active", x === entry);
+              x.a.setAttribute("aria-pressed", String(x === entry));
+            }
+        });
       });
     }
 
-    select(entries.find((e) => e.info.service === "spotify") || entries[0]);
+    sidebarOpen().then((open) => {
+      if (!open) select(entries.find((e) => e.info.service === "spotify") || entries[0]);
+    });
   }
 
   // ---- Page cleanup ----
@@ -620,5 +693,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, LABELS, addCollapseToggles, buildHero, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, LABELS, addCollapseToggles, buildHero, buildTabs, run };
 })();

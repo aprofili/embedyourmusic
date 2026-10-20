@@ -6,7 +6,7 @@
   const container = document.getElementById("page_sections_recommendations");
   if (!eym || !container) return;
 
-  const { classifyAny, makeFrame, resolveBandcamp, trackList, LABELS } = eym;
+  const { classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, LABELS } = eym;
   // Phone layout: no sticky side panel; the player opens inline under the tapped row.
   const mobile = matchMedia("(max-width: 59.99em)").matches;
   // The iOS userscript has no page-world script, so it reads ratings itself (see ratedScan).
@@ -192,8 +192,28 @@
     body.classList.add("rym-reco-hint");
 
     return linksFor(link.getAttribute("href"), li.id.replace("component_discography_item_", ""))
-      .then((entries) => {
-        if (my === token) show(entries, link.href, my);
+      .then(async (entries) => {
+        if (my !== token) return;
+        // Side panel open: play there (nothing is embedded in the page).
+        const art = li.querySelector("img.ui_image_img");
+        const rec = rel.peek(li.id.replace("component_discography_item_", ""));
+        const handled =
+          entries.length &&
+          (await sidebarPlay({
+            id: li.id.replace("component_discography_item_", ""),
+            title: link.textContent.trim(),
+            artist: artist ? artist.textContent.trim() : "",
+            artUrl: art && art.dataset.src ? `https:${art.dataset.src}`.replace("/i/150/", "/i/300/") : "",
+            href: link.href,
+            rating: rec && rec.ratingKnown ? rec.rating : 0,
+            entries: entries.map((e) => ({ service: e.service, href: e.href })),
+          }));
+        if (my !== token) return;
+        if (handled) {
+          tabs.textContent = "";
+          body.textContent = "Playing in the sidebar.";
+          body.classList.add("rym-reco-hint");
+        } else show(entries, link.href, my);
       })
       .catch((e) => {
         if (my === token) message(`Couldn't load streaming links (${e.message}).`, link.href);
@@ -247,10 +267,12 @@
   // The first row you haven't rated (found by reco-ratings.js) loads into the player on its own.
   // reco-ratings.js signals "eym-scan-done" once it has looked; the page is revealed after that
   // album's player is up. If that script can't run, the timeout above reveals the page.
+  let autoStarted = false;
   const auto = () => {
     const li = container.querySelector("li[data-eym-first-unrated]");
-    if (li && !currentLi) {
-      const done = play(li);
+    if (li && !currentLi && !autoStarted) {
+      autoStarted = true;
+      const done = sidebarOpen().then((open) => (open ? null : play(li))); // sidebar open: don't change what's playing there
       if (mobile && li.getBoundingClientRect().top > 300) {
         window.scrollTo(0, li.getBoundingClientRect().top + window.scrollY - 80);
       }

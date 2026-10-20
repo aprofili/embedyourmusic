@@ -1,0 +1,165 @@
+:root {
+  color-scheme: light dark;
+  --bg: #fff;
+  --fg: #1b1b1b;
+  --muted: #666;
+  --line: rgba(128, 128, 128, 0.35);
+  --accent: #4a90e2;
+  --star: #f5a623;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101827;
+    --fg: #e8ecf3;
+    --muted: #9aa5b8;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.4 system-ui, sans-serif;
+}
+
+a {
+  color: var(--accent);
+}
+
+#empty,
+.hint {
+  color: var(--muted);
+}
+
+#now {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+#art {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--line);
+}
+
+#art[src=""] {
+  visibility: hidden;
+}
+
+#title {
+  font-weight: 700;
+  font-size: 1.05em;
+  text-decoration: none;
+}
+
+#artist {
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+#tabs,
+#body {
+  grid-column: 1 / -1;
+}
+
+#rating {
+  display: inline-flex;
+}
+
+.star {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  font-size: 22px;
+  line-height: 22px;
+  color: var(--line);
+  user-select: none;
+}
+
+.star.full,
+.star.half {
+  color: var(--star);
+}
+
+.star.half {
+  background: linear-gradient(90deg, var(--star) 50%, var(--line) 50%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.star button {
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.star button.l {
+  left: 0;
+}
+
+.star button.r {
+  right: 0;
+}
+
+#rating-note {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+#tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#tabs:empty {
+  display: none;
+}
+
+#body iframe {
+  width: 100%;
+}
+
+h2 {
+  margin: 18px 0 6px;
+  font-size: 0.95em;
+  color: var(--muted);
+}
+
+#history {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#history li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+#history img {
+  width: 32px;
+  height: 32px;
+  border-radius: 3px;
+  object-fit: cover;
+  background: var(--line);
+}
+
+#history li:hover {
+  background: rgba(128, 128, 128, 0.12);
+}

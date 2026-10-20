@@ -254,6 +254,56 @@ async function handleSpotify(msg) {
   }
 }
 
+// ---- Side panel player ----
+// The panel connects a port while it is open, which is how pages learn whether to play there.
+const sidePorts = new Set();
+api.runtime.onConnect.addListener((port) => {
+  if (port.name !== "sidepanel") return;
+  sidePorts.add(port);
+  port.onDisconnect.addListener(() => sidePorts.delete(port));
+});
+
+if (api.sidePanel && api.sidePanel.setPanelBehavior) {
+  // Chromium: the toolbar button toggles the side panel.
+  api.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+}
+
+function handleSidebar(msg, sender, sendResponse) {
+  switch (msg.type) {
+    case "sidebar-state":
+      sendResponse({ open: sidePorts.size > 0 });
+      return false;
+    case "sidebar-play":
+      if (!sidePorts.size) {
+        sendResponse({ handled: false });
+        return false;
+      }
+      for (const port of sidePorts) {
+        port.postMessage({ type: "play", payload: msg.payload, tabId: sender.tab && sender.tab.id });
+      }
+      sendResponse({ handled: true });
+      return false;
+    case "rating-changed":
+      for (const port of sidePorts) port.postMessage({ type: "rating", id: msg.id, rating: msg.rating });
+      sendResponse({});
+      return false;
+    case "rate": // from the panel: forward to the page that started playback
+      api.tabs
+        .sendMessage(msg.tabId, { type: "rate", id: msg.id, rating: msg.rating })
+        .then((r) => sendResponse(r || { ok: false, error: "no response" }))
+        .catch(() => sendResponse({ ok: false, error: "that tab is closed" }));
+      return true;
+  }
+  return false;
+}
+
+api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && ["sidebar-state", "sidebar-play", "rating-changed", "rate"].includes(msg.type)) {
+    return handleSidebar(msg, sender, sendResponse);
+  }
+  return false;
+});
+
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && typeof msg.type === "string" && msg.type.startsWith("spotify-")) {
     handleSpotify(msg).then(sendResponse);

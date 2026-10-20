@@ -19,7 +19,7 @@ const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
   const json = (o, status = 200) => ({ ok: status < 300, status, json: async () => o });
   const bg = {
     chrome: {
-      runtime: { onMessage: { addListener: (fn) => (listener = fn) } },
+      runtime: { onMessage: { addListener: (fn) => (listener = fn) }, onConnect: { addListener() {} } },
       storage: { local: { get: async (k) => (k in store ? { [k]: store[k] } : {}), set: async (o) => Object.assign(store, o) } },
       identity: {
         getRedirectURL: () => "https://abc.chromiumapp.org/",

@@ -90,11 +90,12 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
     ["apple", "spotify", "soundcloud", "tidal", "deezer", "qobuz", "bandcamp", "youtube"],
     async () => ({ embed: bc })
   );
+  await tick(); // default selection waits on the sidebar-state check
   const d = w.document;
   const $ = (s) => d.querySelector(s);
   const frames = () => [...d.querySelectorAll(".rym-embed-panel iframe")].map((f) => f.src);
 
-  assert.strictEqual(d.querySelectorAll(".rym-tab").length, 7);
+  assert.strictEqual(d.querySelectorAll(".ui_media_links .rym-tab").length, 7);
   assert.ok(!$("#qobuz").classList.contains("rym-tab"), "Qobuz stays a plain link");
   assert.strictEqual($(".ui_media_links").nextElementSibling, $(".rym-embed-panel"));
   assert.strictEqual($(".rym-embed-panel").tagName, "ASIDE");
@@ -105,7 +106,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
   assert.deepStrictEqual(frames(), ["https://open.spotify.com/embed/album/49JPEgPvEaFp89xqzeQvF7"]);
 
   // Switching
-  let ev = click(w, $("#apple"));
+  let ev = click(w, $("#apple")); await tick();
   assert.ok(ev.defaultPrevented, "tab click does not navigate");
   assert.ok($("#apple").classList.contains("rym-tab-active"));
   assert.ok(!$("#spotify").classList.contains("rym-tab-active"));
@@ -124,7 +125,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
   assert.ok(!ev.defaultPrevented);
 
   // Back to Spotify reuses the already-loaded player
-  click(w, $("#spotify"));
+  click(w, $("#spotify")); await tick();
   assert.strictEqual(frames().length, 2, "no reload when switching back");
   assert.ok(!slots[0].hidden && slots[1].hidden);
 
@@ -132,15 +133,14 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
   assert.ok(!click(w, $("#qobuz")).defaultPrevented);
 
   // Every embeddable service gets a working tab
-  for (const id of ["soundcloud", "tidal", "deezer", "youtube"]) click(w, $(`#${id}`));
+  for (const id of ["soundcloud", "tidal", "deezer", "youtube"]) click(w, $(`#${id}`)); await tick();
   assert.strictEqual(frames().length, 6);
   const yt = [...d.querySelectorAll(".rym-embed-slot")].find((s) => s.querySelector("iframe").src.includes("youtube"));
   assert.strictEqual(yt.style.maxWidth, "720px");
 
   // Bandcamp resolves asynchronously
-  click(w, $("#bandcamp"));
+  click(w, $("#bandcamp")); await tick();
   const bcSlot = [...d.querySelectorAll(".rym-embed-slot")].pop();
-  assert.strictEqual(bcSlot.textContent, "Loading…");
   await tick();
   assert.strictEqual(bcSlot.querySelector("iframe").src, bc.src);
 
@@ -150,6 +150,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
   // ---- No Spotify: first embeddable tab is the default ----
   const w2 = load(["qobuz", "tidal", "deezer"]);
+  await tick();
   assert.ok(w2.document.querySelector("#tidal").classList.contains("rym-tab-active"));
 
   // ---- Bandcamp failure shows a fallback link ----

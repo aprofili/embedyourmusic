@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EmbedYourMusic player</title>
+  <link rel="stylesheet" href="content.css">
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <main id="player">
+    <p id="empty">Nothing playing. Open a release on rateyourmusic.com and click a streaming icon (or an album cover on the recommendations page) to play it here.</p>
+    <section id="now" hidden>
+      <img id="art" alt="">
+      <div id="meta">
+        <a id="title" target="_blank" rel="noopener"></a>
+        <div id="artist"></div>
+        <div id="rating" role="group" aria-label="Your rating"></div>
+        <div id="rating-note"></div>
+      </div>
+      <div id="tabs"></div>
+      <div id="body"></div>
+    </section>
+    <section id="history-box" hidden>
+      <h2>Recently played</h2>
+      <ul id="history"></ul>
+    </section>
+  </main>
+  <script src="content.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
