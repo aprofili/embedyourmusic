@@ -710,6 +710,9 @@
     }
   }
 
+  if (typeof document.addEventListener !== "function") {
+    /* minimal test document: no cover handling */
+  } else {
   document.addEventListener(
     "mouseover",
     (e) => {
@@ -734,6 +737,7 @@
     },
     true
   );
+  }
 
   // ---- Sidebar player (side panel) ----
   // When the extension's side panel is open, "play" actions go there instead of embedding in the page.
