@@ -66,13 +66,27 @@
             // Keep the shared cache in step with what you just rated.
             setTimeout(() => {
               const s = /star-(\d+)m/.exec(box.querySelector(".rating_stars").className);
-              if (s) rel.setRating(id, Number(s[1]));
+              if (s) {
+                box.dataset.cur = s[1];
+                rel.setRating(id, Number(s[1]));
+              }
             }, 1500);
           }
         },
         { passive: type.startsWith("touch") ? false : undefined }
       );
     }
+    // Leaving the stars always shows your real rating (0 if unrated), never the last hover.
+    box.addEventListener("mouseleave", () => {
+      setTimeout(() => {
+        if (box.classList.contains("loading")) return;
+        const cur = Number(box.dataset.cur ?? li.dataset.eymRating ?? 0) || 0;
+        const stars = box.querySelector(".rating_stars");
+        const num = box.querySelector(".rating_num");
+        if (stars) stars.className = `rating_stars star-${cur}m`;
+        if (num) num.textContent = (cur / 2).toFixed(1);
+      }, 0);
+    });
     loadFromCache(li, id, box);
   }
 
