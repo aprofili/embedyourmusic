@@ -18,7 +18,52 @@
     return n;
   };
 
-  // Dominant colour of an image (saturated pixels count more), as [h, s, l]; null if it can't be read.
+  // Accent colour from RGBA pixel data, as [h, s, l]. Pixels are grouped by hue (20° buckets) and the heaviest bucket
+  // wins: saturated, mid-light pixels count most; greys barely; skin tones count about a third, so a face only sets
+  // the colour when it really dominates (a shirt, a background or lettering usually wins).
+  function pickAccent(d) {
+    const bins = Array.from({ length: 18 }, () => ({ w: 0, x: 0, y: 0, s: 0, l: 0 }));
+    let gw = 0, gl = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] !== undefined && d[i + 3] < 128) continue;
+      const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255;
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      const l = (mx + mn) / 2;
+      const dl = mx - mn;
+      const sat = dl ? dl / (1 - Math.abs(2 * l - 1)) : 0;
+      if (sat < 0.12 || l < 0.08 || l > 0.95) {
+        gw += 1;
+        gl += l;
+        continue;
+      }
+      let h;
+      if (mx === r) h = ((g - b) / dl) % 6;
+      else if (mx === g) h = (b - r) / dl + 2;
+      else h = (r - g) / dl + 4;
+      h = (h * 60 + 360) % 360;
+      let w = (0.15 + sat) * (l > 0.18 && l < 0.85 ? 1 : 0.4) * Math.min(1, dl * 3);
+      const skin = h >= 5 && h <= 45 && sat >= 0.12 && sat <= 0.75 && l >= 0.25 && l <= 0.88;
+      if (skin) w *= 0.35;
+      const bin = bins[Math.floor(h / 20) % 18];
+      bin.w += w;
+      bin.x += Math.cos((h * Math.PI) / 180) * w;
+      bin.y += Math.sin((h * Math.PI) / 180) * w;
+      bin.s += sat * w;
+      bin.l += l * w;
+    }
+    // neighbouring buckets count a little toward each other (a hue split across a bucket edge)
+    let best = -1, bestW = 0;
+    bins.forEach((bn, k) => {
+      const w = bn.w + 0.5 * (bins[(k + 17) % 18].w + bins[(k + 1) % 18].w);
+      if (bn.w > 0 && w > bestW) (best = k), (bestW = w);
+    });
+    if (best < 0) return gw ? [0, 0, gl / gw] : null;
+    const bn = bins[best];
+    const h = Math.round(((Math.atan2(bn.y, bn.x) * 180) / Math.PI + 360) % 360);
+    return [h, bn.s / bn.w, bn.l / bn.w];
+  }
+
+  // Accent colour of an image; null if it can't be read.
   function dominant(url) {
     return new Promise((resolve) => {
       if (!url) return resolve(null);
@@ -28,29 +73,10 @@
       img.onload = () => {
         try {
           const c = document.createElement("canvas");
-          c.width = c.height = 24;
+          c.width = c.height = 32;
           const g = c.getContext("2d", { willReadFrequently: true });
-          g.drawImage(img, 0, 0, 24, 24);
-          const d = g.getImageData(0, 0, 24, 24).data;
-          let r = 0, gr = 0, b = 0, w = 0;
-          for (let i = 0; i < d.length; i += 4) {
-            const mx = Math.max(d[i], d[i + 1], d[i + 2]);
-            const mn = Math.min(d[i], d[i + 1], d[i + 2]);
-            const wt = 0.05 + (mx - mn) / 255 + (mx > 40 && mx < 235 ? 0.2 : 0);
-            r += d[i] * wt; gr += d[i + 1] * wt; b += d[i + 2] * wt; w += wt;
-          }
-          r /= w; gr /= w; b /= w;
-          const mx = Math.max(r, gr, b) / 255, mn = Math.min(r, gr, b) / 255;
-          const l = (mx + mn) / 2;
-          const dl = mx - mn;
-          let h = 0;
-          if (dl) {
-            if (mx === r / 255) h = ((gr - b) / 255 / dl) % 6;
-            else if (mx === gr / 255) h = (b - r) / 255 / dl + 2;
-            else h = (r - gr) / 255 / dl + 4;
-          }
-          const sat = dl ? dl / (1 - Math.abs(2 * l - 1)) : 0;
-          resolve([Math.round(((h * 60) + 360) % 360), sat, l]);
+          g.drawImage(img, 0, 0, 32, 32);
+          resolve(pickAccent(g.getImageData(0, 0, 32, 32).data));
         } catch {
           resolve(null); // cross-origin image without CORS: canvas is tainted
         }
@@ -61,7 +87,7 @@
 
   async function tint(root, url) {
     const hsl = await dominant(url);
-    if (!hsl) return;
+    if (!hsl || hsl[1] < 0.05) return; // black-and-white art: keep the default colours
     const s = Math.round(Math.min(0.85, Math.max(0.4, hsl[1])) * 100);
     const l = Math.round(Math.min(0.62, Math.max(0.45, hsl[2])) * 100);
     const accent = `hsl(${hsl[0]} ${s}% ${l}%)`;
@@ -420,5 +446,5 @@
     for (const p of ["--tint", "--tint-h", "--accent", "--star"]) rs.removeProperty(p);
   };
 
-  globalThis.__eymSpPlayer = { build, resetTint };
+  globalThis.__eymSpPlayer = { build, resetTint, pickAccent };
 })();
