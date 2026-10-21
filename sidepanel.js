@@ -207,7 +207,7 @@
   }
 
   // ---- Player ----
-  function render(payload) {
+  function render(payload, restore) {
     const my = ++token;
     current = { payload, tabId: payload.tabId == null ? null : payload.tabId, counted: false };
     $("empty").hidden = true;
@@ -293,7 +293,7 @@
           // Our own player (hidden embed + track list) when Spotify is connected; else the plain embed.
           slot.textContent = "Loading…";
           globalThis.__eymSpPlayer
-            .build(info, payload, { onListened: () => markListening(payload), onPlay: () => {
+            .build(info, payload, { autoplay: !restore, onListened: () => markListening(payload), onPlay: () => {
               if (current && current.payload === payload && !current.counted) {
                 current.counted = true;
                 addPlayed(payload);
@@ -797,7 +797,7 @@
       store.set(PLAYED_KEY, played);
     }
     if (!done) store.set("sidebar:migrated", true);
-    if (!current && last) render(last);
+    if (!current && last) render(last, true); // reopened by hand: show it, don't start it
     else if (!current) reveal();
   });
 })();

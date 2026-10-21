@@ -35,6 +35,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   };
   w.eval(read("content.js"));
   w.eval(read("spengine.js"));
+  w.__eymReadyWait = 0;
   w.eval(read("spplayer.js"));
   w.eval(read("sidepanel.js"));
   await tick();

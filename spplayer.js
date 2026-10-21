@@ -329,7 +329,10 @@
       started = true;
     } else {
       S = (await driver.cmd({ cmd: "load", key: info.key, rymId: payload.id || "", tracks: tracks.map((t) => ({ id: t.id, ms: t.ms })) })) || S;
-      if (opts.autoplay !== false) setTimeout(() => S.idx < 0 && select(0, true), 0);
+      // Start the first song's embed now (paused unless this was asked for) and wait until it answers, so the
+      // card only appears once pressing play does something.
+      await command({ cmd: "select", i: 0, autoplay: opts.autoplay !== false });
+      for (let waited = 0; waited < (globalThis.__eymReadyWait ?? 6000) && !(S.seen || S.got > 0); waited += 150) await new Promise((r) => setTimeout(r, 150));
     }
 
     paint();
