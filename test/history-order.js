@@ -20,13 +20,15 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     ],
     "sidebar:art-ok": { [h("X")]: "https://i.scdn.co/image/x" },
     "sidebar:art-fix": 1,
+    "sidebar:lists": { recommended: { t: now, items: ["R1", "R2", "R3"].map((n, i) => ({ id: String(500 + i), title: n, artist: "b", href: h(n), artUrl: "" })) }, challenge: { t: now, items: [] } },
+    "sidebar:ratings": { [`p:/release/album/a/R1/`]: 7, "https://rateyourmusic.com/release/album/a/R2/": 0, "i:502": 6 },
   };
   w.chrome = {
     runtime: {
       connect: () => ({ onMessage: { addListener() {} }, onDisconnect: { addListener() {} }, postMessage() {} }),
       sendMessage: async () => ({}),
     },
-    storage: { local: { get: async (k) => ({ [k]: store[k] }), set: async (o) => Object.assign(store, o) }, onChanged: { addListener() {} } },
+    storage: { local: { get: async (k) => ({ [k]: store[k] }), set: async (o) => Object.assign(store, o) }, onChanged: { addListener: (f) => (w.__changed = f) } },
   };
   w.eval(read("content.js"));
   w.eval(read("sidepanel.js"));
@@ -36,6 +38,13 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   const rows = [...w.document.querySelectorAll('.acc[data-kind="history"] .item')];
   assert.deepStrictEqual(rows.map((r) => r.querySelector(".t").textContent), ["Z", "X", "Y", "Old"]);
   assert.strictEqual(rows[1].querySelector("img").getAttribute("src"), "https://i.scdn.co/image/x", "remembered cover used");
+  // Ratings seen anywhere grey out list rows (by release path or id), and live when a page reports a new one
+  w.document.querySelector('.acc[data-kind="recommended"] .acc-head').click();
+  await tick(20);
+  const rated = () => [...w.document.querySelectorAll('.acc[data-kind="recommended"] .item')].map((r) => r.classList.contains("rated"));
+  assert.deepStrictEqual(rated(), [true, false, true]);
+  w.__changed({ "sidebar:ratings": { newValue: { "i:501": 9 } } });
+  assert.deepStrictEqual(rated(), [true, true, true], "greyed as soon as a rating is seen");
   console.log("history order tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

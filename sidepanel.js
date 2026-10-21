@@ -26,7 +26,26 @@
   let current = null; // { payload, tabId, counted }
   let played = []; // newest first, no duplicates
   let token = 0;
-  let ratings = {}; // release URL -> your rating (0-10) for albums seen here; lets the dice skip rated ones without a request
+  // Your ratings (0-10) seen anywhere: { "p:<release path>": r, "i:<release id>": r } (content.js and this panel write
+  // it). Rated albums are greyed out in Recommended / Challenge / Similar / New music and skipped by the dice.
+  let ratings = {};
+  const pathKey = (href) => {
+    try {
+      return `p:${new URL(href, "https://rateyourmusic.com").pathname}`;
+    } catch {
+      return "";
+    }
+  };
+  const ratingOf = (item) => Math.max(ratings[pathKey(item.href)] || 0, (item.id && ratings[`i:${item.id}`]) || 0);
+  const isRated = (item) => !!item.rated || ratingOf(item) > 0;
+  // Grey out (or un-grey) rows already on screen.
+  function dimRows() {
+    for (const row of document.querySelectorAll(".acc .item[data-href]")) {
+      const kind = row.closest(".acc").dataset.kind;
+      if (kind === "history" || kind === "favorites") continue;
+      row.classList.toggle("rated", isRated({ href: row.dataset.href, id: row.dataset.id, rated: row.dataset.rated === "1" }));
+    }
+  }
 
   // ---- Connection to the background worker ----
   // Connected while open: this is how pages know to play here. The worker can be stopped and
@@ -98,11 +117,14 @@
   }
   buildStars();
 
-  function noteRating(href, value, known) {
+  function noteRating(href, value, known, id) {
     if (!href || !known) return;
-    if (ratings[href] === value) return;
-    ratings[href] = value;
+    const k = pathKey(href);
+    if (ratings[k] === value && (!id || ratings[`i:${id}`] === value)) return;
+    ratings[k] = value;
+    if (id) ratings[`i:${id}`] = value;
     store.set("sidebar:ratings", ratings);
+    dimRows();
   }
 
   function setRating(value, known = true) {
@@ -112,7 +134,7 @@
       current.payload.rating = value;
       if (known) current.payload.ratingKnown = true;
       store.set(LAST_KEY, current.payload);
-      noteRating(current.payload.href, value, known);
+      noteRating(current.payload.href, value, known, current.payload.id);
     }
     const note = $("rating-note");
     note.textContent = "";
@@ -233,7 +255,7 @@
     $("now").hidden = false;
     setRating(payload.rating || 0, payload.ratingKnown !== false);
     store.set(LAST_KEY, payload);
-    noteRating(payload.href, payload.rating, payload.ratingKnown !== false);
+    noteRating(payload.href, payload.rating, payload.ratingKnown !== false, payload.id);
 
     const tabs = $("tabs");
     const body = $("body");
@@ -638,7 +660,7 @@
     const skipRated = kind !== "history" && kind !== "favorites";
     let tries = 0;
     for (const item of shuffle(result.items)) {
-      if (skipRated && (item.rated || ratings[item.href] > 0)) continue;
+      if (skipRated && isRated(item)) continue;
       if (tries++ >= 8) {
         $("body").textContent = "Tried 8 albums and they were all rated. Try again.";
         return;
@@ -659,7 +681,7 @@
       }
       const p = res.payload;
       if (skipRated && p.ratingKnown && p.rating > 0) {
-        noteRating(item.href, p.rating, true);
+        noteRating(item.href, p.rating, true, p.id);
         continue;
       }
       render({ ...p, tabId: res.tabId });
@@ -777,7 +799,10 @@
         }
         row.append(img, label);
         row.addEventListener("click", () => playItem(item));
-        if (kind !== "history" && kind !== "favorites" && (item.rated || ratings[item.href] > 0)) row.classList.add("rated");
+        row.dataset.href = item.href;
+        if (item.id) row.dataset.id = item.id;
+        if (item.rated) row.dataset.rated = "1";
+        if (kind !== "history" && kind !== "favorites" && isRated(item)) row.classList.add("rated");
         if (kind === "recommended" || kind === "challenge") {
           const x = document.createElement("button");
           x.type = "button";
@@ -873,6 +898,10 @@
       }
       const theirs = (k) => changes[k] && !(Date.now() - (selfWrites[k] || 0) < 3000);
       if (theirs("sidebar:similar")) refreshOpenList("similar");
+      if (theirs("sidebar:ratings")) {
+        ratings = { ...ratings, ...(changes["sidebar:ratings"].newValue || {}) };
+        dimRows();
+      }
       if (theirs("sidebar:newmusic")) refreshOpenList("newmusic");
       if (theirs("sidebar:rymhist")) refreshOpenList("history");
       if (theirs("sidebar:favs35")) refreshOpenList("favorites");
@@ -896,7 +925,11 @@
     store.set("sidebar:art-fix", 1);
   });
   store.get("sidebar:ratings").then((r) => {
-    ratings = { ...(r || {}), ...ratings };
+    // (older versions keyed this by full URL)
+    const fixed = {};
+    for (const [k, v] of Object.entries(r || {})) fixed[/^[pi]:/.test(k) ? k : pathKey(k)] = v;
+    ratings = { ...fixed, ...ratings };
+    dimRows();
   });
   Promise.all([store.get(PLAYED_KEY), store.get(LAST_KEY), store.get("sidebar:history"), store.get("sidebar:migrated")]).then(([p, last, old, done]) => {
     played = p || [];

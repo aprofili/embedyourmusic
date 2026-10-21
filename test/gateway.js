@@ -5,10 +5,11 @@ const vm = require("vm");
 const assert = require("assert");
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-function load({ tabs = [], answer, user = "me" }) {
+function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, windowId: 1 }] }) {
   const listeners = [];
   const created = [];
   const removed = [];
+  const updates = [];
   let open = 0;
   let maxOpen = 0;
   const store = { "sidebar:user": user };
@@ -16,7 +17,7 @@ function load({ tabs = [], answer, user = "me" }) {
     runtime: { onMessage: { addListener: (f) => listeners.push(f) }, onConnect: { addListener() {} }, getURL: (p) => p, id: "x" },
     storage: { local: { get: async (k) => ({ [k]: store[k] }), set: async (o) => Object.assign(store, o) }, onChanged: { addListener() {}, removeListener() {} } },
     tabs: {
-      query: async () => tabs,
+      query: async (q) => (q && q.active ? activeNow(q) : tabs),
       create: async ({ url }) => {
         const tab = { id: 100 + created.length, url, status: "loading", born: Date.now() };
         created.push(tab);
@@ -29,6 +30,8 @@ function load({ tabs = [], answer, user = "me" }) {
         open--;
       },
       sendMessage: async (id, msg) => answer(id, msg, created),
+      update: async (id, props) => updates.push([id, props]),
+      onActivated: { addListener() {}, removeListener() {} },
     },
     action: { setBadgeText() {}, setTitle() {} },
   };
@@ -36,7 +39,7 @@ function load({ tabs = [], answer, user = "me" }) {
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8"), ctx);
   const ask = (msg) => new Promise((res) => listeners.some((f) => f(msg, {}, res) === true) || res(undefined));
-  return { ask, created, removed, stats: () => ({ maxOpen }) };
+  return { ask, created, removed, updates, stats: () => ({ maxOpen }) };
 }
 
 (async () => {
@@ -72,6 +75,13 @@ function load({ tabs = [], answer, user = "me" }) {
     assert.strictEqual(g.stats().maxOpen, 1, "never two helper tabs at once");
     assert.strictEqual(g.created[1].url, "https://rateyourmusic.com/collection/me/r3.5-5.0/2/#eym-helper");
     assert.strictEqual(g.removed.length, 2);
+  }
+  // 5. Closing the helper tab sends you back to the tab you were on (Edge picks another one otherwise).
+  {
+    let calls = 0;
+    const g = load({ answer: async () => ({ items: [{ title: "X" }] }), activeNow: () => (calls++ === 0 ? [{ id: 1, windowId: 1 }] : [{ id: 7, windowId: 1 }]) });
+    await g.ask({ type: "to-rym", msg: { type: "fetch-newmusic" } });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(g.updates)), [[1, { active: true }]]);
   }
   // 4. A tab from before an extension reload (no answer) falls through to a helper tab.
   {

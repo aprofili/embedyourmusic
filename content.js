@@ -686,6 +686,38 @@
     };
   }
 
+  // Ratings seen anywhere (release-data.js reads, the reco page's widgets, your own clicks) -> storage.local
+  // "sidebar:ratings" ({ "p:<path>": rating, "i:<id>": rating }), which the side panel uses to grey out rated albums.
+  let ratingQueue = {};
+  let ratingTimer;
+  function rememberRating(id, path, rating) {
+    if (!api || !api.storage || !api.storage.local) return;
+    if (path) ratingQueue[`p:${path}`] = rating;
+    if (id) ratingQueue[`i:${id}`] = rating;
+    if (path && id) rememberId(path, id);
+    clearTimeout(ratingTimer);
+    ratingTimer = setTimeout(async () => {
+      const add = ratingQueue;
+      ratingQueue = {};
+      try {
+        const got = await api.storage.local.get("sidebar:ratings");
+        const now = (got && got["sidebar:ratings"]) || {};
+        if (Object.entries(add).every(([k, v]) => now[k] === v)) return;
+        const map = { ...now, ...add };
+        const keys = Object.keys(map);
+        if (keys.length > 8000) for (const k of keys.slice(0, keys.length - 8000)) delete map[k];
+        await api.storage.local.set({ "sidebar:ratings": map });
+      } catch {}
+    }, 400);
+  }
+  if (typeof document !== "undefined" && document.addEventListener)
+    document.addEventListener("eym-rated", (e) => {
+      try {
+        const d = JSON.parse(e.detail);
+        rememberRating(d.id, d.path, d.rating);
+      } catch {}
+    });
+
   // Persistent href -> release id map (storage.local "sidebar:ids"): ids are what Similar and rating need,
   // and several places learn them for free (history, recommendations, any release page you open, any load).
   let idQueue = {};
@@ -999,7 +1031,10 @@
     setTimeout(() => {
       const s = document.getElementById(`rating_stars_l_${id}`);
       const m = s && /star-(\d+)m/.exec(s.className);
-      if (m) send({ type: "rating-changed", id, rating: Number(m[1]) });
+      if (m) {
+        send({ type: "rating-changed", id, rating: Number(m[1]) });
+        rememberRating(id, location.pathname, Number(m[1]));
+      }
     }, 1500);
   }
 
@@ -1094,6 +1129,7 @@
       document.dispatchEvent(new CustomEvent("eym-main", { detail: JSON.stringify({ action: "rate", id: String(msg.id), rating }) }));
       const rel = globalThis.__eymRelease;
       if (rel && rel.setRating) rel.setRating(String(msg.id), rating);
+      else rememberRating(String(msg.id), "", rating);
       setTimeout(() => sendResponse({ ok: true }), 1500); // a helper tab must stay open until the request is out
       return true;
     });
@@ -1522,6 +1558,27 @@
     const m = sc && /Album(\d+)/.exec(sc.value || sc.getAttribute("value") || "");
     if (m) rememberId(location.pathname, m[1]);
   }
+
+  // You rate on the release page itself: tell the panel (and its lists) a moment later, once RYM's widget has it.
+  if (typeof document !== "undefined" && document.addEventListener)
+    document.addEventListener(
+      "click",
+      (e) => {
+        const box = e.target && e.target.closest && e.target.closest('[id^="my_catalog_rating_l_"]');
+        if (!box || !/^\/release\//.test(location.pathname)) return;
+        const id = box.id.replace("my_catalog_rating_l_", "");
+        setTimeout(() => {
+          const s = document.getElementById(`rating_stars_l_${id}`);
+          const m = s && /star-(\d+)m/.exec(s.className);
+          if (!m) return;
+          const rel = globalThis.__eymRelease;
+          if (rel && rel.setRating) rel.setRating(id, Number(m[1]));
+          rememberRating(id, location.pathname, Number(m[1]));
+          send({ type: "rating-changed", id, rating: Number(m[1]) });
+        }, 1500);
+      },
+      true
+    );
 
   function recordThisRelease() {
     const rel = globalThis.__eymRelease;

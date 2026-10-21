@@ -64,6 +64,15 @@
     return "";
   }
 
+  // Tell the extension a rating is known (content.js saves it for the side panel, which greys out rated albums).
+  // A DOM event so it also crosses from the page's world (reco-ratings.js) to the extension's.
+  function told(id, path, rating) {
+    try {
+      if (typeof document !== "undefined" && document.dispatchEvent)
+        document.dispatchEvent(new CustomEvent("eym-rated", { detail: JSON.stringify({ id: String(id || ""), path: path || "", rating: Number(rating) || 0 }) }));
+    } catch {}
+  }
+
   function cached(id) {
     try {
       const rec = JSON.parse(store.get(key(id)));
@@ -151,6 +160,13 @@
       ...extractMeta(doc),
     };
     if (rid) store.set(key(rid), JSON.stringify(rec));
+    if (rec.ratingKnown) {
+      let path = "";
+      try {
+        path = new URL(href, "https://rateyourmusic.com").pathname;
+      } catch {}
+      told(rid, path, rec.rating);
+    }
     return { ...rec, id: rid, net: true }; // net: this call hit the network (not persisted)
   }
 
@@ -238,6 +254,7 @@
     const r = { t: Date.now(), rating: 0, ratingKnown: false, ...rec };
     if (r.links == null) r.links = "{}"; // read from the page: no links means none, not unknown
     store.set(key(id), JSON.stringify(r));
+    if (r.ratingKnown) told(id, path, r.rating);
   }
 
   // Keep the cache right after you rate something on the page.
@@ -246,6 +263,7 @@
       const rec = JSON.parse(store.get(key(id))) || { links: null };
       store.set(key(id), JSON.stringify({ ...rec, t: Date.now(), rating, ratingKnown: true }));
     } catch {}
+    told(id, "", rating);
   }
 
   if (store.get(STATUS_KEY) === "403") clearBlock(); // pauses from the old 403 handling

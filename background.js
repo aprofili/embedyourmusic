@@ -594,8 +594,16 @@ function inHelperTab(page, msg, now = false) {
   // `now`: asked for by a helper tab itself (it is waiting on this), so it can't queue behind it.
   const job = (now ? Promise.resolve() : helperChain).then(async () => {
     let tab;
+    // The tab you're on stays the tab you're on: Edge activates some other tab when a background tab closes,
+    // so remember where you were (or moved to meanwhile) and go back there afterwards.
+    const prev = (await api.tabs.query({ active: true, lastFocusedWindow: true }).catch(() => []))[0];
+    let back = prev ? prev.id : null;
+    const onAct = (info) => {
+      if (tab && info.tabId !== tab.id && prev && info.windowId === prev.windowId) back = info.tabId;
+    };
+    if (api.tabs.onActivated) api.tabs.onActivated.addListener(onAct);
     try {
-      tab = await api.tabs.create({ url: `https://rateyourmusic.com${page || "/"}#eym-helper`, active: false });
+      tab = await api.tabs.create({ url: `https://rateyourmusic.com${page || "/"}#eym-helper`, active: false, ...(prev ? { openerTabId: prev.id, windowId: prev.windowId } : {}) });
       helperTabs.add(tab.id);
       const start = Date.now();
       let last = null;
@@ -619,9 +627,15 @@ function inHelperTab(page, msg, now = false) {
     } catch (e) {
       return { error: String((e && e.message) || e) };
     } finally {
+      if (api.tabs.onActivated) api.tabs.onActivated.removeListener(onAct);
       if (tab) {
         helperTabs.delete(tab.id);
-        api.tabs.remove(tab.id).catch(() => {});
+        await api.tabs.remove(tab.id).catch(() => {});
+        if (back != null && prev) {
+          await sleep(120);
+          const now = (await api.tabs.query({ active: true, windowId: prev.windowId }).catch(() => []))[0];
+          if (now && now.id !== back) api.tabs.update(back, { active: true }).catch(() => {});
+        }
       }
     }
   });

@@ -115,6 +115,11 @@
 
   function showRating(li, id, box, rating) {
     li.dataset.eymRating = String(rating);
+    // the side panel greys out rated albums (content.js saves this)
+    const link = li.querySelector("a.component_discography_item_link.release");
+    try {
+      document.dispatchEvent(new CustomEvent("eym-rated", { detail: JSON.stringify({ id: String(id), path: link ? new URL(link.href).pathname : "", rating }) }));
+    } catch {}
     li.classList.toggle("rym-rated", rating > 0);
     if (rating > 0) applyRating(id, box, rating);
   }
