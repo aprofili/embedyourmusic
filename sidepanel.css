@@ -958,3 +958,9 @@ body.ready {
   align-items: center;
   border-radius: 0 8px 8px 0;
 }
+
+.retry-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}

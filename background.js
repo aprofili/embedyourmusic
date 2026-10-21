@@ -496,14 +496,31 @@ if (api.sidePanel && api.sidePanel.setPanelBehavior) {
 
 // Panel -> a rateyourmusic.com tab (it needs RYM's cookies / page): the given tab if it is still
 // open, else any RYM tab. Resolves to the tab's reply plus { tabId }, or { error }.
+// The list loaders (new music, play history, favourites) read a real RYM page: one already open on it, else a
+// hidden tab opened on it (a page load, so no bot check), whose content script answers from its own DOM.
+async function listJob(tabId, message) {
+  const t = message.type;
+  let path = "/new-music/";
+  if (t !== "fetch-newmusic") {
+    let user = ((await api.storage.local.get("sidebar:user")) || {})["sidebar:user"];
+    if (!user) {
+      const w = await viaScratchTab("https://rateyourmusic.com/", { type: "whoami" });
+      user = w && w.user;
+      if (!user) return { error: "sign in to rateyourmusic.com in this browser first" };
+    }
+    path = t === "fetch-history" ? `/play-history/${user}/` : `/collection/${user}/r4.0-5.0${message.page > 1 ? `/${message.page}` : ""}`;
+  }
+  const open = await relayToTab(tabId, path, message);
+  if (!open.error) return open;
+  return (await viaScratchTab(`https://rateyourmusic.com${path}`, message)) || { error: "couldn't load the page in a background tab" };
+}
+
 async function relay(tabId, urlPart, message) {
+  if (message && ["fetch-newmusic", "fetch-history", "fetch-favorites"].includes(message.type)) return listJob(tabId, message);
   const first = await relayToTab(tabId, urlPart, message);
   if (!first.error) return first;
   // No usable RYM tab (none open, or one from before the extension was reloaded): do the job in a background tab.
   const url = {
-    "fetch-newmusic": "https://rateyourmusic.com/new-music/",
-    "fetch-history": "https://rateyourmusic.com/",
-    "fetch-favorites": "https://rateyourmusic.com/",
     "load-release": "https://rateyourmusic.com/",
     "check-rating": "https://rateyourmusic.com/",
     "set-listening": "https://rateyourmusic.com/",
@@ -540,14 +557,18 @@ function viaScratchTab(url, message) {
     try {
       tab = await api.tabs.create({ url, active: false });
       scratch.set(tab.id, () => {});
+      let last = null;
+      let errors = 0;
       for (let i = 0; i < 40; i++) {
         await new Promise((r) => setTimeout(r, 500));
         try {
           const res = await api.tabs.sendMessage(tab.id, message);
-          if (res) return { ...res, tabId: tab.id };
+          if (res && !res.error) return { ...res, tabId: tab.id };
+          if (res) last = { ...res, tabId: tab.id };
+          if (res && ++errors >= 8) return last; // the page loaded but really has nothing for us
         } catch {}
       }
-      return null;
+      return last;
     } catch {
       return null;
     } finally {

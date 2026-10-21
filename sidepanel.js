@@ -15,9 +15,13 @@
   const ROW = 44; // px, see .item in sidepanel.css
 
   const $ = (id) => document.getElementById(id);
+  const selfWrites = {}; // key -> time this panel last wrote it (so its own writes don't trigger a refresh)
   const store = {
     get: (k) => api.storage.local.get(k).then((o) => (o && o[k]) || null).catch(() => null),
-    set: (k, v) => api.storage.local.set({ [k]: v }).catch(() => {}),
+    set: (k, v) => {
+      selfWrites[k] = Date.now();
+      return api.storage.local.set({ [k]: v }).catch(() => {});
+    },
   };
   let current = null; // { payload, tabId, counted }
   let played = []; // newest first, no duplicates
@@ -466,19 +470,21 @@
     async newmusic() {
       const SIX = 6 * 3600e3;
       const done = await store.get("sidebar:newmusic-f");
-      if (done && done.items && done.items.length && Date.now() - done.t < SIX) return { items: done.items };
       let raw = await store.get("sidebar:newmusic");
+      if (done && done.items && done.items.length && Date.now() - done.t < SIX && (!raw || done.t >= raw.t)) return { items: done.items };
+      let error = "";
       if (!raw || !raw.items || !raw.items.length || Date.now() - raw.t > SIX) {
         let res = null;
         try {
           res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-newmusic" } });
         } catch {}
-        if (res && res.items) {
+        if (res && res.items && res.items.length) {
           raw = { items: res.items, t: res.t || Date.now() };
           store.set("sidebar:newmusic", raw);
-        } else if (!raw || !raw.items || !raw.items.length) {
-          return { message: `Couldn't load rateyourmusic.com/new-music/ (${(res && res.error) || "no response"}). Visiting it once fills this list.` };
-        }
+        } else error = (res && res.error) || "no response";
+      }
+      if (!raw || !raw.items || !raw.items.length) {
+        return { message: `Couldn't read RYM's new-music page (${error}).`, retry: true, page: "https://rateyourmusic.com/new-music/" };
       }
       const f = (await api.runtime.sendMessage({ type: "sp-filter", items: raw.items }).catch(() => null)) || { items: raw.items, filtered: false };
       const items = f.items.filter((i) => !isVideo(i));
@@ -518,7 +524,7 @@
       }
       const items = Object.values(rec.got || {}).flat();
       if (!items.length) {
-        return { message: backoff ? "Couldn't load your 4+ star albums a moment ago; try again in a few minutes." : `Couldn't load your 4+ star albums (${(res && res.error) || "no response"}).` };
+        return { message: `Couldn't read your 4+ star albums (${(res && res.error) || "RYM didn't answer"}).`, retry: true, page: "https://rateyourmusic.com/" };
       }
       return { items: shuffle(items) };
     },
@@ -526,8 +532,8 @@
     async history() {
       let rec = await store.get("sidebar:rymhist");
       const err = await store.get("sidebar:rymhist-err");
-      if ((!rec || Date.now() - rec.t > 10 * 60e3) && !(err && rec && Date.now() - err < 15 * 60e3)) {
-        let res = null;
+      let res = null;
+      if ((!rec || Date.now() - rec.t > 30 * 60e3) && !(err && rec && Date.now() - err < 15 * 60e3)) {
         try {
           res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-history" } });
         } catch {}
@@ -539,6 +545,7 @@
       const theirs = (rec && rec.items) || [];
       const have = new Set(theirs.map((i) => i.href));
       const items = [...played.filter((p) => !have.has(p.href)), ...theirs]; // just-played, not yet in RYM's history, first
+      if (!items.length && res && res.error) return { message: `Couldn't read your RYM play history (${res.error}).`, retry: true, page: "https://rateyourmusic.com/" };
       return items.length ? { items } : { message: "Albums you listen to will show up here." };
     },
   };
@@ -622,6 +629,29 @@
       p.className = "hint";
       p.textContent = result.message;
       body.append(p);
+      if (result.retry) {
+        const row = document.createElement("div");
+        row.className = "retry-row";
+        const again = document.createElement("button");
+        again.type = "button";
+        again.className = "more";
+        again.textContent = "Try again";
+        again.addEventListener("click", () => {
+          api.storage.local.set({ "sidebar:favs-err": null, "sidebar:rymhist-err": null }).catch(() => {});
+          openList(acc);
+        });
+        row.append(again);
+        if (result.page) {
+          const open = document.createElement("button");
+          open.type = "button";
+          open.className = "more";
+          open.textContent = "Open the page";
+          open.title = "Opening it fills this list";
+          open.addEventListener("click", () => api.tabs && api.tabs.create({ url: result.page }));
+          row.append(open);
+        }
+        body.append(row);
+      }
       return;
     }
     const items = kind === "history" ? result.items : result.items.filter((i) => !isVideo(i));
@@ -705,14 +735,14 @@
     }
   }
 
-  async function openList(acc) {
+  async function openList(acc, quiet) {
     for (const other of document.querySelectorAll(".acc.open")) {
       if (other !== acc) closeList(other);
     }
     acc.classList.add("open");
     const body = acc.querySelector(".acc-body");
     body.hidden = false;
-    body.textContent = "Loading…";
+    if (!quiet || !body.firstChild) body.textContent = "Loading…";
     const kind = acc.dataset.kind;
     let result;
     try {
@@ -730,7 +760,7 @@
 
   function refreshOpenList(kind) {
     const acc = document.querySelector(`.acc[data-kind="${kind}"].open`);
-    if (acc) openList(acc);
+    if (acc) openList(acc, true);
   }
 
   for (const acc of document.querySelectorAll(".acc")) {
@@ -760,7 +790,11 @@
         refreshOpenList("recommended");
         refreshOpenList("challenge");
       }
-      if (changes["sidebar:similar"]) refreshOpenList("similar");
+      const theirs = (k) => changes[k] && !(Date.now() - (selfWrites[k] || 0) < 3000);
+      if (theirs("sidebar:similar")) refreshOpenList("similar");
+      if (theirs("sidebar:newmusic")) refreshOpenList("newmusic");
+      if (theirs("sidebar:rymhist")) refreshOpenList("history");
+      if (theirs("sidebar:favs")) refreshOpenList("favorites");
     });
   }
 

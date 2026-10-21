@@ -708,15 +708,18 @@
   }
 
   // New releases: /new-music/, minus videos (the panel then drops what Spotify doesn't have).
+  // The three list loaders read the page you are on when it is the right one (a real page load, so RYM's bot check
+  // never gets involved); the background opens that page in a hidden tab when needed. fetch() is only a last resort.
+  const onPage = (re) => typeof location !== "undefined" && re.test(location.pathname);
+  async function docFor(re, url) {
+    if (onPage(re)) return document;
+    const res = await fetch(url, { credentials: "same-origin" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return new DOMParser().parseFromString(await res.text(), "text/html");
+  }
+
   async function fetchNewMusic() {
-    const rel = globalThis.__eymRelease;
-    if (rel && rel.blocked()) throw new Error(rel.blockMessage());
-    const res = await fetch("/new-music/", { credentials: "same-origin" });
-    if (!res.ok) {
-      if (rel) rel.noteStatus(res.status);
-      throw new Error(rel && rel.blocked() ? rel.blockMessage() : `HTTP ${res.status}`);
-    }
-    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    const doc = await docFor(/^\/new-music\//, "/new-music/");
     const items = scrapeReleases(doc, 150);
     if (!items.length) throw new Error("no releases found on the new-music page");
     return { items, t: Date.now() };
@@ -745,18 +748,14 @@
     return out;
   }
 
-  async function fetchHistory() {
-    const rel = globalThis.__eymRelease;
-    if (rel && rel.blocked()) throw new Error(rel.blockMessage());
+  const whoami = () => {
     const me = document.querySelector("a.header_profile_main[href^='/~']");
-    if (!me) throw new Error("not signed in");
-    const user = me.getAttribute("href").slice(2).replace(/\/.*$/, "");
-    const res = await fetch(`/play-history/${user}/`, { credentials: "same-origin" });
-    if (!res.ok) {
-      if (rel) rel.noteStatus(res.status);
-      throw new Error(rel && rel.blocked() ? rel.blockMessage() : `HTTP ${res.status}`);
-    }
-    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    return me ? me.getAttribute("href").slice(2).replace(/\/.*$/, "") : "";
+  };
+  async function fetchHistory() {
+    const user = whoami();
+    if (!user && !onPage(/^\/play-history\//)) throw new Error("not signed in");
+    const doc = await docFor(/^\/play-history\//, `/play-history/${user}/`);
     const items = scrapeHistory(doc);
     for (const i of items) rememberId(i.href, i.id);
     return { items };
@@ -765,17 +764,9 @@
   // One page of your 4+ star albums (your collection filtered to 4.0-5.0; the side panel caches it).
   // -> { items, pages }
   async function fetchFavorites(page = 1) {
-    const rel = globalThis.__eymRelease;
-    if (rel && rel.blocked()) throw new Error(rel.blockMessage());
-    const me = document.querySelector("a.header_profile_main[href^='/~']");
-    if (!me) throw new Error("not signed in");
-    const user = me.getAttribute("href").slice(2).replace(/\/.*$/, "");
-    const res = await fetch(`/collection/${user}/r4.0-5.0${page > 1 ? `/${page}` : ""}`, { credentials: "same-origin" });
-    if (!res.ok) {
-      if (rel) rel.noteStatus(res.status);
-      throw new Error(rel && rel.blocked() ? rel.blockMessage() : `HTTP ${res.status}`);
-    }
-    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    const user = whoami();
+    if (!user && !onPage(/^\/collection\//)) throw new Error("not signed in");
+    const doc = await docFor(/^\/collection\/[^/]+\/r4\.0-5\.0/, `/collection/${user}/r4.0-5.0${page > 1 ? `/${page}` : ""}`);
     const items = [];
     for (const it of scrapeReleases(doc, 300)) {
       const a = [...doc.querySelectorAll("a[href]")].find((x) => x.getAttribute("href") === new URL(it.href).pathname);
@@ -1007,6 +998,10 @@
           .then((r) => sendResponse({ rating: r.rating || 0, ratingKnown: !!r.ratingKnown }))
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
+      }
+      if (msg && msg.type === "whoami") {
+        sendResponse({ user: whoami() });
+        return false;
       }
       if (msg && msg.type === "set-listening") {
         setListening(msg.id);
@@ -1494,8 +1489,56 @@
     saveSidebarData("sidebar:newmusic", { items, t: Date.now() });
   }
 
+  // Your own play history / 4+ star collection pages: save them for the panel too (no request needed).
+  function publishMyPages() {
+    if (typeof location === "undefined") return;
+    const me = whoami();
+    const de = document.documentElement;
+    if (me && location.pathname.replace(/\/$/, "") === `/play-history/${me}` && !de.dataset.eymHist) {
+      const items = scrapeHistory(document);
+      if (items.length) {
+        de.dataset.eymHist = "1";
+        for (const i of items) rememberId(i.href, i.id);
+        try {
+          api.storage.local.set({ "sidebar:rymhist": { t: Date.now(), items } });
+        } catch {}
+      }
+    }
+    const fav = me && new RegExp(`^/collection/${me}/r4\\.0-5\\.0(?:/(\\d+))?/?$`).exec(location.pathname);
+    if (fav && !de.dataset.eymFav) {
+      const items = scrapeReleases(document, 300);
+      if (items.length) {
+        de.dataset.eymFav = "1";
+        const page = Number(fav[1]) || 1;
+        const nums = [...document.querySelectorAll(".navlinknum, .navlinkcurrent")].map((n) => Number(n.textContent)).filter(Boolean);
+        api.storage.local
+          .get("sidebar:favs")
+          .then((o) => {
+            const rec = (o && o["sidebar:favs"]) || { pages: 0, got: {}, t: 0 };
+            rec.got = { ...(rec.got || {}), [page]: items };
+            rec.pages = Math.max(rec.pages || 0, 1, ...nums);
+            rec.t = Date.now();
+            return api.storage.local.set({ "sidebar:favs": rec, "sidebar:favs-err": null });
+          })
+          .catch(() => {});
+      }
+    }
+  }
+
+  function rememberUser() {
+    const u = typeof document !== "undefined" && whoami();
+    if (u && !document.documentElement.dataset.eymUser) {
+      document.documentElement.dataset.eymUser = "1";
+      try {
+        api.storage.local.set({ "sidebar:user": u });
+      } catch {}
+    }
+  }
+
   function run() {
+    rememberUser();
     publishNewMusic();
+    publishMyPages();
     recordThisRelease();
     addNavLink();
     buildHero();

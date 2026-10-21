@@ -10,7 +10,7 @@
 
   const RATED_TTL = 14 * 24 * 3600 * 1000;
   const UNRATED_TTL = 20 * 60 * 1000;
-  const BLOCK_LADDER = [15 * 60e3, 3600e3, 6 * 3600e3, 24 * 3600e3];
+  const BLOCK_LADDER = [5 * 60e3, 15 * 60e3, 30 * 60e3, 60 * 60e3];
   const GAP_MS = globalThis.__eymGapMs ?? 400; // (tests set 0)
   const BLOCK_KEY = "eym:blocked-until";
   const COUNT_KEY = "eym:block-count";
@@ -91,7 +91,7 @@
 
   // Any request to RYM (ours or the collection fetch) reports its status here.
   function noteStatus(status) {
-    if (![403, 429, 503].includes(status)) return;
+    if (![429, 503].includes(status)) return; // 403 is the bot check on script requests, not a rate limit
     const count = (Number(store.get(COUNT_KEY)) || 0) + 1;
     store.set(COUNT_KEY, String(count));
     store.set(STATUS_KEY, String(status));
@@ -121,7 +121,12 @@
   async function network(id, href) {
     const wait = lastFetch + GAP_MS - Date.now();
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    if (blocked()) throw new Error(blockMessage());
+    if (blocked()) {
+      // Script requests are paused (RYM said 429/503): a normal page load in a background tab still works.
+      const viaTab = href && (await openInTab(href));
+      if (viaTab) return viaTab;
+      throw new Error(blockMessage());
+    }
     lastFetch = Date.now();
     const res = await fetch(href, { credentials: "same-origin" });
     if (res.status === 403) {
@@ -178,7 +183,6 @@
   function get(id, href) {
     const hit = cached(id);
     if (hit) return Promise.resolve(hit);
-    if (blocked()) return Promise.reject(new Error(blockMessage()));
     const bad = recall(id);
     if (bad) return bad;
     if (!inflight.has(id)) {
@@ -211,7 +215,6 @@
     const known = store.get(hrefKey(href));
     const hit = known && cachedAny(known);
     if (hit) return Promise.resolve({ ...hit, id: known });
-    if (blocked()) return Promise.reject(new Error(blockMessage()));
     const bad = recall(href);
     if (bad) return bad;
     if (!hrefJobs.has(href)) {
@@ -242,6 +245,8 @@
       store.set(key(id), JSON.stringify({ ...rec, t: Date.now(), rating, ratingKnown: true }));
     } catch {}
   }
+
+  if (store.get(STATUS_KEY) === "403") clearBlock(); // pauses from the old 403 handling
 
   globalThis.__eymRelease = { get, getLinks, getByHref, put, extractMeta, idFromHtml, noteStatus, peek, setRating, blocked, blockMessage, clearBlock };
 })();
