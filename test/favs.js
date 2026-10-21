@@ -29,7 +29,7 @@ const header = '<a class="header_profile_main" href="/~jkprilfools"></a>';
     assert.ok(r.items && r.items.length >= 10, "items " + JSON.stringify(r).slice(0, 200));
     assert.ok(r.pages >= 4, "pages " + r.pages);
     assert.ok(r.items[0].href.startsWith("https://rateyourmusic.com/release/album/") && r.items[0].artist && r.items[0].title);
-    assert.ok(/\/i\/300\//.test(r.items[0].artUrl), r.items[0].artUrl);
+    assert.ok(/\/i\/\d+\/w\//.test(r.items[0].artUrl), r.items[0].artUrl); // kept as RYM gave it (per-size hash)
   }
 
   // Similar loaded without the album page: a hidden list is made, RYM's code (mocked) fills it, it is removed after

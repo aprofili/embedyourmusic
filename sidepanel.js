@@ -665,6 +665,20 @@
 
   // ---- Restore ----
   // Releases before the lists existed kept their history under another key; fold it in once.
+  // v1.9.8: art URLs that earlier versions rewrote to a size RYM doesn't have ("/i/300/w/…") never load. Drop them
+  // (blank art) and let the favourites / history caches refetch with the right URLs.
+  store.get("sidebar:art-fix").then(async (done) => {
+    if (done) return;
+    const bad = (u) => /\/i\/300\/w\//.test(u || "");
+    const fix = (items) => (items || []).forEach((i) => bad(i.artUrl) && (i.artUrl = ""));
+    const [pl, lists, sim] = await Promise.all([store.get(PLAYED_KEY), store.get("sidebar:lists"), store.get("sidebar:similar")]);
+    if (pl) fix(pl), store.set(PLAYED_KEY, pl), (played = pl);
+    if (lists) Object.values(lists).forEach((l) => fix(l.items)), store.set("sidebar:lists", lists);
+    if (sim) Object.values(sim).forEach((r) => fix(r.items)), store.set("sidebar:similar", sim);
+    store.set(FAVS_KEY, null);
+    store.set("sidebar:rymhist", null);
+    store.set("sidebar:art-fix", 1);
+  });
   store.get("sidebar:ratings").then((r) => {
     ratings = { ...(r || {}), ...ratings };
   });

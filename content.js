@@ -482,7 +482,7 @@
     if (!s || s.startsWith("data:")) s = (img && img.getAttribute("data-src")) || "";
     if (!s) return "";
     if (s.startsWith("//")) s = "https:" + s;
-    return s.replace(/\/i\/\d+\//, "/i/300/");
+    return /\/i\/\d+\/w\//.test(s) ? s : s.replace(/\/i\/\d+\//, "/i/300/"); // "/w/" URLs carry a per-size hash: leave them alone
   };
 
   // Release links under `root` as [{ title, artist, href, artUrl }]. Tolerant of RYM's markup:
@@ -846,7 +846,7 @@
       id,
       title: textNode ? textNode.textContent.trim() : titleEl ? titleEl.textContent.trim() : document.title,
       artist: artistEl ? artistEl.textContent.trim() : "",
-      artUrl: og ? og.content.replace("/i/1200/", "/i/300/") : "",
+      artUrl: og ? (/\/i\/\d+\/w\//.test(og.content) ? og.content : og.content.replace("/i/1200/", "/i/300/")) : "",
       href: location.href.split("#")[0],
       rating: m ? Number(m[1]) : 0,
       ratingKnown: !!m,

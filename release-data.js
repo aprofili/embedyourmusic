@@ -46,7 +46,7 @@
     return {
       title: textNode ? textNode.textContent.trim() : titleEl ? titleEl.textContent.trim() : "",
       artist: artistEl ? artistEl.textContent.trim() : "",
-      art: og && og.content ? og.content.replace(/\/i\/\d+\//, "/i/300/") : "",
+      art: og && og.content ? (/\/i\/\d+\/w\//.test(og.content) ? og.content : og.content.replace(/\/i\/\d+\//, "/i/300/")) : "",
       year: year ? Number(year[0]) : 0,
       links: links ? links.getAttribute("data-links") : null,
     };

@@ -49,7 +49,7 @@ const meta = rel.extractMeta(new w.DOMParser().parseFromString(fs.readFileSync(f
 assert.strictEqual(meta.title, "Nothingface");
 assert.strictEqual(meta.artist, "Voivod");
 assert.strictEqual(meta.year, 1989);
-assert.ok(/\/i\/300\//.test(meta.art), meta.art);
+assert.ok(/\/i\/\d+\/w\/[0-9a-f]+\/10801817/.test(meta.art), meta.art); // "/w/" URLs keep their own size (the hash is per size)
 assert.ok(meta.links && meta.links.includes("spotify"));
 console.log("page tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });

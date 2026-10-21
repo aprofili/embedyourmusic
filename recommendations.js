@@ -175,7 +175,7 @@
     if (!s || s.startsWith("data:")) s = (img && img.getAttribute("data-src")) || "";
     if (!s) return "";
     if (s.startsWith("//")) s = "https:" + s;
-    return s.replace(/\/i\/\d+\//, "/i/300/");
+    return /\/i\/\d+\/w\//.test(s) ? s : s.replace(/\/i\/\d+\//, "/i/300/");
   }
 
   function play(li) {
