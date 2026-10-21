@@ -18,6 +18,13 @@ w.__embedYourMusic.run();
 const box = d.querySelector(".media_link_container");
 box.innerHTML = '<div><div class="ui_media_links"><a id="spotify" href="https://open.spotify.com/album/49JPEgPvEaFp89xqzeQvF7">s</a></div></div>';
 w.__embedYourMusic.run();
+// header: title (year) with date tooltip, linked artist beneath, average by the stars, redundant rows gone
+const yr = d.querySelector(".album_title .rym-year span[title]");
+assert.ok(yr && yr.textContent === "1989" && /October 1989/.test(yr.title), "year tooltip");
+const who = d.querySelector(".album_title .rym-title-artist a");
+assert.ok(who && who.getAttribute("href") === "/artist/voivod" && who.textContent === "Voivod", "artist link");
+assert.ok(/^3\.80 Avg over 5,984 ratings$/.test(d.querySelector(".rym-avg").textContent), d.querySelector(".rym-avg").textContent);
+assert.strictEqual(d.querySelectorAll("table.album_info tr.rym-gone").length, 3);
 const play = d.querySelector(".page_release_art_frame .rym-art-play");
 assert.ok(play, "cover play");
 let got = null;

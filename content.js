@@ -1240,6 +1240,58 @@
     }
   }
 
+  // Release page header: "Title (year)" with the full date as a tooltip on the year, the artist (a link) below it,
+  // and the RYM average next to your stars; the Artist / Released / RYM Rating rows of Album info go.
+  function tidyHeader() {
+    if (document.querySelector(".rym-year") || (globalThis.matchMedia && !globalThis.matchMedia("(min-width: 768px)").matches)) return;
+    const title = document.querySelector(".release_page .album_title");
+    const info = document.querySelector(".release_page table.album_info");
+    if (!title || !info) return;
+    const rowOf = (re) => [...info.querySelectorAll("tr")].find((tr) => {
+      const th = tr.querySelector("th");
+      return th && re.test(th.textContent.trim());
+    });
+    const artistRow = rowOf(/^artist$/i);
+    const releasedRow = rowOf(/^released$/i);
+    const ratingRow = rowOf(/^rym rating$/i);
+    const artistLink = artistRow && artistRow.querySelector("a.artist");
+    const released = releasedRow && releasedRow.querySelector("td");
+    const year = released && /\b(19|20)\d\d\b/.exec(released.textContent);
+    const anchor = title.querySelector("input.album_shortcut") || title.querySelector(".album_artist_small");
+    if (year) {
+      const wrap = document.createElement("span");
+      wrap.className = "rym-year";
+      const tip = document.createElement("span");
+      tip.textContent = year[0];
+      tip.title = released.textContent.replace(/\s+/g, " ").trim();
+      wrap.append(" (", tip, ")");
+      title.insertBefore(wrap, anchor);
+    } else {
+      const marker = document.createElement("span");
+      marker.className = "rym-year";
+      title.insertBefore(marker, anchor);
+    }
+    if (artistLink) {
+      const line = document.createElement("div");
+      line.className = "rym-title-artist";
+      const a = artistLink.cloneNode(true);
+      a.removeAttribute("itemprop");
+      line.append(a);
+      title.insertBefore(line, title.querySelector(".album_artist_small"));
+    }
+    // RYM's average next to your rating stars
+    const avg = ratingRow && ratingRow.querySelector(".avg_rating");
+    const num = ratingRow && ratingRow.querySelector(".num_ratings b");
+    const mine = document.querySelector(".release_my_catalog .my_catalog_rating");
+    if (avg && num && mine && avg.textContent.trim()) {
+      const s = document.createElement("span");
+      s.className = "rym-avg";
+      s.textContent = `${avg.textContent.trim()} Avg over ${num.textContent.trim()} ratings`;
+      mine.after(s);
+    }
+    for (const tr of [artistRow, releasedRow, ratingRow]) if (tr) tr.classList.add("rym-gone");
+  }
+
   // "recommended" next to new music / genres / charts / lists in the top bar.
   function addNavLink() {
     if (document.querySelector(".eym-nav-reco")) return;
@@ -1300,6 +1352,7 @@
     recordThisRelease();
     addNavLink();
     buildHero();
+    tidyHeader();
     addCollapseToggles(document);
     for (const c of document.querySelectorAll(".media_link_container")) buildTabs(c);
     scan(document);
@@ -1323,5 +1376,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
 })();
