@@ -27,7 +27,7 @@
   let played = []; // newest first, no duplicates
   let token = 0;
   // Your ratings (0-10) seen anywhere: { "p:<release path>": r, "i:<release id>": r } (content.js and this panel write
-  // it). Rated albums are greyed out in Recommended / Challenge / Similar / New music and skipped by the dice.
+  // it). Rated albums are greyed out in Recommended / Challenge / Similar / More by artist / New music and skipped by the dice.
   let ratings = {};
   const pathKey = (href) => {
     try {
@@ -405,6 +405,7 @@
     }
 
     refreshOpenList("similar");
+    refreshOpenList("artist");
   }
 
   // After really listening (see watchPlayback), set the album as "currently listening" on RYM, once a day.
@@ -564,6 +565,31 @@
       }
       if (res && res.items && res.items.length) return { items: res.items };
       return { message: `Couldn't load suggestions (${(res && res.error) || "no response"}).` };
+    },
+    // Other albums by the current artist (their RYM artist page, kept a week per artist).
+    async artist() {
+      if (!current) return { message: "Play an album to see more by its artist." };
+      const m = /^\/release\/[^/]+\/([^/]+)\//.exec(new URL(current.payload.href || "https://x/").pathname);
+      if (!m) return { message: "Play an album to see more by its artist." };
+      const path = `/artist/${m[1]}`;
+      const skip = new URL(current.payload.href).pathname;
+      const all = (await store.get("sidebar:artist")) || {};
+      const rec = all[path];
+      const fresh = rec && rec.items && rec.items.length && Date.now() - rec.t < 7 * 24 * H;
+      let items = rec && rec.items;
+      if (!fresh) {
+        toast(`Reading ${current.payload.artist || "the artist"}'s page…`);
+        const res = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, msg: { type: "fetch-artist", path, name: current.payload.artist, skip: "" } }).catch(() => null);
+        if (res && res.items && res.items.length) {
+          items = res.items;
+          all[path] = { t: Date.now(), items };
+          const keys = Object.keys(all);
+          if (keys.length > 40) keys.sort((a, b) => all[a].t - all[b].t).slice(0, keys.length - 40).forEach((k) => delete all[k]);
+          store.set("sidebar:artist", all);
+        } else if (!items) return failed({ label: "the artist's page", error: (res && res.error) || "no response", page: `https://rateyourmusic.com${path}` });
+      }
+      items = items.filter((i) => new URL(i.href).pathname !== skip);
+      return items.length ? { items } : { message: "No other albums by this artist." };
     },
     async recommended() {
       const d = await listData("recommended");

@@ -769,6 +769,15 @@
     return { items, t: Date.now() };
   }
 
+  // Other albums by an artist: their /artist/<slug> page (albums only, newest first as RYM lists them).
+  async function fetchArtist(path, name, skip) {
+    if (!/^\/artist\/[^/]+\/?$/.test(path || "")) throw new Error("no artist page");
+    const doc = await docFor(new RegExp("^" + path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), path);
+    const items = scrapeReleases(doc, 100, skip || "").filter((i) => /^\/release\/album\//.test(new URL(i.href).pathname)).map((i) => ({ ...i, artist: i.artist || name || "" }));
+    if (!items.length) throw new Error("no other albums found");
+    return { items, t: Date.now() };
+  }
+
   // Your RYM play history (what "Set listening" records): newest first, one entry per release.
   function scrapeHistory(doc) {
     const out = [];
@@ -1104,8 +1113,8 @@
         setTimeout(() => sendResponse({ ok: true }), 2500); // the request needs the page alive for a moment
         return true;
       }
-      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history" || msg.type === "fetch-newmusic")) {
-        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-newmusic" ? fetchNewMusic() : fetchFavorites(msg.page))
+      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-artist")) {
+        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-newmusic" ? fetchNewMusic() : fetchFavorites(msg.page))
           .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : r))
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;

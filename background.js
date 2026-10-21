@@ -567,6 +567,8 @@ async function pageFor(msg) {
     case "read-reco":
     case "exclude":
       return "/recommendations/";
+    case "fetch-artist":
+      return msg.path;
     case "page-record":
       return pathOf(msg.href);
     case "fetch-history":
