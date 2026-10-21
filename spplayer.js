@@ -66,6 +66,8 @@
     const s = Math.round(Math.min(0.85, Math.max(0.4, hsl[1])) * 100);
     const l = Math.round(Math.min(0.62, Math.max(0.45, hsl[2])) * 100);
     root.style.setProperty("--sp-a", `hsl(${hsl[0]} ${s}% ${l}%)`);
+    // Hearts: the same family, lighter and slightly warmer so they stand out on the tinted card.
+    root.style.setProperty("--sp-h", `hsl(${(hsl[0] + 20) % 360} ${Math.min(95, s + 10)}% ${Math.min(75, l + 18)}%)`);
     root.classList.add("sp-tinted");
   }
 
@@ -80,9 +82,14 @@
 
     const root = el("div", "sp");
     const head = el("div", "sp-head");
+    const artbox = el("div", "sp-artbox");
     const img = el("img", "sp-art");
     img.referrerPolicy = "no-referrer";
-    head.append(img);
+    const albumBtn = el("button", "sp-album", "♡");
+    albumBtn.type = "button";
+    albumBtn.hidden = true;
+    artbox.append(img, albumBtn);
+    head.append(artbox);
     let spArt = "";
     const setArt = (u) => {
       if (u) img.src = u;
@@ -104,18 +111,21 @@
     const play = el("button", "sp-play", "▶");
     play.type = "button";
     play.title = "Play / pause";
-    const albumBtn = el("button", "sp-album", "♡ Save album");
-    albumBtn.type = "button";
-    albumBtn.hidden = true;
     const count = el("span", "sp-count");
-    const embedBtn = el("button", "sp-embed-toggle", "Spotify player");
+    // Spotify's logo (top right of the card) shows / hides Spotify's own player, for when ours doesn't respond.
+    const embedBtn = el("button", "sp-embed-toggle");
     embedBtn.type = "button";
-    embedBtn.title = "Show Spotify's own player (if something doesn't respond)";
-    controls.append(play, albumBtn, count, embedBtn);
+    embedBtn.title = "Show Spotify's own player";
+    embedBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="currentColor"/><g fill="none" stroke="#000" stroke-linecap="round" stroke-opacity=".85"><path d="M5.6 9.2c4.2-1.2 8.7-.8 12.6 1.4" stroke-width="2"/><path d="M6.4 12.5c3.5-1 7.2-.6 10.4 1.2" stroke-width="1.7"/><path d="M7.2 15.5c2.8-.8 5.7-.5 8.2.9" stroke-width="1.4"/></g></svg>';
+    controls.append(play, count);
 
+    const barRow = el("div", "sp-barrow");
     const bar = el("div", "sp-bar");
     const fill = el("div", "sp-bar-fill");
     bar.append(fill);
+    const clock = el("span", "sp-clock", "");
+    barRow.append(bar, clock);
     const msg = el("div", "sp-msg");
     msg.hidden = true;
     const list = el("div", "sp-list");
@@ -126,7 +136,7 @@
     frame.referrerPolicy = "strict-origin-when-cross-origin";
     const rateSlot = el("div", "sp-rate");
     root.rateSlot = rateSlot;
-    root.append(head, controls, bar, msg, rateSlot, list, frame);
+    root.append(head, controls, barRow, msg, rateSlot, list, frame, embedBtn);
 
     // ---- track list ----
     const rows = tracks.map((t, i) => {
@@ -175,7 +185,8 @@
     if (kind === "album") {
       let saved = null;
       const paintAlbum = () => {
-        albumBtn.textContent = saved ? "♥ In your library" : "♡ Save album";
+        albumBtn.textContent = saved ? "♥" : "♡";
+        albumBtn.title = saved ? "In your library (click to remove)" : "Save album to your library";
         albumBtn.classList.toggle("sp-saved", !!saved);
         albumBtn.hidden = saved == null;
       };
@@ -208,10 +219,16 @@
     const heard = new Map();
     let fired = false;
     let timers = [];
+    let lastToggle = 0;
     const post = (command) => {
+      if (command === "toggle") lastToggle = Date.now();
       try {
         frame.contentWindow.postMessage({ command }, "*");
       } catch {}
+    };
+    // Start playback, but never twice in quick succession (two toggles = play then pause).
+    const kick = () => {
+      if (want && !(st.seen && !st.paused) && Date.now() - lastToggle > 2200) post("toggle");
     };
     const paint = () => {
       const playing = want && st.seen && !st.paused;
@@ -223,7 +240,8 @@
         if (i === idx && tracks.length > 1) r.n.textContent = String(r.t.number || i + 1);
         else r.n.textContent = tracks.length > 1 ? String(r.t.number || i + 1) : "▶";
       });
-      now.textContent = idx >= 0 ? `${tracks[idx].name}${st.dur ? `  ${fmt(st.pos)} / ${fmt(st.dur)}` : ""}` : "";
+      now.textContent = idx >= 0 ? tracks[idx].name : "";
+      clock.textContent = idx >= 0 && st.dur ? `${fmt(st.pos)} / ${fmt(st.dur)}` : "";
       fill.style.width = st.dur ? `${Math.min(100, (st.pos / st.dur) * 100)}%` : "0";
     };
 
@@ -243,9 +261,7 @@
       if (autoplay) {
         // Press play once the embed is up: on its "ready" message (see below), and again a few times in
         // case that message is missed (toggle is the command Spotify documents). Stops once it plays.
-        for (const ms of [1500, 3500, 6000]) {
-          timers.push(setTimeout(() => want && !(st.seen && !st.paused) && post("toggle"), ms));
-        }
+        for (const ms of [1500, 4000, 6500]) timers.push(setTimeout(kick, ms));
         timers.push(
           setTimeout(() => {
             if (want && !(st.seen && !st.paused)) {
@@ -262,8 +278,7 @@
       if (idx < 0) return select(0, true);
       want = !want;
       if (!want) post("pause");
-      else if (st.seen && st.paused) post("toggle");
-      else if (!st.seen) post("toggle");
+      else post("toggle");
       paint();
     });
 
@@ -282,9 +297,12 @@
       } catch {}
       if (d.type === "ready" && want && !readyOnce) {
         readyOnce = true;
-        setTimeout(() => want && !(st.seen && !st.paused) && post("toggle"), 300);
+        setTimeout(kick, 300);
       }
       if (typeof p.isPaused !== "boolean") return;
+      // A message from the previous song's page still in flight: ignore it.
+      const uri = String(p.playingURI || p.uri || "");
+      if (uri && idx >= 0 && !uri.includes(tracks[idx].id)) return;
       const prevPos = st.pos;
       const prevDur = st.dur;
       const wasPlaying = st.seen && !st.paused;

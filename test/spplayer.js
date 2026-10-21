@@ -51,7 +51,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   const order = [...sp.children].map((c) => c.className.split(" ")[0]);
   assert.ok(order.indexOf("sp-rate") > order.indexOf("sp-head") && order.indexOf("sp-rate") < order.indexOf("sp-list"));
   assert.strictEqual(d.querySelector(".sp-count").textContent, "♥ 1/3");
-  assert.ok(d.querySelector(".sp-album").textContent.includes("Save album"));
+  assert.strictEqual(d.querySelector(".sp-album").textContent, "♡");
   // hidden iframe until a song is chosen; clicking a row loads that track in it
   const frame = d.querySelector(".sp-frame");
   assert.ok(frame.src.includes("/embed/track/t1"), "autoplays the first song");
@@ -64,7 +64,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   d.querySelector(".sp-album").click();
   await tick(5);
   assert.ok(sent.some((m) => m.type === "spotify-album-save" && m.save === true));
-  assert.ok(d.querySelector(".sp-album").textContent.includes("In your library"));
+  assert.strictEqual(d.querySelector(".sp-album").textContent, "♥");
   // heart saves a song without selecting it
   d.querySelectorAll(".sp-heart")[0].click();
   await tick(5);

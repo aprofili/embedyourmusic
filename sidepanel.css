@@ -297,6 +297,7 @@ button.rym-like-count.rym-open {
 }
 
 .acc-bar {
+  position: relative;
   display: flex;
   align-items: center;
 }
@@ -306,21 +307,21 @@ button.rym-like-count.rym-open {
 }
 
 .dice {
-  flex: none;
-  order: -1;
-  margin-right: 6px;
-  padding: 2px 6px;
+  position: absolute;
+  right: 26px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 4px;
   border: 0;
   border-radius: 6px;
   background: none;
-  font-size: 16px;
-  line-height: 1;
+  color: var(--muted);
+  line-height: 0;
   cursor: pointer;
-  opacity: 0.75;
 }
 
 .dice:hover {
-  opacity: 1;
+  color: var(--fg);
   background: rgba(128, 128, 128, 0.18);
 }
 
@@ -367,6 +368,7 @@ button.rym-like-count.rym-open {
 
 .sp-meta {
   min-width: 0;
+  padding-right: 26px;
 }
 
 .sp-title {
@@ -616,4 +618,89 @@ button.rym-like-count.rym-open {
   .sp, .sp-playing .sp-art, .sp-eq i {
     animation: none;
   }
+}
+
+/* ---- Player card changes: art heart, clock beside the bar, Spotify logo ---- */
+.sp {
+  --sp-h: var(--sp-a);
+}
+
+.sp-artbox {
+  position: relative;
+  flex: none;
+}
+
+.sp-album {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 16px;
+  line-height: 28px;
+  text-align: center;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: transform 0.15s ease, color 0.2s;
+}
+
+.sp-album:hover {
+  transform: scale(1.12);
+}
+
+.sp-album.sp-saved {
+  color: var(--sp-h);
+}
+
+.sp-barrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sp-barrow .sp-bar {
+  flex: 1;
+  margin-top: 0;
+}
+
+.sp-clock {
+  flex: none;
+  min-width: 5.5em;
+  text-align: right;
+  font-size: 0.75em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sp > .sp-embed-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  margin: 0;
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: #1db954;
+  line-height: 0;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.sp > .sp-embed-toggle:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.sp-heart.sp-saved {
+  color: var(--sp-h);
 }
