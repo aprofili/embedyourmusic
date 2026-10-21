@@ -30,5 +30,17 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     ["Two", "Artist B", "https://rateyourmusic.com/release/album/b/two/"],
   ]);
   assert.strictEqual(sim.items[0].artUrl, "https://cdn.sonemic.net/i/300/x/one.jpg");
+  // Recommendations-style row: lazy <picture> cover (placeholder src) with our ▶ over it, then the title link
+  {
+    const box = w.document.createElement("div");
+    box.innerHTML = `<li class="component_discography_item"><a class="component_discography_item_image_link" href="/release/album/x/y/"><picture>
+      <source type="image/webp" data-srcset="//e.snmc.io/i/300/w/aaa/1/c.webp 2x, //e.snmc.io/i/150/w/aaa/1/c.webp 1x">
+      <source type="image/jpeg" data-srcset="//e.snmc.io/i/300/s/bbb/1/c.jpeg 2x, //e.snmc.io/i/150/s/bbb/1/c.jpeg 1x">
+      <img src="data:image/png;base64,AAAA"></picture><span class="rym-play">▶</span></a>
+      <a class="component_discography_item_link release" href="/release/album/x/y/">Real Title</a><a class="artist" href="/artist/x">X</a></li>`;
+    const [it] = w.__embedYourMusic.scrapeReleases(box, 1);
+    assert.strictEqual(it.title, "Real Title");
+    assert.strictEqual(it.artUrl, "https://e.snmc.io/i/300/s/bbb/1/c.jpeg");
+  }
   console.log("lists tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });

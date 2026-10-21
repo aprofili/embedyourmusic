@@ -171,8 +171,14 @@
 
   // The cover URL, whether or not RYM has lazy-loaded it yet; 300px version.
   function artSrc(img) {
+    const pic = (() => {
+      const p = img && img.closest && img.closest("picture");
+      const src = p && [...p.querySelectorAll("source")].find((x) => x.getAttribute("type") === "image/jpeg");
+      const set = src && (src.getAttribute("srcset") || src.getAttribute("data-srcset"));
+      return (set && set.trim().split(",")[0].trim().split(/\s+/)[0]) || "";
+    })();
     let s = img && (img.currentSrc || img.getAttribute("src") || img.getAttribute("data-src") || "");
-    if (!s || s.startsWith("data:")) s = (img && img.getAttribute("data-src")) || "";
+    if (!s || s.startsWith("data:")) s = (img && img.getAttribute("data-src")) || pic;
     if (!s) return "";
     if (s.startsWith("//")) s = "https:" + s;
     return /\/i\/\d+\/w\//.test(s) ? s : s.replace(/\/i\/\d+\//, "/i/300/");

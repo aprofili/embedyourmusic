@@ -477,9 +477,21 @@
 
 
   // ---- Album lists for the side panel ----
+  // Real cover URL of a lazy-loaded <picture> (RYM keeps it in <source data-srcset> until scrolled into view).
+  const fromPicture = (img) => {
+    const pic = img && img.closest && img.closest("picture");
+    if (!pic) return "";
+    for (const type of ["image/jpeg", "image/webp", ""]) {
+      const src = [...pic.querySelectorAll("source")].find((s) => !type || s.getAttribute("type") === type);
+      const set = src && (src.getAttribute("srcset") || src.getAttribute("data-srcset"));
+      const first = set && set.trim().split(",")[0].trim().split(/\s+/)[0];
+      if (first) return first;
+    }
+    return "";
+  };
   const imgUrl = (img) => {
     let s = img && (img.currentSrc || img.getAttribute("src") || "");
-    if (!s || s.startsWith("data:")) s = (img && img.getAttribute("data-src")) || "";
+    if (!s || s.startsWith("data:")) s = (img && img.getAttribute("data-src")) || fromPicture(img);
     if (!s) return "";
     if (s.startsWith("//")) s = "https:" + s;
     return /\/i\/\d+\/w\//.test(s) ? s : s.replace(/\/i\/\d+\//, "/i/300/"); // "/w/" URLs carry a per-size hash: leave them alone
@@ -498,6 +510,7 @@
         continue;
       }
       if (!/^\/release\/[^/]+\/[^/]+\/[^/]+\/?$/.test(path) || seen.has(path) || path === skipPath) continue;
+      if (a.querySelector("img, picture")) continue; // a cover link, not the title link
       const title = (a.textContent || "").replace(/\s+/g, " ").trim();
       if (!title) continue; // image-only link
       const row = a.closest("li, tr") || a.parentElement;
