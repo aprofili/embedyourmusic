@@ -348,14 +348,34 @@
   }
 
   // Where the engine runs: the offscreen document if the browser has one (asked via the background), else here.
+  // If the offscreen player stops answering, the engine moves into the panel so playback still works.
   async function makeDriver(host) {
-    const r = await send({ type: "eng-ensure" });
+    const timed = (m, ms = 4000) => Promise.race([send(m), new Promise((r) => setTimeout(() => r({ error: "timeout" }), ms))]);
+    const r = await timed({ type: "eng-ensure" });
     const subs = new Set();
     let lastLoad = null;
+    let engine = null;
+    const d = { remote: false, frame: null, onState: (f) => subs.add(f), cmd: null };
+    const local = () => {
+      if (engine) return engine;
+      engine = globalThis.__eymSpEngine.create(host, (s, e) => {
+        subs.forEach((f) => f(s, e));
+        send({ type: "eng-state", state: s, event: null }); // toolbar badge (the event stays with the panel)
+      });
+      d.remote = false;
+      d.frame = engine.frame;
+      if (api.runtime.onMessage)
+        api.runtime.onMessage.addListener((m, _s, reply) => {
+          if (!m || m.type !== "eng-cmd" || !host.isConnected) return false;
+          reply({ state: engine.handle(m) });
+          return false;
+        });
+      return engine;
+    };
     if (r && r.ok) {
       let alive = false;
       const onMsg = (m) => {
-        if (!m || m.type !== "eng-state") return;
+        if (!m || m.type !== "eng-state" || engine) return;
         if (!host.isConnected) {
           if (alive) api.runtime.onMessage.removeListener(onMsg); // our card was replaced
           return;
@@ -364,35 +384,32 @@
         subs.forEach((f) => f(m.state, m.event));
       };
       api.runtime.onMessage.addListener(onMsg);
-      return {
-        remote: true,
-        onState: (f) => subs.add(f),
-        cmd: async (c) => {
-          if (c.cmd === "load") lastLoad = c;
-          let res = await send({ type: "eng-cmd", ...c });
-          if (!(res && res.state) && c.cmd !== "get") {
-            // The offscreen document was closed by the browser (it does that after a while without audio): bring it
-            // back, hand it the album again, and repeat the command.
-            const r = await send({ type: "eng-ensure" });
-            if (r && r.ok) {
-              if (lastLoad && c.cmd !== "load") await send({ type: "eng-cmd", ...lastLoad });
-              res = await send({ type: "eng-cmd", ...c });
-            }
+      d.remote = true;
+      d.cmd = async (c) => {
+        if (c.cmd === "load") lastLoad = c;
+        if (engine) return engine.handle(c);
+        let res = await timed({ type: "eng-cmd", ...c });
+        if (!(res && res.state) && c.cmd !== "get") {
+          // The offscreen document was closed by the browser (after a while without audio): bring it back,
+          // hand it the album again, and repeat the command.
+          const e = await timed({ type: "eng-ensure" });
+          if (e && e.ok) {
+            if (lastLoad && c.cmd !== "load") await timed({ type: "eng-cmd", ...lastLoad });
+            res = await timed({ type: "eng-cmd", ...c });
           }
-          return res && res.state;
-        },
+        }
+        if (res && res.state) return res.state;
+        if (c.cmd === "get") return null;
+        // Still nothing: play from the panel itself.
+        const eng = local();
+        if (lastLoad && c.cmd !== "load") eng.handle(lastLoad);
+        return eng.handle(c);
       };
+      return d;
     }
-    const engine = globalThis.__eymSpEngine.create(host, (s, e) => {
-      subs.forEach((f) => f(s, e));
-      send({ type: "eng-state", state: s, event: null }); // toolbar badge (the event stays with the panel)
-    });
-    if (api.runtime.onMessage) api.runtime.onMessage.addListener((m, _s, reply) => {
-      if (!m || m.type !== "eng-cmd" || !host.isConnected) return false;
-      reply({ state: engine.handle(m) });
-      return false;
-    });
-    return { remote: false, frame: engine.frame, onState: (f) => subs.add(f), cmd: async (c) => engine.handle(c) };
+    d.cmd = async (c) => local().handle(c);
+    local();
+    return d;
   }
 
   const resetTint = () => {
