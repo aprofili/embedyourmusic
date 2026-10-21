@@ -64,9 +64,17 @@
     if (!hsl) return;
     const s = Math.round(Math.min(0.85, Math.max(0.4, hsl[1])) * 100);
     const l = Math.round(Math.min(0.62, Math.max(0.45, hsl[2])) * 100);
-    root.style.setProperty("--sp-a", `hsl(${hsl[0]} ${s}% ${l}%)`);
+    const accent = `hsl(${hsl[0]} ${s}% ${l}%)`;
+    root.style.setProperty("--sp-a", accent);
     // Hearts: the same family, lighter and slightly warmer so they stand out on the tinted card.
-    root.style.setProperty("--sp-h", `hsl(${(hsl[0] + 20) % 360} ${Math.min(95, s + 10)}% ${Math.min(75, l + 18)}%)`);
+    const light = `hsl(${(hsl[0] + 20) % 360} ${Math.min(95, s + 10)}% ${Math.min(75, l + 18)}%)`;
+    root.style.setProperty("--sp-h", light);
+    // The whole panel (tabs, stars, lists, links, background) takes the same colours.
+    const rs = document.documentElement.style;
+    rs.setProperty("--tint", accent);
+    rs.setProperty("--tint-h", light);
+    rs.setProperty("--accent", light);
+    rs.setProperty("--star", light);
     root.classList.add("sp-tinted");
   }
 
@@ -308,5 +316,10 @@
     return { remote: false, frame: engine.frame, onState: (f) => subs.add(f), cmd: async (c) => engine.handle(c) };
   }
 
-  globalThis.__eymSpPlayer = { build };
+  const resetTint = () => {
+    const rs = document.documentElement.style;
+    for (const p of ["--tint", "--tint-h", "--accent", "--star"]) rs.removeProperty(p);
+  };
+
+  globalThis.__eymSpPlayer = { build, resetTint };
 })();

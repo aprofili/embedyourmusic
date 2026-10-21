@@ -704,3 +704,77 @@ button.rym-like-count.rym-open {
 .sp-heart.sp-saved {
   color: var(--sp-h);
 }
+
+/* ---- Panel-wide colours from the album art (--tint / --tint-h are set by spplayer.js; defaults when unset) ---- */
+:root {
+  --tint: var(--accent);
+  --tint-h: var(--accent);
+}
+
+html {
+  scrollbar-color: color-mix(in srgb, var(--tint) 60%, transparent) transparent;
+}
+
+body {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 20%, var(--bg)) 0, var(--bg) 460px) no-repeat, var(--bg);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--tint) 45%, transparent);
+}
+
+#tabs .rym-reco-tab {
+  transition: border-color 0.2s, background 0.2s, opacity 0.2s;
+}
+
+#tabs .rym-reco-tab:hover {
+  border-color: var(--tint);
+  background: color-mix(in srgb, var(--tint) 16%, transparent);
+}
+
+#tabs .rym-reco-tab.rym-tab-active {
+  outline-color: var(--tint);
+  background: color-mix(in srgb, var(--tint) 24%, transparent);
+}
+
+.acc {
+  border-bottom: 1px solid color-mix(in srgb, var(--tint) 30%, var(--line));
+}
+
+.acc-head {
+  transition: color 0.2s;
+}
+
+.acc-head:hover,
+.acc.open .acc-head {
+  color: var(--tint-h);
+}
+
+.acc.open .acc-head::after,
+.acc-head:hover::after {
+  color: var(--tint-h);
+}
+
+.item {
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.item:hover {
+  background: color-mix(in srgb, var(--tint) 18%, transparent);
+}
+
+.more:hover,
+#rating-note .more:hover {
+  border-color: var(--tint);
+  background: color-mix(in srgb, var(--tint) 16%, transparent);
+}
+
+.dice:hover {
+  color: var(--tint-h);
+  background: color-mix(in srgb, var(--tint) 20%, transparent);
+}
+
+.item .x:hover {
+  color: var(--tint-h);
+}

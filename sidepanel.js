@@ -210,6 +210,7 @@
     }
 
     if (!entries.length) {
+      if (globalThis.__eymSpPlayer) globalThis.__eymSpPlayer.resetTint();
       // Nothing to embed: still show what this is.
       const box = document.createElement("div");
       box.className = "fallback";
@@ -238,6 +239,7 @@
       const load = (entry, slot) => {
         const { info, service } = entry;
         const plain = () => {
+          if (globalThis.__eymSpPlayer) globalThis.__eymSpPlayer.resetTint();
           if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
           const frame = makeFrame(info.src, info.height, `${LABELS[service]} player`);
           slot.append(frame);
