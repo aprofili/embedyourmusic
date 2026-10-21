@@ -676,12 +676,25 @@
         img.loading = "lazy";
         const cands = [item.artUrl, ...(item.artAlts || [])].filter((u, k, a) => u && a.indexOf(u) === k);
         let tried = 0;
+        let askedSpotify = false;
+        const spotifyArt = () => {
+          // RYM's image host wouldn't serve it here: use Spotify's cover of the same album.
+          if (askedSpotify) return img.classList.add("noart");
+          askedSpotify = true;
+          api.runtime
+            .sendMessage({ type: "cover-art", item: { href: item.href, title: item.title, artist: item.artist } })
+            .then((r) => {
+              if (r && r.url) img.src = r.url;
+              else img.classList.add("noart");
+            })
+            .catch(() => img.classList.add("noart"));
+        };
         img.addEventListener("error", () => {
           if (++tried < cands.length) img.src = cands[tried];
-          else img.classList.add("noart");
+          else spotifyArt();
         });
         if (cands.length) img.src = cands[0];
-        else img.classList.add("noart");
+        else spotifyArt();
         const label = document.createElement("span");
         label.className = "lbl";
         const t = document.createElement("span");

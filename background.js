@@ -374,9 +374,42 @@ async function findSpotify(want) {
       /* try the next query */
     }
     const hit = pick(want, seen);
-    if (hit) return [{ service: "spotify", href: hit.href }];
+    if (hit) {
+      const a = seen.get(hit.href.split("/").pop());
+      const imgs = (a && a.images) || [];
+      return [{ service: "spotify", href: hit.href, art: (imgs[imgs.length > 1 ? 1 : 0] || {}).url || "" }];
+    }
   }
   return [];
+}
+
+// Cover art from Spotify, for list covers RYM's image host won't serve to the panel. Cached 30 days; 2 at a time.
+let artRunning = 0;
+const artQueue = [];
+async function coverArt(it) {
+  const KEY = "sp:art";
+  const cache = ((await api.storage.local.get(KEY))[KEY]) || {};
+  const k = it.href || `${it.artist}|${it.title}`;
+  const c = cache[k];
+  if (c && Date.now() - c.t < 30 * 24 * 3600e3) return c.url;
+  if (artRunning >= 2) await new Promise((r) => artQueue.push(r));
+  artRunning++;
+  try {
+    const hit = (await findSpotify({ artist: it.artist || "", title: it.title || "", year: 0 }))[0];
+    const url = (hit && hit.art) || "";
+    const now = ((await api.storage.local.get(KEY))[KEY]) || {};
+    now[k] = { t: Date.now(), url };
+    const keys = Object.keys(now);
+    if (keys.length > 2000) for (const x of keys.slice(0, keys.length - 2000)) delete now[x];
+    await api.storage.local.set({ [KEY]: now });
+    return url;
+  } catch {
+    return "";
+  } finally {
+    artRunning--;
+    const next = artQueue.shift();
+    if (next) next();
+  }
 }
 
 // New-music filter: keep only releases Spotify has (fuzzy match via findSpotify), remembering the answer for a week.
@@ -702,6 +735,10 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && typeof msg.type === "string" && msg.type.startsWith("spotify-")) {
     handleSpotify(msg).then(sendResponse);
+    return true;
+  }
+  if (msg && msg.type === "cover-art") {
+    coverArt(msg.item || {}).then((url) => sendResponse({ url })).catch(() => sendResponse({ url: "" }));
     return true;
   }
   if (msg && msg.type === "sp-filter") {
