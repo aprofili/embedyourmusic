@@ -223,7 +223,57 @@
   }
 
   // Stay blank until the first view is built, then fade in (no flash of the unloaded state).
-  const reveal = () => document.body.classList.add("ready");
+  // ---- Keeping your place while a new album loads ----
+  // The player area keeps its height while it is swapped, then eases to the new height; the row you clicked stays
+  // where it was on screen (the scroll position follows the layout) until you scroll yourself.
+  let anchor = null;
+  let anchorOff = null;
+  function holdPlace(row) {
+    if (anchorOff) anchorOff();
+    anchor = null;
+    anchorOff = null;
+    const now = $("now");
+    if (now.hidden === false && now.offsetHeight) now.style.minHeight = `${now.offsetHeight}px`;
+    if (!row || typeof ResizeObserver === "undefined") return;
+    const scroller = document.scrollingElement || document.documentElement;
+    const a = { row, top: row.getBoundingClientRect().top };
+    anchor = a;
+    const fix = () => {
+      if (anchor !== a || !row.isConnected) return;
+      const d = row.getBoundingClientRect().top - a.top;
+      if (Math.abs(d) >= 1) scroller.scrollTop += d;
+    };
+    const ro = new ResizeObserver(fix);
+    ro.observe(now);
+    ro.observe(document.body);
+    const stop = () => {
+      ro.disconnect();
+      clearTimeout(timer);
+      for (const ev of ["wheel", "touchstart", "keydown", "pointerdown"]) window.removeEventListener(ev, stop, true);
+      if (anchor === a) anchor = null;
+      anchorOff = null;
+    };
+    const timer = setTimeout(stop, 6000);
+    for (const ev of ["wheel", "touchstart", "keydown", "pointerdown"]) window.addEventListener(ev, stop, true);
+    anchorOff = stop;
+  }
+  // The new player is in: let the area ease from the held height to the new one.
+  function settlePlace() {
+    const now = $("now");
+    if (!now.style.minHeight) return;
+    const from = now.offsetHeight;
+    now.style.minHeight = "";
+    const to = now.offsetHeight;
+    if (Math.abs(from - to) < 2 || !now.animate) return;
+    now.style.overflow = "hidden";
+    const an = now.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 350, easing: "ease" });
+    an.onfinish = an.oncancel = () => (now.style.overflow = "");
+  }
+
+  const reveal = () => {
+    document.body.classList.add("ready");
+    settlePlace();
+  };
   setTimeout(reveal, 3500); // never stay blank
 
   // The rating box moves into the custom player (under the art); anything that clears the body puts it back first.
@@ -259,6 +309,7 @@
 
     const tabs = $("tabs");
     const body = $("body");
+    if (!anchorOff) holdPlace(null);
     tabs.textContent = "";
     body.textContent = "";
     body.className = "";
@@ -703,8 +754,9 @@
     $("body").textContent = skipRated ? "Everything in this list is already rated." : "Nothing to play.";
   }
 
-  async function playItem(item) {
+  async function playItem(item, row) {
     const my = ++token;
+    holdPlace(row);
     $("empty").hidden = true;
     $("now").hidden = false;
     $("tabs").textContent = "";
@@ -718,7 +770,10 @@
     }
     if (my !== token) return;
     if (res && res.payload) render({ ...res.payload, tabId: res.tabId });
-    else $("body").textContent = `Couldn't load that album (${(res && res.error) || "no response"}).`;
+    else {
+      $("body").textContent = `Couldn't load that album (${(res && res.error) || "no response"}).`;
+      settlePlace();
+    }
   }
 
   function fillList(acc, kind, result) {
@@ -811,7 +866,7 @@
           label.append(a);
         }
         row.append(img, label);
-        row.addEventListener("click", () => playItem(item));
+        row.addEventListener("click", () => playItem(item, row));
         row.dataset.href = item.href;
         if (item.id) row.dataset.id = item.id;
         if (item.rated) row.dataset.rated = "1";

@@ -325,6 +325,18 @@ button.rym-like-count.rym-open {
   background: rgba(128, 128, 128, 0.18);
 }
 
+/* ---- Colours change gradually: the art colours are real <color> properties, so they can be transitioned ---- */
+@property --sp-a { syntax: "<color>"; inherits: true; initial-value: #4a90e2; }
+@property --sp-b { syntax: "<color>"; inherits: true; initial-value: #4a90e2; }
+@property --sp-h { syntax: "<color>"; inherits: true; initial-value: #f5a623; }
+@property --tint { syntax: "<color>"; inherits: true; initial-value: #4a90e2; }
+@property --tint-h { syntax: "<color>"; inherits: true; initial-value: #4a90e2; }
+@property --accent { syntax: "<color>"; inherits: true; initial-value: #4a90e2; }
+@property --star { syntax: "<color>"; inherits: true; initial-value: #f5a623; }
+:root {
+  transition: --tint 1.2s ease, --tint-h 1.2s ease, --accent 1.2s ease, --star 1.2s ease;
+}
+
 /* ---- Custom Spotify player ---- */
 .sp {
   --sp-a: var(--accent);
@@ -332,7 +344,7 @@ button.rym-like-count.rym-open {
   padding: 12px;
   border-radius: 14px;
   background: linear-gradient(160deg, color-mix(in srgb, var(--sp-a) 30%, transparent), transparent 70%);
-  transition: background 0.8s ease;
+  transition: --sp-a 1.2s ease, --sp-b 1.2s ease, --sp-h 1.2s ease;
   animation: sp-in 0.5s ease both;
 }
 

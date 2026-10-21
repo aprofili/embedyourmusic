@@ -102,9 +102,15 @@
 
   // Two colours from the art: the main one tints the card and the panel (backgrounds, highlights, glow); a notable
   // second colour (if the art has one) marks what you act on: play button, progress, now-playing marks, hearts, stars.
+  // The colours of the card before this one: a new card starts from them and fades to its own.
+  let lastCols = null;
+  const frames = (n) => new Promise((r) => (n > 0 && typeof requestAnimationFrame === "function" ? requestAnimationFrame(() => frames(n - 1).then(r)) : r()));
   async function tint(root, url) {
     const hsl = await dominant(url);
-    if (!hsl || hsl[1] < 0.05) return; // black-and-white art: keep the default colours
+    if (!hsl || hsl[1] < 0.05) {
+      lastCols = null;
+      return; // black-and-white art: keep the default colours
+    }
     const vivid = (c, sMin, lMin, lMax) => [c[0], Math.round(Math.min(0.9, Math.max(sMin, c[1])) * 100), Math.round(Math.min(lMax, Math.max(lMin, c[2])) * 100)];
     const css = (c) => `hsl(${c[0]} ${c[1]}% ${c[2]}%)`;
     const main = vivid(hsl, 0.4, 0.45, 0.62);
@@ -113,9 +119,13 @@
     const pop = two ? css(two) : accent;
     // Hearts and stars: lighter version of the second colour (or of the main one, shifted a little warmer).
     const light = two ? `hsl(${two[0]} ${Math.min(95, two[1] + 5)}% ${Math.min(74, two[2] + 14)}%)` : `hsl(${(main[0] + 20) % 360} ${Math.min(95, main[1] + 10)}% ${Math.min(75, main[2] + 18)}%)`;
+    // Let the card be on screen (showing the previous colours) before the new ones go in, so they fade.
+    for (let i = 0; i < 30 && !root.isConnected; i++) await frames(1);
+    await frames(2);
     root.style.setProperty("--sp-a", accent);
     root.style.setProperty("--sp-b", pop);
     root.style.setProperty("--sp-h", light);
+    lastCols = { a: accent, b: pop, h: light };
     const rs = document.documentElement.style;
     rs.setProperty("--tint", accent);
     rs.setProperty("--tint-h", light);
@@ -134,6 +144,11 @@
     const tracks = res.tracks;
 
     const root = el("div", "sp");
+    if (lastCols) {
+      root.style.setProperty("--sp-a", lastCols.a);
+      root.style.setProperty("--sp-b", lastCols.b);
+      root.style.setProperty("--sp-h", lastCols.h);
+    }
     const head = el("div", "sp-head");
     const artbox = el("div", "sp-artbox");
     const img = el("img", "sp-art");
@@ -464,6 +479,7 @@
   }
 
   const resetTint = () => {
+    lastCols = null;
     const rs = document.documentElement.style;
     for (const p of ["--tint", "--tint-h", "--accent", "--star"]) rs.removeProperty(p);
   };
