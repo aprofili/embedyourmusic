@@ -60,12 +60,8 @@
     });
   }
 
-  async function tint(root, payload, kind, id) {
-    let hsl = await dominant(payload.artUrl);
-    if (!hsl) {
-      const r = await send({ type: "spotify-art", kind, id });
-      hsl = r && r.url ? await dominant(r.url) : null;
-    }
+  async function tint(root, url) {
+    const hsl = await dominant(url);
     if (!hsl) return;
     const s = Math.round(Math.min(0.85, Math.max(0.4, hsl[1])) * 100);
     const l = Math.round(Math.min(0.62, Math.max(0.45, hsl[2])) * 100);
@@ -84,12 +80,20 @@
 
     const root = el("div", "sp");
     const head = el("div", "sp-head");
-    if (payload.artUrl) {
-      const img = el("img", "sp-art");
-      img.referrerPolicy = "no-referrer";
-      img.src = payload.artUrl;
-      head.append(img);
-    }
+    const img = el("img", "sp-art");
+    img.referrerPolicy = "no-referrer";
+    head.append(img);
+    let spArt = "";
+    const setArt = (u) => {
+      if (u) img.src = u;
+      else img.hidden = true;
+    };
+    img.hidden = true;
+    img.addEventListener("load", () => (img.hidden = false));
+    img.addEventListener("error", () => {
+      if (spArt && img.src !== spArt) img.src = spArt;
+      else img.hidden = true;
+    });
     const meta = el("div", "sp-meta");
     meta.append(el("div", "sp-title", payload.title || "Untitled"), el("div", "sp-artist", payload.artist || ""));
     const now = el("div", "sp-now", "");
@@ -199,6 +203,8 @@
     let want = false;
     let st = { seen: false, paused: true, pos: 0, dur: 0 };
     let started = false;
+    let got = 0; // messages heard from the embed (for the diagnostic line)
+    let readyOnce = false;
     const heard = new Map();
     let fired = false;
     let timers = [];
@@ -208,7 +214,7 @@
       } catch {}
     };
     const paint = () => {
-      const playing = want && !(st.seen && st.paused);
+      const playing = want && st.seen && !st.paused;
       play.textContent = playing ? "⏸" : "▶";
       root.classList.toggle("sp-playing", playing);
       rows.forEach((r, i) => {
@@ -227,6 +233,7 @@
       idx = i;
       want = autoplay;
       st = { seen: false, paused: true, pos: 0, dur: 0 };
+      readyOnce = false;
       msg.hidden = true;
       frame.src = `https://open.spotify.com/embed/track/${tracks[i].id}?utm_source=embedyourmusic`;
       if (autoplay && !started) {
@@ -234,15 +241,18 @@
         if (opts.onPlay) opts.onPlay();
       }
       if (autoplay) {
-        // Start it once the embed is up (toggle is the command Spotify documents); a second look at 6s.
-        timers.push(setTimeout(() => want && !(st.seen && !st.paused) && post("toggle"), 900));
+        // Press play once the embed is up: on its "ready" message (see below), and again a few times in
+        // case that message is missed (toggle is the command Spotify documents). Stops once it plays.
+        for (const ms of [1500, 3500, 6000]) {
+          timers.push(setTimeout(() => want && !(st.seen && !st.paused) && post("toggle"), ms));
+        }
         timers.push(
           setTimeout(() => {
-            if (want && !st.seen) {
+            if (want && !(st.seen && !st.paused)) {
               msg.hidden = false;
-              msg.textContent = "Spotify's player didn't answer. Press “Spotify player” to use it directly.";
+              msg.textContent = `Spotify's player didn't start (${got ? `${got} messages heard` : "no messages from it"}). Press “Spotify player” to use it directly.`;
             }
-          }, 6000)
+          }, 8000)
         );
       }
       paint();
@@ -266,6 +276,14 @@
       if (e.origin !== "https://open.spotify.com" || !frame.isConnected || e.source !== frame.contentWindow) return;
       const d = e.data && typeof e.data === "object" ? e.data : {};
       const p = d.payload || d.data || d;
+      got++;
+      try {
+        if (localStorage.eymDebug) console.log("[EmbedYourMusic] spotify message", e.data);
+      } catch {}
+      if (d.type === "ready" && want && !readyOnce) {
+        readyOnce = true;
+        setTimeout(() => want && !(st.seen && !st.paused) && post("toggle"), 300);
+      }
       if (typeof p.isPaused !== "boolean") return;
       const prevPos = st.pos;
       const prevDur = st.dur;
@@ -292,7 +310,17 @@
     }, 1000);
 
     paint();
-    tint(root, payload, kind, id);
+    // Spotify's own cover (always loads, and its image host allows reading the colours); RYM's art as a fallback.
+    send({ type: "spotify-art", kind, id }).then((r) => {
+      spArt = (r && r.url) || "";
+      if (spArt) {
+        setArt(spArt);
+        tint(root, spArt);
+      } else {
+        setArt(payload.artUrl);
+        tint(root, payload.artUrl);
+      }
+    });
     if (opts.autoplay !== false) setTimeout(() => idx < 0 && select(0, true), 0);
     return root;
   }

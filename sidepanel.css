@@ -590,15 +590,22 @@ button.rym-like-count.rym-open {
 
 /* Spotify's own embed stays out of sight (it still plays); the button shows it. */
 .sp-frame {
+  /* In the viewport but invisible: embeds that sit off-screen may never start. */
   position: fixed;
-  left: -10000px;
-  top: 0;
-  width: 400px;
+  right: 0;
+  bottom: 0;
+  width: 320px;
   height: 152px;
   border: 0;
+  opacity: 0.01;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .sp-frame.sp-frame-shown {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: auto;
   position: static;
   width: 100%;
   margin-top: 10px;
