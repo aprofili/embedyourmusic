@@ -497,6 +497,24 @@ if (api.sidePanel && api.sidePanel.setPanelBehavior) {
 // Panel -> a rateyourmusic.com tab (it needs RYM's cookies / page): the given tab if it is still
 // open, else any RYM tab. Resolves to the tab's reply plus { tabId }, or { error }.
 async function relay(tabId, urlPart, message) {
+  const first = await relayToTab(tabId, urlPart, message);
+  if (!first.error) return first;
+  // No usable RYM tab (none open, or one from before the extension was reloaded): do the job in a background tab.
+  const url = {
+    "fetch-newmusic": "https://rateyourmusic.com/new-music/",
+    "fetch-history": "https://rateyourmusic.com/",
+    "fetch-favorites": "https://rateyourmusic.com/",
+    "load-release": "https://rateyourmusic.com/",
+    "check-rating": "https://rateyourmusic.com/",
+    "set-listening": "https://rateyourmusic.com/",
+    rate: "https://rateyourmusic.com/",
+  }[message && message.type];
+  if (!url) return first;
+  const second = await viaScratchTab(url, message);
+  return second || first;
+}
+
+async function relayToTab(tabId, urlPart, message) {
   const rym = await api.tabs.query({ url: ["*://rateyourmusic.com/*", "*://*.rateyourmusic.com/*"] });
   const real = rym.filter((t) => !scratch.has(t.id));
   const pool = urlPart ? real.filter((t) => (t.url || "").includes(urlPart)) : real;
@@ -510,6 +528,37 @@ async function relay(tabId, urlPart, message) {
   } catch {
     return { error: "no response (reload the RYM tab)" };
   }
+}
+
+// One inactive RYM tab at a time per URL: wait for its content script, hand it the message, close it.
+const scratchJobs = new Map();
+function viaScratchTab(url, message) {
+  const key = url + "|" + JSON.stringify(message);
+  if (scratchJobs.has(key)) return scratchJobs.get(key);
+  const job = (async () => {
+    let tab;
+    try {
+      tab = await api.tabs.create({ url, active: false });
+      scratch.set(tab.id, () => {});
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          const res = await api.tabs.sendMessage(tab.id, message);
+          if (res) return { ...res, tabId: tab.id };
+        } catch {}
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      if (tab) {
+        scratch.delete(tab.id);
+        api.tabs.remove(tab.id).catch(() => {});
+      }
+    }
+  })().finally(() => scratchJobs.delete(key));
+  scratchJobs.set(key, job);
+  return job;
 }
 
 // Chromium: Spotify plays from an offscreen document so it keeps going when the side panel is closed.
