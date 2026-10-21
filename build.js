@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 const root = __dirname;
-const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "main-bridge.js", "release-data.js", "sidepanel.html", "spengine.js", "offscreen.html", "offscreen.js", "spplayer.js", "sidepanel.js", "sidepanel.css", "rules.json"];
+const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "main-bridge.js", "release-data.js", "sidepanel.html", "spengine.js", "offscreen.html", "offscreen.js", "spplayer.js", "sidepanel.js", "sidepanel.css", "rules.json", "referer-rules.json"];
 const base = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 // Releases set EYM_VERSION from the git tag.
 if (process.env.EYM_VERSION) base.version = process.env.EYM_VERSION;
@@ -47,8 +47,8 @@ emit("chromium", base);
 {
   // The CSP-stripping ruleset is disabled by default and only for manual use, so the store build
   // leaves out declarativeNetRequest (store review rejects permissions the extension doesn't need).
-  const { key: _k, declarative_net_request: _d, ...storeManifest } = base;
-  storeManifest.permissions = base.permissions.filter((p) => p !== "declarativeNetRequest");
+  const { key: _k, ...storeManifest } = base;
+  storeManifest.declarative_net_request = { rule_resources: base.declarative_net_request.rule_resources.filter((r) => r.id !== "strip_csp") };
   emit("edge-store", storeManifest, FILES.filter((f) => f !== "rules.json"));
 }
 emit("firefox", firefox);

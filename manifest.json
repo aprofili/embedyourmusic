@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "EmbedYourMusic",
-  "version": "1.12.3",
+  "version": "1.12.4",
   "description": "Turns Spotify and Bandcamp links on rateyourmusic.com into inline embedded players.",
   "permissions": [
     "storage",
@@ -17,7 +17,9 @@
     "https://api.spotify.com/*",
     "https://itunes.apple.com/*",
     "https://api.deezer.com/*",
-    "https://accounts.spotify.com/*"
+    "https://accounts.spotify.com/*",
+    "*://*.snmc.io/*",
+    "*://*.sonemic.net/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -79,6 +81,11 @@
         "id": "strip_csp",
         "enabled": false,
         "path": "rules.json"
+      },
+      {
+        "id": "cover_referer",
+        "enabled": true,
+        "path": "referer-rules.json"
       }
     ]
   },
