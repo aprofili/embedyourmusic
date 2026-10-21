@@ -318,13 +318,26 @@ async function savedFlags(ids) {
   return flags;
 }
 
+// Saves or removes a liked song and then reads it back: a request can succeed without doing anything (an
+// endpoint generation that is no longer honoured), so if the flag didn't change the other generation is tried.
 async function setSaved(id, save) {
   const method = save ? "PUT" : "DELETE";
-  let res = await spotifyFetch(method, "/me/tracks", { ids: id });
-  if (!res.ok && FALLBACK_STATUSES.includes(res.status)) {
-    res = await spotifyFetch(method, "/me/library", { uris: `spotify:track:${id}` });
+  const tries = [
+    () => spotifyFetch(method, "/me/tracks", { ids: id }),
+    () => spotifyFetch(method, "/me/library", { uris: `spotify:track:${id}` }),
+  ];
+  let last = null;
+  for (const go of tries) {
+    const res = await go();
+    last = res;
+    if (!res.ok) continue;
+    for (let i = 0; i < 3; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 400));
+      const flags = await savedFlags([id]).catch(() => null);
+      if (!flags || !!flags[0] === save) return;
+    }
   }
-  if (!res.ok) throw new Error(`Spotify API ${res.status}`);
+  throw new Error(last && !last.ok ? `Spotify API ${last.status}` : "Spotify didn't keep the change");
 }
 
 async function spotifyTracks(type, id) {
