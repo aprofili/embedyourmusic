@@ -492,7 +492,7 @@
       if (!rec.got && rec.items) rec = { pages: 1, got: { 1: rec.items }, t: rec.t }; // older format
       const loaded = Object.keys(rec.got || {}).length;
       const err = await store.get("sidebar:favs-err");
-      const backoff = err && Date.now() - err < 15 * 60e3; // don't hammer RYM after a failure
+      const backoff = err && Date.now() - err < 15 * 60e3 && loaded > 0; // after a failure don't hammer RYM, unless there is nothing to show
       let want = 0;
       if (!loaded) want = 1;
       else if (loaded < rec.pages && Date.now() - rec.t > FAVS_TTL) {
@@ -526,7 +526,7 @@
     async history() {
       let rec = await store.get("sidebar:rymhist");
       const err = await store.get("sidebar:rymhist-err");
-      if ((!rec || Date.now() - rec.t > 10 * 60e3) && !(err && Date.now() - err < 15 * 60e3)) {
+      if ((!rec || Date.now() - rec.t > 10 * 60e3) && !(err && rec && Date.now() - err < 15 * 60e3)) {
         let res = null;
         try {
           res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-history" } });
