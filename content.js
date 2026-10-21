@@ -1011,6 +1011,25 @@
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
       }
+      if (msg && msg.type === "page-record") {
+        // Helper tab on a release page: store what this page says (rating, links, id) for release-data.js.
+        recordThisRelease();
+        const de = document.documentElement;
+        const rel = globalThis.__eymRelease;
+        if (!de.dataset.eymRecorded && rel && rel.put) {
+          const box = document.querySelector('[id^="my_catalog_rating_l_"]');
+          const sc = document.querySelector("input.album_shortcut");
+          const m = sc && /Album(\d+)/.exec(sc.value || sc.getAttribute("value") || "");
+          const id = box ? box.id.replace("my_catalog_rating_l_", "") : m ? m[1] : "";
+          if (id) {
+            rel.put(id, { rating: 0, ratingKnown: false, ...rel.extractMeta(document) }, location.pathname);
+            rememberId(location.pathname, id);
+            de.dataset.eymRecorded = "1";
+          }
+        }
+        sendResponse(de.dataset.eymRecorded ? { ok: true } : { pending: true });
+        return false;
+      }
       if (msg && msg.type === "whoami") {
         sendResponse({ user: whoami() });
         return false;
@@ -1049,8 +1068,8 @@
       document.dispatchEvent(new CustomEvent("eym-main", { detail: JSON.stringify({ action: "rate", id: String(msg.id), rating }) }));
       const rel = globalThis.__eymRelease;
       if (rel && rel.setRating) rel.setRating(String(msg.id), rating);
-      sendResponse({ ok: true });
-      return false;
+      setTimeout(() => sendResponse({ ok: true }), 1500); // a helper tab must stay open until the request is out
+      return true;
     });
   }
 
@@ -1491,9 +1510,6 @@
     const meta = rel.extractMeta ? rel.extractMeta(document) : { links: holder ? holder.getAttribute("data-links") : null };
     rel.put(id, { rating: Number(m[1]), ratingKnown: true, ...meta }, location.pathname);
     rememberId(location.pathname, id);
-    try {
-      api.runtime.sendMessage({ type: "release-recorded" }).catch(() => {});
-    } catch {}
   }
 
   // Visiting /new-music/ saves its list for the panel (no request needed).
@@ -1534,7 +1550,7 @@
             rec.got = { ...(rec.got || {}), [page]: items };
             rec.pages = Math.max(rec.pages || 0, 1, ...nums);
             rec.t = Date.now();
-            return api.storage.local.set({ "sidebar:favs35": rec, "sidebar:favs-err": null });
+            return api.storage.local.set({ "sidebar:favs35": rec });
           })
           .catch(() => {});
       }
@@ -1551,11 +1567,16 @@
     }
   }
 
+  // A tab the extension opened to read a page (background.js): it only answers; no players or page dressing.
+  const HELPER = typeof location !== "undefined" && location.hash === "#eym-helper";
+
   function run() {
     rememberUser();
     publishNewMusic();
     publishMyPages();
     recordThisRelease();
+    publishSimilar();
+    if (HELPER) return;
     addNavLink();
     buildHero();
     tidyHeader();
@@ -1564,7 +1585,6 @@
     for (const c of document.querySelectorAll(".media_link_container")) buildTabs(c);
     scan(document);
     addArtPlay();
-    publishSimilar();
   }
 
   run();

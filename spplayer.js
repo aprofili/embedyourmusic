@@ -354,7 +354,7 @@
       S = cur;
       started = true;
     } else {
-      S = (await driver.cmd({ cmd: "load", key: info.key, rymId: payload.id || "", tracks: tracks.map((t) => ({ id: t.id, ms: t.ms })) })) || S;
+      S = (await driver.cmd({ cmd: "load", key: info.key, rymId: payload.id || "", href: payload.href || "", title: payload.title || "", artist: payload.artist || "", tracks: tracks.map((t) => ({ id: t.id, ms: t.ms })) })) || S;
       // Start the first song's embed now (paused unless this was asked for) and wait until it answers, so the
       // card only appears once pressing play does something.
       await command({ cmd: "select", i: 0, autoplay: opts.autoplay !== false });
@@ -389,7 +389,7 @@
       if (engine) return engine;
       engine = globalThis.__eymSpEngine.create(host, (s, e) => {
         subs.forEach((f) => f(s, e));
-        send({ type: "eng-state", state: s, event: null }); // toolbar badge (the event stays with the panel)
+        send({ type: "eng-state", state: s, event: e || null }); // toolbar badge; play history
       });
       d.remote = false;
       d.frame = engine.frame;
@@ -429,7 +429,8 @@
         }
         if (res && res.state) return res.state;
         if (c.cmd === "get") return null;
-        // Still nothing: play from the panel itself.
+        // Still nothing: play from the panel itself (and make sure the offscreen player can't play alongside).
+        send({ type: "eng-close" });
         const eng = local();
         if (lastLoad && c.cmd !== "load") eng.handle(lastLoad);
         return eng.handle(c);

@@ -12,6 +12,37 @@
   // The iOS userscript has no page-world script, so it reads ratings itself (see ratedScan).
   const standalone = !!globalThis.__eymBridge;
   const rel = globalThis.__eymRelease;
+
+  // Both lists as the side panel stores them (rated rows are flagged so it can dim them).
+  function readLists() {
+    const grab = (sel) => {
+      const ol = container.querySelector(sel);
+      if (!ol) return [];
+      const out = [];
+      for (const li of ol.querySelectorAll("li.component_discography_item")) {
+        const [item] = scrapeReleases(li, 1);
+        if (!item) continue;
+        item.id = (li.id || "").replace("component_discography_item_", "");
+        if (rememberId) rememberId(item.href, item.id);
+        item.rated = li.classList.contains("rym-rated") || (!!li.dataset.eymRating && li.dataset.eymRating !== "0");
+        out.push(item);
+        if (out.length >= 80) break;
+      }
+      return out;
+    };
+    return { recommended: grab("#page_recommendations_list_main"), challenge: grab("#page_recommendations_list_non_affinity") };
+  }
+  const xapi = globalThis.chrome; // (Firefox has it too; the iOS userscript has none)
+  if (!standalone && xapi && xapi.runtime && xapi.runtime.onMessage) {
+    xapi.runtime.onMessage.addListener((msg, _s, reply) => {
+      if (!msg || msg.type !== "read-reco") return false;
+      const r = readLists();
+      reply(r.recommended.length || r.challenge.length ? r : { pending: true });
+      return false;
+    });
+  }
+  // A tab the extension opened only to read the lists: nothing else to do here.
+  if (location.hash === "#eym-helper") return;
   // Streaming links for a release, from the shared cache or one throttled request.
   function linksFor(path, id, want) {
     return rel
@@ -284,28 +315,12 @@
     if (standalone) return;
     clearTimeout(listTimer);
     listTimer = setTimeout(() => {
-      const grab = (sel) => {
-        const ol = container.querySelector(sel);
-        if (!ol) return [];
-        const out = [];
-        for (const li of ol.querySelectorAll("li.component_discography_item")) {
-          const [item] = scrapeReleases(li, 1);
-          if (!item) continue;
-          item.id = (li.id || "").replace("component_discography_item_", "");
-          if (rememberId) rememberId(item.href, item.id);
-          item.rated = li.classList.contains("rym-rated") || (!!li.dataset.eymRating && li.dataset.eymRating !== "0");
-          out.push(item);
-          if (out.length >= 80) break;
-        }
-        return out;
-      };
       const t = Date.now();
-      saveSidebarData("sidebar:lists", {
-        recommended: { t, items: grab("#page_recommendations_list_main") },
-        challenge: { t, items: grab("#page_recommendations_list_non_affinity") },
-      });
+      const r = readLists();
+      saveSidebarData("sidebar:lists", { recommended: { t, items: r.recommended }, challenge: { t, items: r.challenge } });
     }, 600);
   }
+  publishLists(); // right away (titles, covers); again once ratings are known
   document.addEventListener("eym-scan-done", publishLists);
   document.addEventListener("eym-first-unrated", publishLists);
 

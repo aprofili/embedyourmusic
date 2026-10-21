@@ -13,6 +13,7 @@
     let tracks = [];
     let key = "";
     let rymId = "";
+    let about = { href: "", title: "", artist: "" }; // the RYM release (for play history)
     let idx = -1;
     let want = false;
     let st = { seen: false, paused: true, pos: 0, dur: 0 };
@@ -28,7 +29,7 @@
     let fixes = 0; // reconcile attempts for the current want/actual mismatch
     const heard = new Map();
 
-    const snap = () => ({ key, rymId, idx, want, seen: st.seen, paused: st.paused, pos: st.pos, dur: st.dur, got, failed, total: tracks.length, started });
+    const snap = () => ({ key, rymId, ...about, idx, want, seen: st.seen, paused: st.paused, pos: st.pos, dur: st.dur, got, failed, total: tracks.length, started });
     const out = (event, force) => {
       const now = Date.now();
       if (!force && !event && now - lastEmit < 700) return;
@@ -99,6 +100,7 @@
         } catch {}
       }
       rymId = m.rymId || "";
+      about = { href: m.href || "", title: m.title || "", artist: m.artist || "" };
       tracks = (m.tracks || []).map((t) => ({ id: t.id, ms: t.ms }));
     }
 

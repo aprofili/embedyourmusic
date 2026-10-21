@@ -37,6 +37,10 @@
     port.onMessage.addListener((msg) => {
       if (msg.type === "play") render({ ...msg.payload, tabId: msg.tabId });
       else if (msg.type === "rating" && current && current.payload.id === msg.id) setRating(msg.rating);
+      else if (msg.type === "history") {
+        toast(msg.text, !msg.ok);
+        if (msg.ok) refreshOpenList("history");
+      }
     });
     port.onDisconnect.addListener(() => setTimeout(connect, 200));
   }
@@ -133,6 +137,24 @@
     } catch {}
   }
 
+  // The album's RYM id (rating, Similar and play history need it): known, remembered, or read from its page.
+  async function ensureId(who) {
+    const p = who.payload;
+    if (p.id || !p.href) return p.id || "";
+    try {
+      const ids = await store.get("sidebar:ids");
+      p.id = (ids && ids[new URL(p.href).pathname]) || "";
+    } catch {}
+    if (p.id) return p.id;
+    const r = await api.runtime.sendMessage({ type: "to-rym", tabId: who.tabId, msg: { type: "check-rating", id: "", href: p.href, title: p.title, artist: p.artist } }).catch(() => null);
+    if (r && r.id) {
+      p.id = r.id;
+      rememberIdLocal(p.href, r.id);
+      if (r.ratingKnown && current === who) setRating(r.rating, true);
+    }
+    return p.id || "";
+  }
+
   async function checkRating() {
     if (!current) return;
     const who = current;
@@ -159,14 +181,7 @@
     if (!current) return;
     if (!current.payload.id) {
       $("rating-note").textContent = "Finding album…";
-      try {
-        const r = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, msg: { type: "check-rating", id: "", href: current.payload.href, title: current.payload.title, artist: current.payload.artist } });
-        if (r && r.id) {
-          current.payload.id = r.id;
-          rememberIdLocal(current.payload.href, r.id);
-        }
-      } catch {}
-      if (!current.payload.id) {
+      if (!(await ensureId(current))) {
         $("rating-note").textContent = "Couldn't find this album's RYM id.";
         return;
       }
@@ -297,7 +312,7 @@
           // Our own player (hidden embed + track list) when Spotify is connected; else the plain embed.
           slot.textContent = "Loading…";
           globalThis.__eymSpPlayer
-            .build(info, payload, { autoplay: !restore, onListened: () => markListening(payload), onPlay: () => {
+            .build(info, payload, { autoplay: !restore, onPlay: () => {
               if (current && current.payload === payload && !current.counted) {
                 current.counted = true;
                 addPlayed(payload);
@@ -387,30 +402,9 @@
     toastTimer = setTimeout(() => t.classList.remove("show"), bad ? 6000 : 3000);
   }
 
-  async function markListening(payload) {
-    if (!payload.id && payload.href) {
-      // No id yet (album from a list): look it up the same way Check rating does.
-      try {
-        const ids = await store.get("sidebar:ids");
-        payload.id = (ids && ids[new URL(payload.href).pathname]) || "";
-      } catch {}
-      if (!payload.id) {
-        const r = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "check-rating", id: "", href: payload.href, title: payload.title, artist: payload.artist } }).catch(() => null);
-        if (r && r.id) {
-          payload.id = r.id;
-          rememberIdLocal(payload.href, r.id);
-        }
-      }
-    }
-    if (!payload.id) return toast("Couldn't add to RYM play history: album id not found", true);
-    const seen = (await store.get("sidebar:listened")) || {};
-    if (seen[payload.id] && Date.now() - seen[payload.id] < 6 * 3600e3) return;
-    const res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "set-listening", id: payload.id } }).catch(() => null);
-    if (!(res && res.ok)) return toast(`Couldn't add to RYM play history (${(res && res.error) || "no response"})`, true);
-    toast(`Added "${payload.title}" to your RYM play history`);
-    seen[payload.id] = Date.now();
-    store.set("sidebar:listened", seen);
-    setTimeout(() => store.set("sidebar:rymhist", { t: 0, items: [] }), 4000); // re-read RYM's history next time
+  // Play history is sent by the background (it also works with the panel closed); it reports back for the toast.
+  function markListening(payload) {
+    api.runtime.sendMessage({ type: "listened", state: { rymId: payload.id || "", href: payload.href || "", title: payload.title || "", artist: payload.artist || "" } }).catch(() => {});
   }
 
   // ---- History: only releases whose player you actually interacted with ----
@@ -460,43 +454,63 @@
   const goodTitle = (i) => i && /[\p{L}\p{N}]/u.test(i.title || "");
   const healthy = (items) => !!(items && items.length && items.filter(goodTitle).length >= items.length * 0.8);
 
-  // Recommended / Challenge come from your recommendations page. Missing: open it in a background tab (closed again
-  // once it has saved the lists). Older than 12 h: show what we have and refresh the same way behind the scenes.
-  async function recoList(kind) {
-    const read = async () => {
-      const all = await store.get("sidebar:lists");
-      return { all, rec: all && all[kind] };
-    };
-    let { all, rec } = await read();
-    const fetchPage = () => api.runtime.sendMessage({ type: "page-to-storage", url: "https://rateyourmusic.com/recommendations/", key: "sidebar:lists" }).catch(() => null);
-    if (rec && healthy(rec.items)) {
-      if (Date.now() - (rec.t || 0) > 12 * 3600e3) fetchPage();
-      return { items: rec.items.filter(goodTitle) };
-    }
-    toast(rec && rec.items && rec.items.length ? "Recommendations list looked broken; re-reading it from RYM…" : "Reading your recommendations page from RYM…");
-    await fetchPage();
-    ({ all, rec } = await read());
-    if (rec && healthy(rec.items)) return { items: rec.items.filter(goodTitle) };
-    return { message: rec && rec.items && rec.items.length ? "Your recommendations page was read but the list came out broken." : "Couldn't read your recommendations page.", retry: true, page: "https://rateyourmusic.com/recommendations/" };
+  // ---- List data: one loader for every list read from a RYM page ----
+  // Visiting the page saves the list too. Missing or broken: read it now (the background uses a RYM tab you have open
+  // on that page, else a helper tab it closes again). Older than its ttl: show it and refresh behind the scenes.
+  const H = 3600e3;
+  const LISTS = {
+    recommended: { key: "sidebar:lists", ttl: 12 * H, msg: { type: "read-reco" }, label: "your recommendations page", page: "https://rateyourmusic.com/recommendations/", get: (v) => v && v.recommended },
+    challenge: { key: "sidebar:lists", ttl: 12 * H, msg: { type: "read-reco" }, label: "your recommendations page", page: "https://rateyourmusic.com/recommendations/", get: (v) => v && v.challenge },
+    newmusic: { key: "sidebar:newmusic", ttl: 6 * H, msg: { type: "fetch-newmusic" }, label: "RYM's new-music page", page: "https://rateyourmusic.com/new-music/", get: (v) => v },
+    history: { key: "sidebar:rymhist", ttl: 0.5 * H, msg: { type: "fetch-history" }, label: "your RYM play history", page: "https://rateyourmusic.com/", get: (v) => v },
+  };
+  const toStore = (kind, res) => {
+    const t = Date.now();
+    if (LISTS[kind].key === "sidebar:lists") return { recommended: { t, items: res.recommended || [] }, challenge: { t, items: res.challenge || [] } };
+    return { t, items: res.items || [] };
+  };
+  const sameKey = (kind) => Object.keys(LISTS).filter((k) => LISTS[k].key === LISTS[kind].key);
+  const refreshing = new Map();
+  function refreshList(kind) {
+    const L = LISTS[kind];
+    if (refreshing.has(L.key)) return refreshing.get(L.key);
+    const job = api.runtime
+      .sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: L.msg })
+      .catch(() => null)
+      .then(async (res) => {
+        if (!res || res.error) return { error: (res && res.error) || "no response" };
+        const next = toStore(kind, res);
+        const got = L.get(next);
+        // Never replace a good list with an empty or broken read (an empty play history is fine).
+        if (!(got && (healthy(got.items) || (kind === "history" && Array.isArray(res.items))))) return { error: "the page had no albums on it" };
+        await store.set(L.key, next);
+        return { ok: true };
+      })
+      .finally(() => refreshing.delete(L.key));
+    refreshing.set(L.key, job);
+    return job;
   }
+  async function listData(kind) {
+    const L = LISTS[kind];
+    let v = L.get(await store.get(L.key));
+    if (v && healthy(v.items)) {
+      if (Date.now() - (v.t || 0) > L.ttl) refreshList(kind).then((r) => r.ok && sameKey(kind).forEach(refreshOpenList));
+      return { items: v.items.filter(goodTitle) };
+    }
+    if (kind !== "history") toast(v && v.items && v.items.length ? `That list looked broken; re-reading ${L.label}…` : `Reading ${L.label}…`);
+    const r = await refreshList(kind);
+    v = L.get(await store.get(L.key));
+    if (v && healthy(v.items)) return { items: v.items.filter(goodTitle) };
+    if (r.ok && kind === "history") return { items: [] }; // nothing played yet is a fine answer
+    return { error: r.error || "the list came out empty or broken", label: L.label, page: L.page };
+  }
+  const failed = (d) => ({ message: `Couldn't read ${d.label} (${d.error}).`, retry: true, page: d.page });
 
   // -> { items } or { message }
   const SOURCES = {
     async similar() {
       if (!current) return { message: "Play an album to see similar albums." };
-      if (!current.payload.id && current.payload.href) {
-        const ids = await store.get("sidebar:ids");
-        try {
-          current.payload.id = (ids && ids[new URL(current.payload.href).pathname]) || "";
-        } catch {}
-      }
-      if (!current.payload.id && current.payload.href) {
-        // Id unknown (the album came from a list): ask a RYM tab to read it from the release page.
-        try {
-          const r = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, msg: { type: "load-release", item: { href: current.payload.href, title: current.payload.title, artist: current.payload.artist } } });
-          if (r && r.payload && r.payload.id) current.payload.id = r.payload.id;
-        } catch {}
-      }
+      await ensureId(current);
       if (!current.payload.id) return { message: "Couldn't find this album's RYM id, so no similar albums yet." };
       const all = await store.get("sidebar:similar");
       const rec = all && all[current.payload.id];
@@ -512,92 +526,62 @@
       return { message: `Couldn't load suggestions (${(res && res.error) || "no response"}).` };
     },
     async recommended() {
-      return recoList("recommended");
+      const d = await listData("recommended");
+      return d.items ? d : failed(d);
     },
     async challenge() {
-      return recoList("challenge");
+      const d = await listData("challenge");
+      return d.items ? d : failed(d);
     },
     // /new-music/ (saved when you visit it, else fetched through a RYM tab), minus videos, minus anything Spotify
     // doesn't have (checked fuzzily by the background; answers are cached for a week). Re-checked every 6 hours.
     async newmusic() {
-      const SIX = 6 * 3600e3;
+      const d = await listData("newmusic");
+      if (!d.items) return failed(d);
+      // Only what Spotify has (answers cached a week by the background); the filtered list is kept until the raw one changes.
+      const raw = await store.get("sidebar:newmusic");
       const done = await store.get("sidebar:newmusic-f");
-      let raw = await store.get("sidebar:newmusic");
-      if (done && healthy(done.items) && Date.now() - done.t < SIX && (!raw || done.t >= raw.t)) return { items: done.items };
-      let error = "";
-      if (!raw || !healthy(raw.items) || Date.now() - raw.t > SIX) {
-        let res = null;
-        try {
-          res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-newmusic" } });
-        } catch {}
-        if (res && res.items && res.items.length) {
-          raw = { items: res.items, t: res.t || Date.now() };
-          store.set("sidebar:newmusic", raw);
-        } else error = (res && res.error) || "no response";
-      }
-      if (!raw || !raw.items || !raw.items.length) {
-        return { message: `Couldn't read RYM's new-music page (${error}).`, retry: true, page: "https://rateyourmusic.com/new-music/" };
-      }
-      const f = (await api.runtime.sendMessage({ type: "sp-filter", items: raw.items }).catch(() => null)) || { items: raw.items, filtered: false };
+      if (done && raw && done.src === raw.t && healthy(done.items)) return { items: done.items };
+      const f = (await api.runtime.sendMessage({ type: "sp-filter", items: d.items }).catch(() => null)) || { items: d.items, filtered: false };
       const items = f.items.filter((i) => !isVideo(i));
-      if (f.filtered) store.set("sidebar:newmusic-f", { t: Date.now(), items });
+      if (f.filtered && raw) store.set("sidebar:newmusic-f", { t: Date.now(), src: raw.t, items });
       return items.length ? { items } : { message: "Nothing from the new-music page is on Spotify right now." };
     },
-    // Pages of your collection filtered to 4-5 stars. First open: page 1. After that at most one more
+    // Pages of your collection filtered to 3.5-5 stars. First open: page 1. After that at most one more
     // random page per day (so the pick widens slowly without hammering RYM).
     async favorites() {
-      let rec = (await store.get(FAVS_KEY)) || { pages: 0, got: {}, t: 0 };
-      if (!rec.got && rec.items) rec = { pages: 1, got: { 1: rec.items }, t: rec.t }; // older format
+      const rec = (await store.get(FAVS_KEY)) || { pages: 0, got: {}, t: 0 };
       const loaded = Object.keys(rec.got || {}).length;
-      const err = await store.get("sidebar:favs-err");
-      const backoff = err && Date.now() - err < 15 * 60e3 && loaded > 0; // after a failure don't hammer RYM, unless there is nothing to show
-      let want = 0;
-      if (!loaded) want = 1;
-      else if (loaded < rec.pages && Date.now() - rec.t > FAVS_TTL) {
-        const missing = [];
-        for (let p = 1; p <= rec.pages; p++) if (!rec.got[p]) missing.push(p);
-        want = missing[Math.floor(Math.random() * missing.length)];
+      const missing = [];
+      for (let p = 1; p <= rec.pages; p++) if (!rec.got[p]) missing.push(p);
+      const want = !loaded ? 1 : missing.length && Date.now() - rec.t > FAVS_TTL ? missing[Math.floor(Math.random() * missing.length)] : 0;
+      const fetchPage = async (page) => {
+        const res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-favorites", page } }).catch(() => null);
+        if (!res || !res.items) return (res && res.error) || "no response";
+        const now = (await store.get(FAVS_KEY)) || { pages: 0, got: {}, t: 0 };
+        now.got = { ...(now.got || {}), [page]: res.items };
+        now.pages = Math.max(res.pages || 1, now.pages || 0);
+        now.t = Date.now();
+        await store.set(FAVS_KEY, now);
+        return "";
+      };
+      if (want && loaded) fetchPage(want).then((err) => !err && refreshOpenList("favorites")); // widen in the background
+      let error = "";
+      if (want && !loaded) {
+        toast("Reading your 3.5+ star albums…");
+        error = await fetchPage(want);
       }
-      let res = null;
-      if (want && !backoff) {
-        try {
-          res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-favorites", page: want } });
-        } catch {
-          res = null;
-        }
-        if (res && res.items) {
-          rec.got = { ...(rec.got || {}), [want]: res.items };
-          rec.pages = res.pages || rec.pages || 1;
-          rec.t = Date.now();
-          store.set(FAVS_KEY, rec);
-        } else if (res && res.error && !/open a rateyourmusic/.test(res.error)) {
-          store.set("sidebar:favs-err", Date.now());
-        }
-      }
-      const items = Object.values(rec.got || {}).flat();
-      if (!items.length) {
-        return { message: `Couldn't read your 3.5+ star albums (${(res && res.error) || "RYM didn't answer"}).`, retry: true, page: "https://rateyourmusic.com/" };
-      }
+      const items = Object.values(((await store.get(FAVS_KEY)) || {}).got || {}).flat();
+      if (!items.length) return failed({ label: "your 3.5+ star albums", error: error || "none found", page: "https://rateyourmusic.com/" });
       return { items: shuffle(items) };
     },
-    // Your RYM play history (newest first; cached 10 min) followed by albums played here that aren't in it yet.
+    // Your RYM play history (newest first) after albums played here that aren't in it yet.
     async history() {
-      let rec = await store.get("sidebar:rymhist");
-      const err = await store.get("sidebar:rymhist-err");
-      let res = null;
-      if ((!rec || Date.now() - rec.t > 30 * 60e3) && !(err && rec && Date.now() - err < 15 * 60e3)) {
-        try {
-          res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-history" } });
-        } catch {}
-        if (res && res.items) {
-          rec = { t: Date.now(), items: res.items };
-          store.set("sidebar:rymhist", rec);
-        } else if (res && res.error && !/open a rateyourmusic/.test(res.error)) store.set("sidebar:rymhist-err", Date.now());
-      }
-      const theirs = (rec && rec.items) || [];
+      const d = await listData("history");
+      const theirs = d.items || [];
       const have = new Set(theirs.map((i) => i.href));
-      const items = [...played.filter((p) => !have.has(p.href)), ...theirs]; // just-played, not yet in RYM's history, first
-      if (!items.length && res && res.error) return { message: `Couldn't read your RYM play history (${res.error}).`, retry: true, page: "https://rateyourmusic.com/" };
+      const items = [...played.filter((p) => !have.has(p.href)), ...theirs];
+      if (!items.length && d.error) return failed(d);
       return items.length ? { items } : { message: "Albums you listen to will show up here." };
     },
   };
@@ -689,7 +673,6 @@
         again.className = "more";
         again.textContent = "Try again";
         again.addEventListener("click", () => {
-          api.storage.local.set({ "sidebar:favs-err": null, "sidebar:rymhist-err": null }).catch(() => {});
           openList(acc);
         });
         row.append(again);

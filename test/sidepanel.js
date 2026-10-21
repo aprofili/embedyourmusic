@@ -28,6 +28,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
         if (m.type === "to-rym" && m.msg.type === "load-release")
           return { tabId: 9, payload: { id: "77", title: m.msg.item.title, artist: m.msg.item.artist, href: m.msg.item.href, artUrl: "", rating: 0,
             entries: [{ service: "tidal", href: "https://tidal.com/album/35146920" }] } };
+        if (m.type === "to-rym" && m.msg.type === "fetch-history") return { items: [] };
         if (m.type === "to-rym" && m.msg.type === "fetch-favorites")
           return { items: [{ title: "F1", artist: "X", href: "https://rateyourmusic.com/release/album/x/f1/", artUrl: "" }] };
         return {};

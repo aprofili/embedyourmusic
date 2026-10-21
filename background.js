@@ -527,130 +527,129 @@ if (api.sidePanel && api.sidePanel.setPanelBehavior) {
   api.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 }
 
-// Panel -> a rateyourmusic.com tab (it needs RYM's cookies / page): the given tab if it is still
-// open, else any RYM tab. Resolves to the tab's reply plus { tabId }, or { error }.
-// The list loaders (new music, play history, favourites) read a real RYM page: one already open on it, else a
-// hidden tab opened on it (a page load, so no bot check), whose content script answers from its own DOM.
-async function listJob(tabId, message) {
-  const t = message.type;
-  let path = "/new-music/";
-  if (t !== "fetch-newmusic") {
-    let user = ((await api.storage.local.get("sidebar:user")) || {})["sidebar:user"];
-    if (!user) {
-      const w = await viaScratchTab("https://rateyourmusic.com/", { type: "whoami" });
-      user = w && w.user;
-      if (!user) return { error: "sign in to rateyourmusic.com in this browser first" };
-    }
-    path = t === "fetch-history" ? `/play-history/${user}/` : `/collection/${user}/r3.5-5.0${message.page > 1 ? `/${message.page}` : ""}`;
-  }
-  const open = await relayToTab(tabId, path, message);
-  if (!open.error) return open;
-  return (await viaScratchTab(`https://rateyourmusic.com${path}`, message)) || { error: "couldn't load the page in a background tab" };
-}
-
-async function relay(tabId, urlPart, message) {
-  if (message && ["fetch-newmusic", "fetch-history", "fetch-favorites"].includes(message.type)) return listJob(tabId, message);
-  const first = await relayToTab(tabId, urlPart, message);
-  if (!first.error) return first;
-  // No usable RYM tab (none open, or one from before the extension was reloaded): do the job in a background tab.
-  const url = {
-    "load-release": "https://rateyourmusic.com/",
-    "check-rating": "https://rateyourmusic.com/",
-    "set-listening": "https://rateyourmusic.com/",
-    "load-similar": (message && message.href) || "https://rateyourmusic.com/",
-    rate: "https://rateyourmusic.com/",
-  }[message && message.type];
-  if (!url) return first;
-  const second = await viaScratchTab(url, message);
-  return second || first;
-}
-
-async function relayToTab(tabId, urlPart, message) {
-  const rym = await api.tabs.query({ url: ["*://rateyourmusic.com/*", "*://*.rateyourmusic.com/*"] });
-  const real = rym.filter((t) => !scratch.has(t.id));
-  const pool = urlPart ? real.filter((t) => (t.url || "").includes(urlPart)) : real;
-  const tab = pool.find((t) => t.id === tabId) || pool.find((t) => t.active) || pool[0];
-  if (!tab) {
-    return { error: urlPart === "/recommendations/" ? "open your recommendations page first" : urlPart ? "open that album's RYM page first" : "open a rateyourmusic.com tab first" };
-  }
+// ---- RYM gateway ----
+// Everything the panel needs from rateyourmusic.com is a task: a message for a RYM page's content script, plus
+// the page it must run on (lists) or none (anything that only needs RYM's cookies / code: rating, listening, ...).
+//  1. A RYM tab you have open (on that page, if one is needed) answers it.
+//  2. Otherwise a helper tab: opened in the background on that page, asked until it answers, then closed.
+//     Helper tabs run one at a time, like a person clicking around, so RYM never sees a burst; their content
+//     scripts know what they are (#eym-helper) and do nothing on their own (no autoplay, no further tabs).
+// A real page load is what gets past RYM's bot check, which refuses script requests (HTTP 403).
+const RYM_URLS = ["*://rateyourmusic.com/*", "*://*.rateyourmusic.com/*"];
+const helperTabs = new Set();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const pathOf = (u) => {
   try {
-    const res = await api.tabs.sendMessage(tab.id, message);
-    return { ...(res || { error: "no response (reload the RYM tab)" }), tabId: tab.id };
+    return new URL(u, "https://rateyourmusic.com").pathname.replace(/\/?$/, "/");
   } catch {
-    return { error: "no response (reload the RYM tab)" };
+    return "";
+  }
+};
+
+async function rymUser() {
+  const o = await api.storage.local.get("sidebar:user");
+  if (o && o["sidebar:user"]) return o["sidebar:user"];
+  const w = await rymTask({ msg: { type: "whoami" } });
+  return (w && w.user) || "";
+}
+
+// The page a task has to run on ("" = any RYM page).
+async function pageFor(msg) {
+  switch (msg.type) {
+    case "fetch-newmusic":
+      return "/new-music/";
+    case "read-reco":
+    case "exclude":
+      return "/recommendations/";
+    case "page-record":
+      return pathOf(msg.href);
+    case "fetch-history":
+    case "fetch-favorites": {
+      const user = await rymUser();
+      if (!user) throw new Error("sign in to rateyourmusic.com in this browser first");
+      return msg.type === "fetch-history" ? `/play-history/${user}/` : `/collection/${user}/r3.5-5.0/${msg.page > 1 ? `${msg.page}/` : ""}`;
+    }
+    default:
+      return "";
   }
 }
 
-// Open a RYM page in a background tab just long enough for its content script to save `key`, then close it.
-const pageJobs = new Map();
-function pageToStorage(url, key, ms = 30000) {
-  if (!/^https:\/\/([\w-]+\.)?rateyourmusic\.com\//.test(url)) return Promise.resolve(false);
-  if (pageJobs.has(url)) return pageJobs.get(url);
-  const job = new Promise((resolve) => {
-    let tabId = null;
-    let done = false;
-    const finish = (ok) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      api.storage.onChanged.removeListener(onChange);
-      if (tabId != null) {
-        scratch.delete(tabId);
-        api.tabs.remove(tabId).catch(() => {});
-      }
-      resolve(ok);
-    };
-    const onChange = (changes, area) => {
-      if (area === "local" && changes[key]) setTimeout(() => finish(true), 300);
-    };
-    api.storage.onChanged.addListener(onChange);
-    const timer = setTimeout(() => finish(false), ms);
-    api.tabs
-      .create({ url, active: false })
-      .then((tab) => {
-        tabId = tab.id;
-        scratch.set(tabId, () => {});
-        if (done) finish(false);
-      })
-      .catch(() => finish(false));
-  }).finally(() => pageJobs.delete(url));
-  pageJobs.set(url, job);
-  return job;
+async function liveTab(tabId, page) {
+  const tabs = (await api.tabs.query({ url: RYM_URLS })).filter((t) => !helperTabs.has(t.id) && t.status === "complete");
+  const pool = page ? tabs.filter((t) => pathOf(t.url) === page) : tabs;
+  return pool.find((t) => t.id === tabId) || pool.find((t) => t.active) || pool[0] || null;
 }
 
-// One inactive RYM tab at a time per URL: wait for its content script, hand it the message, close it.
-const scratchJobs = new Map();
-function viaScratchTab(url, message) {
-  const key = url + "|" + JSON.stringify(message);
-  if (scratchJobs.has(key)) return scratchJobs.get(key);
-  const job = (async () => {
+let helperChain = Promise.resolve();
+const helperJobs = new Map();
+function inHelperTab(page, msg, now = false) {
+  const key = page + "|" + JSON.stringify(msg);
+  if (helperJobs.has(key)) return helperJobs.get(key);
+  // `now`: asked for by a helper tab itself (it is waiting on this), so it can't queue behind it.
+  const job = (now ? Promise.resolve() : helperChain).then(async () => {
     let tab;
     try {
-      tab = await api.tabs.create({ url, active: false });
-      scratch.set(tab.id, () => {});
+      tab = await api.tabs.create({ url: `https://rateyourmusic.com${page || "/"}#eym-helper`, active: false });
+      helperTabs.add(tab.id);
+      const start = Date.now();
       let last = null;
-      let errors = 0;
-      for (let i = 0; i < 40; i++) {
-        await new Promise((r) => setTimeout(r, 500));
+      let firstError = 0;
+      while (Date.now() - start < 30000) {
+        await sleep(600);
+        let res;
         try {
-          const res = await api.tabs.sendMessage(tab.id, message);
-          if (res && !res.error) return { ...res, tabId: tab.id };
-          if (res) last = { ...res, tabId: tab.id };
-          if (res && ++errors >= 8) return last; // the page loaded but really has nothing for us
-        } catch {}
+          res = await api.tabs.sendMessage(tab.id, msg);
+        } catch {
+          continue; // page (or its extension code) not there yet
+        }
+        if (res && !res.error && !res.pending) return { ...res, via: "helper" };
+        if (res && res.error) {
+          last = res;
+          firstError = firstError || Date.now();
+          if (Date.now() - firstError > 5000) break; // the page loaded and really can't do it
+        }
       }
-      return last;
-    } catch {
-      return null;
+      return last || { error: "RYM's page didn't load in time" };
+    } catch (e) {
+      return { error: String((e && e.message) || e) };
     } finally {
       if (tab) {
-        scratch.delete(tab.id);
+        helperTabs.delete(tab.id);
         api.tabs.remove(tab.id).catch(() => {});
       }
     }
-  })().finally(() => scratchJobs.delete(key));
-  scratchJobs.set(key, job);
-  return job;
+  });
+  if (!now) helperChain = job.catch(() => {});
+  const done = job.finally(() => helperJobs.delete(key));
+  helperJobs.set(key, done);
+  return done;
+}
+
+async function rymTask({ tabId = null, msg }) {
+  let page;
+  try {
+    page = await pageFor(msg);
+  } catch (e) {
+    return { error: String(e.message || e) };
+  }
+  const tab = await liveTab(tabId, page);
+  if (tab) {
+    try {
+      const res = await api.tabs.sendMessage(tab.id, msg);
+      if (res && !res.error && !res.pending) return { ...res, tabId: tab.id };
+    } catch {
+      /* a tab from before the extension was reloaded: no one answers */
+    }
+  }
+  return inHelperTab(page, msg);
+}
+
+// release-data.js could not read a release page by script (bot check): load it in a helper tab, whose content
+// script records it into the shared cache.
+async function openRelease(href, fromHelper) {
+  if (!/^https:\/\/([\w-]+\.)?rateyourmusic\.com\/release\//.test(href)) return false;
+  const r = await inHelperTab(pathOf(href), { type: "page-record" }, fromHelper);
+  return !!(r && r.ok);
 }
 
 // Chromium: Spotify plays from an offscreen document so it keeps going when the side panel is closed.
@@ -679,36 +678,6 @@ function ensureOffscreen() {
   return offscreenJob;
 }
 
-// Fallback when RYM refuses a background fetch (bot check): load the release page the way you would,
-// in a background tab. Its content script records the page into the shared cache, then the tab closes.
-const scratch = new Map(); // tabId -> resolve
-function openRelease(href) {
-  if (!/^https:\/\/([\w-]+\.)?rateyourmusic\.com\/release\//.test(href)) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    let tabId;
-    let done = false;
-    const finish = (ok) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      if (tabId != null) {
-        scratch.delete(tabId);
-        api.tabs.remove(tabId).catch(() => {});
-      }
-      resolve(ok);
-    };
-    const timer = setTimeout(() => finish(false), 25000);
-    api.tabs
-      .create({ url: href, active: false })
-      .then((tab) => {
-        tabId = tab.id;
-        if (done) return api.tabs.remove(tabId).catch(() => {});
-        scratch.set(tabId, finish);
-      })
-      .catch(() => finish(false));
-  });
-}
-
 // Toolbar icon badge: ▶ while something is playing (handy when the panel is closed).
 let badgeOn = null;
 function setPlayingBadge(on) {
@@ -725,13 +694,34 @@ function setPlayingBadge(on) {
   } catch {}
 }
 
-async function markListeningBg(id) {
-  const o = await api.storage.local.get("sidebar:listened");
-  const seen = o["sidebar:listened"] || {};
-  if (seen[id] && Date.now() - seen[id] < 24 * 3600e3) return;
+// RYM play history ("Set listening"): the player reports "listened" once you have listened for a bit; this sends it,
+// whether the panel is open or not, and tells the panel how it went.
+async function markListening(state) {
+  let id = state.rymId || "";
+  const href = state.href || "";
+  if (!id && href) {
+    const ids = ((await api.storage.local.get("sidebar:ids")) || {})["sidebar:ids"] || {};
+    try {
+      id = ids[new URL(href).pathname] || "";
+    } catch {}
+    if (!id) {
+      const r = await rymTask({ msg: { type: "check-rating", id: "", href, title: state.title || "", artist: state.artist || "" } });
+      id = (r && r.id) || "";
+    }
+  }
+  const tell = (ok, text) => {
+    for (const port of sidePorts) port.postMessage({ type: "history", ok, text });
+  };
+  if (!id) return tell(false, "Couldn't add to RYM play history: album id not found");
+  const seen = ((await api.storage.local.get("sidebar:listened")) || {})["sidebar:listened"] || {};
+  if (Date.now() - (seen[id] || 0) < 6 * 3600e3) return;
+  const res = await rymTask({ msg: { type: "set-listening", id } });
+  if (!(res && res.ok)) return tell(false, `Couldn't add to RYM play history (${(res && res.error) || "no response"})`);
   seen[id] = Date.now();
   await api.storage.local.set({ "sidebar:listened": seen });
-  relay(null, null, { type: "set-listening", id }).catch(() => {});
+  const o = await api.storage.local.get("sidebar:rymhist");
+  if (o && o["sidebar:rymhist"]) await api.storage.local.set({ "sidebar:rymhist": { ...o["sidebar:rymhist"], t: 0 } }); // re-read next time
+  tell(true, `Added "${state.title || "this album"}" to your RYM play history`);
 }
 
 function handleSidebar(msg, sender, sendResponse) {
@@ -754,10 +744,10 @@ function handleSidebar(msg, sender, sendResponse) {
       sendResponse({});
       return false;
     case "to-rym":
-      relay(msg.tabId, msg.urlPart, msg.msg).then(sendResponse);
+      rymTask({ tabId: msg.tabId, msg: msg.msg }).then(sendResponse);
       return true;
     case "rate": // from the panel: any RYM tab can carry it out (RYM's own rating request)
-      relay(msg.tabId, "", { type: "rate", id: msg.id, rating: msg.rating }).then((r) => sendResponse(r.error ? { ok: false, error: r.error } : r));
+      rymTask({ tabId: msg.tabId, msg: { type: "rate", id: msg.id, rating: msg.rating } }).then((r) => sendResponse(r.error ? { ok: false, error: r.error } : r));
       return true;
   }
   return false;
@@ -775,10 +765,6 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     handleSpotify(msg).then(sendResponse);
     return true;
   }
-  if (msg && msg.type === "page-to-storage") {
-    pageToStorage(msg.url, msg.key).then((ok) => sendResponse({ ok }));
-    return true;
-  }
   if (msg && msg.type === "cover-art") {
     coverArt(msg.item || {}).then((url) => sendResponse({ url })).catch(() => sendResponse({ url: "" }));
     return true;
@@ -792,20 +778,23 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg && msg.type === "eng-state" && msg.state) setPlayingBadge(msg.state.want && msg.state.seen && !msg.state.paused);
-  if (msg && msg.type === "eng-state" && msg.event === "listened" && !sidePorts.size && msg.state && msg.state.rymId) {
-    // Panel closed: set "listening" from here (the panel does it itself when open).
-    markListeningBg(msg.state.rymId);
+  if (msg && msg.type === "eng-state" && msg.event === "listened" && msg.state) {
+    markListening(msg.state);
+    return false;
+  }
+  if (msg && msg.type === "listened") {
+    markListening(msg.state || {}); // the plain Spotify embed's track list (no custom player)
+    return false;
+  }
+  if (msg && msg.type === "eng-close") {
+    // The panel took over playback: make sure the offscreen player can't keep playing alongside it.
+    if (api.offscreen && api.offscreen.closeDocument) api.offscreen.closeDocument().catch(() => {});
+    sendResponse({});
     return false;
   }
   if (msg && msg.type === "open-release") {
-    openRelease(msg.href).then((ok) => sendResponse({ ok }));
+    openRelease(msg.href, !!(_sender.tab && helperTabs.has(_sender.tab.id))).then((ok) => sendResponse({ ok }));
     return true;
-  }
-  if (msg && msg.type === "release-recorded") {
-    const fin = _sender.tab && scratch.get(_sender.tab.id);
-    if (fin) fin(true);
-    sendResponse({});
-    return false;
   }
   if (msg && msg.type === "find-album") {
     findAlbum(msg.want)

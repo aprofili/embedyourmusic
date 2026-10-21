@@ -4,7 +4,7 @@
 // id passed to addExclusion).
 
 (() => {
-  if (!/^\/recommendations\//.test(location.pathname)) return;
+  if (!/^\/recommendations\//.test(location.pathname) || location.hash === "#eym-helper") return;
 
   const EVENTS = {
     mousemove: "onMouseMove",

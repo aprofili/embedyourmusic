@@ -235,7 +235,9 @@
   function put(id, rec, path) {
     if (!id) return;
     if (path) store.set(hrefKey(path), id);
-    store.set(key(id), JSON.stringify({ t: Date.now(), rating: 0, ratingKnown: false, links: null, ...rec }));
+    const r = { t: Date.now(), rating: 0, ratingKnown: false, ...rec };
+    if (r.links == null) r.links = "{}"; // read from the page: no links means none, not unknown
+    store.set(key(id), JSON.stringify(r));
   }
 
   // Keep the cache right after you rate something on the page.
