@@ -769,13 +769,35 @@
     return { items, t: Date.now() };
   }
 
-  // Other albums by an artist: their /artist/<slug> page (albums only, newest first as RYM lists them).
+  // Other albums by an artist: the Albums section of their /artist/<slug> page. RYM lists only the first few
+  // there when there are many ("Showing 11 of 40", with a "show all" link): on a real page load that link is pressed
+  // and the rest waited for. -> { items, name }
   async function fetchArtist(path, name, skip) {
     if (!/^\/artist\/[^/]+\/?$/.test(path || "")) throw new Error("no artist page");
     const doc = await docFor(new RegExp("^" + path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), path);
-    const items = scrapeReleases(doc, 100, skip || "").filter((i) => /^\/release\/album\//.test(new URL(i.href).pathname)).map((i) => ({ ...i, artist: i.artist || name || "" }));
+    if (doc === document) {
+      const more = document.getElementById("disco_header_show_link_s");
+      if (more && more.offsetParent !== null) {
+        more.click();
+        for (let i = 0; i < 40; i++) {
+          await new Promise((r) => setTimeout(r, 200));
+          const st = document.getElementById("disco_header_showing_s");
+          if (st && /Showing all/i.test(st.textContent)) break;
+        }
+      }
+    }
+    const slug = path.replace(/^\/artist\//, "").replace(/\/$/, "");
+    const section = doc.getElementById("disco_type_s");
+    const own = (i) => new RegExp(`^/release/album/${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`).test(new URL(i.href).pathname);
+    const items = scrapeReleases(section || doc, 400, skip || "")
+      .filter((i) => /^\/release\/album\//.test(new URL(i.href).pathname) && (section || own(i)))
+      .map((i) => ({ ...i, artist: i.artist || name || "" }));
+    const h = doc.querySelector(".artist_name_hdr");
+    let nm = "";
+    if (h) for (const n of h.childNodes) if (n.nodeType === 3) nm += n.textContent;
+    nm = nm.replace(/\s+/g, " ").trim() || (h ? h.textContent.replace(/\s+/g, " ").trim() : "") || name || "";
     if (!items.length) throw new Error("no other albums found");
-    return { items, t: Date.now() };
+    return { items: items.map((i) => ({ ...i, artist: nm || i.artist })), name: nm, t: Date.now() };
   }
 
   // Your RYM play history (what "Set listening" records): newest first, one entry per release.

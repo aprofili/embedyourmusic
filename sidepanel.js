@@ -456,6 +456,7 @@
     }
 
     refreshOpenList("similar");
+    setArtistHead(payload.artist);
     refreshOpenList("artist");
   }
 
@@ -598,6 +599,11 @@
   }
   const failed = (d) => ({ message: `Couldn't read ${d.label} (${d.error}).`, retry: true, page: d.page });
 
+  const setArtistHead = (name) => {
+    const h = document.querySelector('.acc[data-kind="artist"] .acc-head');
+    if (h) h.textContent = name ? `More by ${name}` : "More by this artist";
+  };
+
   // -> { items } or { message }
   const SOURCES = {
     async similar() {
@@ -617,6 +623,7 @@
       if (res && res.items && res.items.length) return { items: res.items };
       return { message: `Couldn't load suggestions (${(res && res.error) || "no response"}).` };
     },
+    // (the section's title carries the artist's name)
     // Other albums by the current artist (their RYM artist page, kept a week per artist).
     async artist() {
       if (!current) return { message: "Play an album to see more by its artist." };
@@ -626,14 +633,16 @@
       const skip = new URL(current.payload.href).pathname;
       const all = (await store.get("sidebar:artist")) || {};
       const rec = all[path];
-      const fresh = rec && rec.items && rec.items.length && Date.now() - rec.t < 7 * 24 * H;
+      setArtistHead((rec && rec.name) || current.payload.artist);
+      const fresh = rec && rec.name && rec.items && rec.items.length && Date.now() - rec.t < 7 * 24 * H;
       let items = rec && rec.items;
       if (!fresh) {
         toast(`Reading ${current.payload.artist || "the artist"}'s page…`);
         const res = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, msg: { type: "fetch-artist", path, name: current.payload.artist, skip: "" } }).catch(() => null);
         if (res && res.items && res.items.length) {
           items = res.items;
-          all[path] = { t: Date.now(), items };
+          all[path] = { t: Date.now(), items, name: res.name || "" };
+          setArtistHead(res.name || current.payload.artist);
           const keys = Object.keys(all);
           if (keys.length > 40) keys.sort((a, b) => all[a].t - all[b].t).slice(0, keys.length - 40).forEach((k) => delete all[k]);
           store.set("sidebar:artist", all);
