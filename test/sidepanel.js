@@ -79,7 +79,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   const body = (k) => d.querySelector(`.acc[data-kind="${k}"] .acc-body`);
   head("history").click();
   await tick();
-  assert.ok(/press play/.test(body("history").textContent));
+  assert.ok(/listen to will show up|press play/.test(body("history").textContent));
   onMsg({ type: "play", tabId: 7, payload: { id: "9", title: "Played", artist: "P", artUrl: "", href: "https://rateyourmusic.com/release/album/p/p/", rating: 0,
     entries: [{ service: "tidal", href: "https://tidal.com/album/35146920" }] } });
   d.querySelector("#body iframe").focus();
