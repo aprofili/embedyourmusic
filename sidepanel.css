@@ -948,3 +948,13 @@ body.ready {
 .item img.noart {
   visibility: hidden;
 }
+
+/* Bigger heart hit area: fills the row's full height and right padding, but stays inside the highlight. */
+.sp-heart {
+  align-self: stretch;
+  margin: -6px -8px -6px 0;
+  padding: 0 10px 0 12px;
+  display: flex;
+  align-items: center;
+  border-radius: 0 8px 8px 0;
+}
