@@ -312,7 +312,10 @@
         },
       };
     }
-    const engine = globalThis.__eymSpEngine.create(host, (s, e) => subs.forEach((f) => f(s, e)));
+    const engine = globalThis.__eymSpEngine.create(host, (s, e) => {
+      subs.forEach((f) => f(s, e));
+      send({ type: "eng-state", state: s, event: null }); // toolbar badge (the event stays with the panel)
+    });
     return { remote: false, frame: engine.frame, onState: (f) => subs.add(f), cmd: async (c) => engine.handle(c) };
   }
 

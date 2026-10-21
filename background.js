@@ -533,6 +533,22 @@ function openRelease(href) {
   });
 }
 
+// Toolbar icon badge: ▶ while something is playing (handy when the panel is closed).
+let badgeOn = null;
+function setPlayingBadge(on) {
+  on = !!on;
+  if (on === badgeOn) return;
+  badgeOn = on;
+  const action = api.action || api.browserAction;
+  if (!action) return;
+  try {
+    action.setBadgeText({ text: on ? "▶" : "" });
+    if (on && action.setBadgeBackgroundColor) action.setBadgeBackgroundColor({ color: "#1db954" });
+    if (on && action.setBadgeTextColor) action.setBadgeTextColor({ color: "#ffffff" });
+    if (action.setTitle) action.setTitle({ title: on ? "EmbedYourMusic player (playing)" : "EmbedYourMusic player" });
+  } catch {}
+}
+
 async function markListeningBg(id) {
   const o = await api.storage.local.get("sidebar:listened");
   const seen = o["sidebar:listened"] || {};
@@ -587,6 +603,7 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     ensureOffscreen().then((ok) => sendResponse({ ok }));
     return true;
   }
+  if (msg && msg.type === "eng-state" && msg.state) setPlayingBadge(msg.state.want && msg.state.seen && !msg.state.paused);
   if (msg && msg.type === "eng-state" && msg.event === "listened" && !sidePorts.size && msg.state && msg.state.rymId) {
     // Panel closed: set "listening" from here (the panel does it itself when open).
     markListeningBg(msg.state.rymId);
