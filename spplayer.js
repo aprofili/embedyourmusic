@@ -386,6 +386,7 @@
     send({ type: "spotify-art", kind, id }).then((r) => {
       spArt = (r && r.url) || "";
       if (spArt) {
+        if (opts.onArt) opts.onArt(spArt);
         setArt(spArt);
         tint(root, spArt);
       } else {

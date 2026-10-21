@@ -312,7 +312,7 @@
           // Our own player (hidden embed + track list) when Spotify is connected; else the plain embed.
           slot.textContent = "Loading…";
           globalThis.__eymSpPlayer
-            .build(info, payload, { autoplay: !restore, onPlay: () => {
+            .build(info, payload, { autoplay: !restore, onArt: (u) => noteArt(payload.href, u), onPlay: () => {
               if (current && current.payload === payload && !current.counted) {
                 current.counted = true;
                 addPlayed(payload);
@@ -424,8 +424,9 @@
       id: payload.id,
       title: payload.title,
       artist: payload.artist,
-      artUrl: payload.artUrl,
+      artUrl: payload.artUrl || (played.find((p) => p.href === payload.href) || {}).artUrl || "",
       href: payload.href,
+      at: Date.now(),
     };
     played = [entry, ...played.filter((p) => p.href !== entry.href)].slice(0, PLAYED_MAX);
     store.set(PLAYED_KEY, played);
@@ -433,6 +434,23 @@
   }
 
   // ---- Lists ----
+  // Album URL -> a cover URL that loaded here (a fallback, or Spotify's). Fills covers that were missing before.
+  let artOk = {};
+  let artTimer;
+  store.get("sidebar:art-ok").then((v) => (artOk = { ...(v || {}), ...artOk }));
+  function noteArt(href, url) {
+    if (!href || artOk[href] === url) return;
+    artOk[href] = url;
+    const p = played.find((x) => x.href === href);
+    if (p && !p.artUrl) p.artUrl = url;
+    clearTimeout(artTimer);
+    artTimer = setTimeout(() => {
+      const keys = Object.keys(artOk);
+      if (keys.length > 1500) for (const k of keys.slice(0, keys.length - 1500)) delete artOk[k];
+      store.set("sidebar:art-ok", artOk);
+      store.set(PLAYED_KEY, played);
+    }, 1000);
+  }
   const shuffle = (arr) => {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -579,8 +597,19 @@
     async history() {
       const d = await listData("history");
       const theirs = d.items || [];
-      const have = new Set(theirs.map((i) => i.href));
-      const items = [...played.filter((p) => !have.has(p.href)), ...theirs];
+      // Newest first: what you played here since RYM's history was last read (even if it is further down
+      // in RYM's list), then RYM's history, then older plays here that never made it to RYM.
+      const rec = await store.get("sidebar:rymhist");
+      const readAt = (rec && rec.t) || 0;
+      const recent = played.filter((p) => (p.at || 0) > readAt);
+      const recentSet = new Set(recent.map((p) => p.href));
+      const theirsSet = new Set(theirs.map((i) => i.href));
+      const art = new Map(played.map((p) => [p.href, p.artUrl]));
+      const items = [
+        ...recent.map((p) => (p.artUrl ? p : { ...p, artUrl: (theirs.find((i) => i.href === p.href) || {}).artUrl || "" })),
+        ...theirs.filter((i) => !recentSet.has(i.href)).map((i) => (i.artUrl ? i : { ...i, artUrl: art.get(i.href) || "" })),
+        ...played.filter((p) => !recentSet.has(p.href) && !theirsSet.has(p.href)),
+      ];
       if (!items.length && d.error) return failed(d);
       return items.length ? { items } : { message: "Albums you listen to will show up here." };
     },
@@ -709,7 +738,11 @@
         const img = document.createElement("img");
         img.referrerPolicy = "no-referrer";
         img.loading = "lazy";
-        const cands = [item.artUrl, ...(item.artAlts || [])].filter((u, k, a) => u && a.indexOf(u) === k);
+        const cands = [artOk[item.href], item.artUrl, ...(item.artAlts || [])].filter((u, k, a) => u && a.indexOf(u) === k);
+        // Whatever cover finally loads is remembered for this album, so next time it shows straight away.
+        img.addEventListener("load", () => {
+          if (img.src && img.src !== item.artUrl) noteArt(item.href, img.src);
+        });
         let tried = 0;
         let askedSpotify = false;
         const spotifyArt = () => {

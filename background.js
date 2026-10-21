@@ -391,7 +391,7 @@ async function coverArt(it) {
   const cache = ((await api.storage.local.get(KEY))[KEY]) || {};
   const k = it.href || `${it.artist}|${it.title}`;
   const c = cache[k];
-  if (c && Date.now() - c.t < 30 * 24 * 3600e3) return c.url;
+  if (c && Date.now() - c.t < (c.url ? 30 * 24 * 3600e3 : 24 * 3600e3)) return c.url; // misses are retried daily
   if (artRunning >= 2) await new Promise((r) => artQueue.push(r));
   artRunning++;
   try {
