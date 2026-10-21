@@ -824,3 +824,12 @@ body {
 body.ready {
   opacity: 1;
 }
+
+.sp-bar-fill.sp-bar-swap {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.sp-bar-fill {
+  transition: width 0.6s linear, background 0.8s ease, opacity 0.35s ease;
+}

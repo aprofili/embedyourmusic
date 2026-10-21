@@ -216,6 +216,10 @@
     const driver = await makeDriver(root);
     let S = { key: "", idx: -1, want: false, seen: false, paused: true, pos: 0, dur: 0, failed: false, got: 0 };
     let started = false;
+    let shownPct = 0;
+    let shownIdx = -1;
+    let swapping = false;
+    let nextPct = 0;
     const paint = () => {
       const playing = S.want && S.seen && !S.paused;
       const idx = S.idx;
@@ -228,7 +232,28 @@
       });
       now.textContent = idx >= 0 && tracks[idx] ? tracks[idx].name : "";
       clock.textContent = idx >= 0 && S.dur ? `${fmt(S.pos)} / ${fmt(S.dur)}` : "";
-      fill.style.width = S.dur ? `${Math.min(100, (S.pos / S.dur) * 100)}%` : "0";
+      const pct = S.dur ? Math.min(100, (S.pos / S.dur) * 100) : 0;
+      if (swapping) {
+        nextPct = pct;
+      } else if (pct < shownPct - 5 || (idx !== shownIdx && pct < shownPct)) {
+        // New song (or a restart): fade the old bar out, then fade the new one in from the start, no sliding back.
+        swapping = true;
+        nextPct = pct;
+        fill.classList.add("sp-bar-swap");
+        setTimeout(() => {
+          fill.style.transition = "none";
+          fill.style.width = `${nextPct}%`;
+          shownPct = nextPct;
+          void fill.offsetWidth;
+          fill.style.transition = "";
+          fill.classList.remove("sp-bar-swap");
+          swapping = false;
+        }, 260);
+      } else {
+        fill.style.width = `${pct}%`;
+        shownPct = pct;
+      }
+      shownIdx = idx;
       msg.hidden = !S.failed;
       if (S.failed) {
         msg.textContent = `Spotify's player didn't start (${S.got ? `${S.got} messages heard` : "no messages from it"}). Use the Spotify logo to open it directly.`;
