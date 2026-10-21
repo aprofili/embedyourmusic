@@ -110,8 +110,11 @@
     });
     const meta = el("div", "sp-meta");
     meta.append(el("div", "sp-title", payload.title || "Untitled"), el("div", "sp-artist", payload.artist || ""));
-    const now = el("div", "sp-now", "");
-    meta.append(now);
+    const now = el("div", "sp-now", ""); // (kept for the painter; hidden: the track list already shows the song)
+    now.hidden = true;
+    const rateSlot = el("div", "sp-rate");
+    root.rateSlot = rateSlot;
+    meta.append(rateSlot);
     head.append(meta);
 
     const play = el("button", "sp-play", "▶");
@@ -135,9 +138,7 @@
     const msg = el("div", "sp-msg");
     msg.hidden = true;
     const list = el("div", "sp-list");
-    const rateSlot = el("div", "sp-rate");
-    root.rateSlot = rateSlot;
-    root.append(head, barRow, msg, rateSlot, listHead, list, embedBtn);
+    root.append(head, barRow, msg, listHead, list, embedBtn);
 
     // ---- track list ----
     const rows = tracks.map((t, i) => {

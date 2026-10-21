@@ -499,6 +499,9 @@
 
   // Release links under `root` as [{ title, artist, href, artUrl }]. Tolerant of RYM's markup:
   // a titled link to /release/<type>/<artist>/<title>/, with the artist link and cover in the same row.
+  function isVideoPath(p) {
+    return /^\/release\/(video|musicvideo|music-video|concert|film|dvd)\//.test(p);
+  }
   function scrapeReleases(root, limit = 60, skipPath = "") {
     const out = [];
     const seen = new Set();
@@ -510,10 +513,21 @@
         continue;
       }
       if (!/^\/release\/[^/]+\/[^/]+\/[^/]+\/?$/.test(path) || seen.has(path) || path === skipPath) continue;
+      if (isVideoPath(path)) continue; // live videos and the like: nothing to play in a music player
       if (a.querySelector("img, picture")) continue; // a cover link, not the title link
       const title = (a.textContent || "").replace(/\s+/g, " ").trim();
       if (!title) continue; // image-only link
-      const row = a.closest("li, tr") || a.parentElement;
+      let row = a.closest("li, tr");
+      if (!row) {
+        // Plain divs: the smallest ancestor that has an artist link and only this release.
+        row = a.parentElement;
+        for (let n = a.parentElement, i = 0; n && i < 5; n = n.parentElement, i++) {
+          const others = [...n.querySelectorAll('a[href^="/release/"]')].filter((x) => pathOf(x) !== path && /^\/release\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathOf(x)));
+          if (others.length) break;
+          row = n;
+          if (n.querySelector("a.artist")) break;
+        }
+      }
       const artist = row && row.querySelector("a.artist");
       seen.add(path);
       out.push({
@@ -622,8 +636,14 @@
         .map((l) => ({ ...l, info: classifyAny(l.href) }))
         .filter((l) => l.info && l.info.service === l.service);
     }
+    const id = (rec && rec.id) || item.id || (await knownId(item.href)) || "";
+    rememberId(item.href, id);
+    if (!entries.length && item.spotify) {
+      const info = classifyAny(item.spotify);
+      if (info && info.service === "spotify") entries = [{ service: "spotify", href: item.spotify }];
+    }
     return {
-      id: rec ? rec.id : item.id || "",
+      id,
       title: item.title || (rec && rec.title) || "",
       artist: item.artist || (rec && rec.artist) || "",
       artUrl: item.artUrl || (rec && rec.art) || "",
@@ -632,6 +652,54 @@
       ratingKnown: !!(rec && rec.ratingKnown),
       entries: entries.map((e) => ({ service: e.service, href: e.href })),
     };
+  }
+
+  // Persistent href -> release id map (storage.local "sidebar:ids"): ids are what Similar and rating need,
+  // and several places learn them for free (history, recommendations, any release page you open, any load).
+  let idQueue = {};
+  let idTimer;
+  function rememberId(href, id) {
+    if (!href || !id) return;
+    try {
+      idQueue[new URL(href, "https://rateyourmusic.com").pathname] = String(id);
+    } catch {
+      return;
+    }
+    clearTimeout(idTimer);
+    idTimer = setTimeout(async () => {
+      const pairs = idQueue;
+      idQueue = {};
+      try {
+        const got = await api.storage.local.get("sidebar:ids");
+        const map = { ...((got && got["sidebar:ids"]) || {}), ...pairs };
+        const keys = Object.keys(map);
+        if (keys.length > 4000) for (const k of keys.slice(0, keys.length - 4000)) delete map[k];
+        await api.storage.local.set({ "sidebar:ids": map });
+      } catch {}
+    }, 500);
+  }
+  async function knownId(href) {
+    try {
+      const got = await api.storage.local.get("sidebar:ids");
+      return ((got && got["sidebar:ids"]) || {})[new URL(href, "https://rateyourmusic.com").pathname] || "";
+    } catch {
+      return "";
+    }
+  }
+
+  // New releases: /new-music/, minus videos (the panel then drops what Spotify doesn't have).
+  async function fetchNewMusic() {
+    const rel = globalThis.__eymRelease;
+    if (rel && rel.blocked()) throw new Error(rel.blockMessage());
+    const res = await fetch("/new-music/", { credentials: "same-origin" });
+    if (!res.ok) {
+      if (rel) rel.noteStatus(res.status);
+      throw new Error(rel && rel.blocked() ? rel.blockMessage() : `HTTP ${res.status}`);
+    }
+    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    const items = scrapeReleases(doc, 150);
+    if (!items.length) throw new Error("no releases found on the new-music page");
+    return { items, t: Date.now() };
   }
 
   // Your RYM play history (what "Set listening" records): newest first, one entry per release.
@@ -669,7 +737,9 @@
       throw new Error(rel && rel.blocked() ? rel.blockMessage() : `HTTP ${res.status}`);
     }
     const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-    return { items: scrapeHistory(doc) };
+    const items = scrapeHistory(doc);
+    for (const i of items) rememberId(i.href, i.id);
+    return { items };
   }
 
   // One page of your 4+ star albums (your collection filtered to 4.0-5.0; the side panel caches it).
@@ -916,8 +986,8 @@
         sendResponse({ ok: true });
         return false;
       }
-      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history")) {
-        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-history" ? fetchHistory() : fetchFavorites(msg.page))
+      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history" || msg.type === "fetch-newmusic")) {
+        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-newmusic" ? fetchNewMusic() : fetchFavorites(msg.page))
           .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : r))
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
@@ -1373,12 +1443,23 @@
     document.documentElement.dataset.eymRecorded = "1";
     const meta = rel.extractMeta ? rel.extractMeta(document) : { links: holder ? holder.getAttribute("data-links") : null };
     rel.put(id, { rating: Number(m[1]), ratingKnown: true, ...meta }, location.pathname);
+    rememberId(location.pathname, id);
     try {
       api.runtime.sendMessage({ type: "release-recorded" }).catch(() => {});
     } catch {}
   }
 
+  // Visiting /new-music/ saves its list for the panel (no request needed).
+  function publishNewMusic() {
+    if (typeof location === "undefined" || !/^\/new-music\//.test(location.pathname) || document.documentElement.dataset.eymNew) return;
+    const items = scrapeReleases(document, 150);
+    if (!items.length) return;
+    document.documentElement.dataset.eymNew = "1";
+    saveSidebarData("sidebar:newmusic", { items, t: Date.now() });
+  }
+
   function run() {
+    publishNewMusic();
     recordThisRelease();
     addNavLink();
     buildHero();
@@ -1407,5 +1488,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
 })();

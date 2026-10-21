@@ -6,7 +6,7 @@
   const container = document.getElementById("page_sections_recommendations");
   if (!eym || !container) return;
 
-  const { classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, saveSidebarData, LABELS } = eym;
+  const { classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, saveSidebarData, rememberId, LABELS } = eym;
   // Phone layout: no sticky side panel; the player opens inline under the tapped row.
   const mobile = matchMedia("(max-width: 59.99em)").matches;
   // The iOS userscript has no page-world script, so it reads ratings itself (see ratedScan).
@@ -292,6 +292,7 @@
           const [item] = scrapeReleases(li, 1);
           if (!item) continue;
           item.id = (li.id || "").replace("component_discography_item_", "");
+          if (rememberId) rememberId(item.href, item.id);
           item.rated = li.classList.contains("rym-rated") || (!!li.dataset.eymRating && li.dataset.eymRating !== "0");
           out.push(item);
           if (out.length >= 80) break;

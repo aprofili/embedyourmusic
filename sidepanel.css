@@ -833,3 +833,73 @@ body.ready {
 .sp-bar-fill {
   transition: width 0.6s linear, background 0.8s ease, opacity 0.35s ease;
 }
+
+/* ---- Two-column Next Up rows: title, artist underneath ---- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 8px;
+}
+
+.item {
+  position: relative;
+  min-width: 0;
+  padding-right: 18px;
+}
+
+.item .lbl {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.item .lbl > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item .t {
+  font-size: 0.9em;
+}
+
+.item .a {
+  font-size: 0.75em;
+  color: color-mix(in srgb, var(--tint-h) 70%, var(--muted));
+}
+
+.item .x {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 2px 4px;
+}
+
+/* rating next to the art: a bit smaller */
+.sp-meta .sp-rate {
+  margin-top: 8px;
+}
+
+.sp-meta #rate-box {
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.sp-meta .star {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+  line-height: 18px;
+}
+
+.sp-meta #rating-note {
+  font-size: 0.78em;
+}
+
+.sp-meta #rating-note .more {
+  margin: 0;
+  padding: 2px 9px;
+  font-size: 0.95em;
+}

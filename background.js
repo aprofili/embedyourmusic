@@ -379,6 +379,41 @@ async function findSpotify(want) {
   return [];
 }
 
+// New-music filter: keep only releases Spotify has (fuzzy match via findSpotify), remembering the answer for a week.
+// Not connected to Spotify -> nothing can be checked, so everything is returned as is.
+async function spFilter(items) {
+  if (!(await spotifyAuth())) return { items, filtered: false };
+  const KEY = "sp:avail";
+  const cache = ((await api.storage.local.get(KEY))[KEY]) || {};
+  const WEEK = 7 * 24 * 3600e3;
+  const out = new Array(items.length);
+  let next = 0;
+  const work = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      const it = items[i];
+      const c = cache[it.href];
+      if (c && Date.now() - c.t < WEEK) {
+        out[i] = c.ok ? { ...it, spotify: c.href } : null;
+        continue;
+      }
+      try {
+        const hit = (await findSpotify({ artist: it.artist, title: it.title, year: 0 }))[0];
+        cache[it.href] = { t: Date.now(), ok: !!hit, href: hit ? hit.href : "" };
+        out[i] = hit ? { ...it, spotify: hit.href } : null;
+      } catch {
+        out[i] = it; // couldn't check: keep it
+      }
+    }
+  };
+  await Promise.all([work(), work(), work(), work()]);
+  const keys = Object.keys(cache);
+  if (keys.length > 3000) for (const k of keys.slice(0, keys.length - 3000)) delete cache[k];
+  await api.storage.local.set({ [KEY]: cache });
+  return { items: out.filter(Boolean), filtered: true };
+}
+
 function pick(want, seen) {
   return pickAlbum(
     want,
@@ -597,6 +632,10 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && typeof msg.type === "string" && msg.type.startsWith("spotify-")) {
     handleSpotify(msg).then(sendResponse);
+    return true;
+  }
+  if (msg && msg.type === "sp-filter") {
+    spFilter(msg.items || []).then(sendResponse).catch(() => sendResponse({ items: msg.items || [], filtered: false }));
     return true;
   }
   if (msg && msg.type === "eng-ensure") {

@@ -42,5 +42,14 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     assert.strictEqual(it.title, "Real Title");
     assert.strictEqual(it.artUrl, "https://e.snmc.io/i/300/s/bbb/1/c.jpeg");
   }
+  // div-based rows (new-music page style): artist from the row, videos dropped
+  {
+    const box = w.document.createElement("div");
+    box.innerHTML = `<div class="r"><div><a class="artist" href="/artist/a">Alpha</a></div><div><a class="album" href="/release/album/alpha/first/">First</a></div></div>
+      <div class="r"><div><a class="artist" href="/artist/b">Beta</a></div><div><a class="album" href="/release/ep/beta/second/">Second</a></div></div>
+      <div class="r"><div><a class="artist" href="/artist/c">Gamma</a></div><div><a class="album" href="/release/video/gamma/live-at-x/">Live at X</a></div></div>`;
+    const got = JSON.parse(JSON.stringify(w.__embedYourMusic.scrapeReleases(box, 10).map((i) => [i.title, i.artist])));
+    assert.deepStrictEqual(got, [["First", "Alpha"], ["Second", "Beta"]]);
+  }
   console.log("lists tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });

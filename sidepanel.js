@@ -386,10 +386,24 @@
     return a;
   };
 
+  const isVideo = (i) => {
+    try {
+      return /^\/release\/(video|musicvideo|music-video|concert|film|dvd)\//.test(new URL(i.href).pathname);
+    } catch {
+      return false;
+    }
+  };
+
   // -> { items } or { message }
   const SOURCES = {
     async similar() {
       if (!current) return { message: "Play an album to see similar albums." };
+      if (!current.payload.id && current.payload.href) {
+        const ids = await store.get("sidebar:ids");
+        try {
+          current.payload.id = (ids && ids[new URL(current.payload.href).pathname]) || "";
+        } catch {}
+      }
       if (!current.payload.id && current.payload.href) {
         // Id unknown (the album came from a list): ask a RYM tab to read it from the release page.
         try {
@@ -420,6 +434,30 @@
       const all = await store.get("sidebar:lists");
       const rec = all && all.challenge;
       return rec && rec.items.length ? { items: rec.items } : { message: "Open your recommendations page once to fill this list." };
+    },
+    // /new-music/ (saved when you visit it, else fetched through a RYM tab), minus videos, minus anything Spotify
+    // doesn't have (checked fuzzily by the background; answers are cached for a week). Re-checked every 6 hours.
+    async newmusic() {
+      const SIX = 6 * 3600e3;
+      const done = await store.get("sidebar:newmusic-f");
+      if (done && done.items && done.items.length && Date.now() - done.t < SIX) return { items: done.items };
+      let raw = await store.get("sidebar:newmusic");
+      if (!raw || !raw.items || !raw.items.length || Date.now() - raw.t > SIX) {
+        let res = null;
+        try {
+          res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-newmusic" } });
+        } catch {}
+        if (res && res.items) {
+          raw = { items: res.items, t: res.t || Date.now() };
+          store.set("sidebar:newmusic", raw);
+        } else if (!raw || !raw.items || !raw.items.length) {
+          return { message: `Couldn't load rateyourmusic.com/new-music/ (${(res && res.error) || "no response"}). Visiting it once fills this list.` };
+        }
+      }
+      const f = (await api.runtime.sendMessage({ type: "sp-filter", items: raw.items }).catch(() => null)) || { items: raw.items, filtered: false };
+      const items = f.items.filter((i) => !isVideo(i));
+      if (f.filtered) store.set("sidebar:newmusic-f", { t: Date.now(), items });
+      return items.length ? { items } : { message: "Nothing from the new-music page is on Spotify right now." };
     },
     // Pages of your collection filtered to 4-5 stars. First open: page 1. After that at most one more
     // random page per day (so the pick widens slowly without hammering RYM).
@@ -560,12 +598,13 @@
       body.append(p);
       return;
     }
-    const items = result.items;
-    // Show as many rows as fit in the window; "Show more" extends past it (the page then scrolls).
+    const items = kind === "history" ? result.items : result.items.filter((i) => !isVideo(i));
+    // Two columns. Show as many rows as fit in the window; "Show more" extends past it (the page then scrolls).
     const top = body.getBoundingClientRect().top;
-    const fit = Math.max(3, Math.floor((window.innerHeight - top - 48) / ROW));
+    const fit = Math.max(6, Math.floor((window.innerHeight - top - 48) / ROW) * 2);
     let shown = Math.min(items.length, fit);
     const list = document.createElement("div");
+    list.className = "grid";
     const more = document.createElement("button");
     more.type = "button";
     more.className = "more";
@@ -581,7 +620,17 @@
         img.loading = "lazy";
         img.src = item.artUrl || "";
         const label = document.createElement("span");
-        label.textContent = row.title;
+        label.className = "lbl";
+        const t = document.createElement("span");
+        t.className = "t";
+        t.textContent = item.title;
+        label.append(t);
+        if (item.artist) {
+          const a = document.createElement("span");
+          a.className = "a";
+          a.textContent = item.artist;
+          label.append(a);
+        }
         row.append(img, label);
         row.addEventListener("click", () => playItem(item));
         if (kind !== "history" && kind !== "favorites" && (item.rated || ratings[item.href] > 0)) row.classList.add("rated");

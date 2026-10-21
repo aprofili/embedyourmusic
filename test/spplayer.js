@@ -49,8 +49,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   assert.strictEqual(d.querySelectorAll(".sp-row").length, 3);
   // rating sits under the head, above the list
   assert.ok(d.querySelector(".sp-rate #rate-box"), "rating moved under the art");
-  const order = [...sp.children].map((c) => c.className.split(" ")[0]);
-  assert.ok(order.indexOf("sp-rate") > order.indexOf("sp-head") && order.indexOf("sp-rate") < order.indexOf("sp-list"));
+  assert.ok(d.querySelector(".sp-head .sp-meta .sp-rate #rate-box"), "rating beside the art");
   assert.strictEqual(d.querySelector(".sp-count").textContent, "♥ 1/3");
   assert.strictEqual(d.querySelector(".sp-album").textContent, "♡");
   // hidden iframe until a song is chosen; clicking a row loads that track in it
