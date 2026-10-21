@@ -22,7 +22,7 @@
   // wins: saturated, mid-light pixels count most; greys barely; skin tones count about a third, so a face only sets
   // the colour when it really dominates (a shirt, a background or lettering usually wins).
   function pickAccent(d) {
-    const bins = Array.from({ length: 18 }, () => ({ w: 0, x: 0, y: 0, s: 0, l: 0 }));
+    const bins = Array.from({ length: 18 }, () => ({ w: 0, v: 0, x: 0, y: 0, s: 0, l: 0 }));
     let gw = 0, gl = 0;
     for (let i = 0; i < d.length; i += 4) {
       if (d[i + 3] !== undefined && d[i + 3] < 128) continue;
@@ -46,6 +46,8 @@
       if (skin) w *= 0.35;
       const bin = bins[Math.floor(h / 20) % 18];
       bin.w += w;
+      // vividness, for the second colour: strongly saturated, mid-light pixels (a red sign, a yellow light)
+      bin.v += sat * sat * (l > 0.25 && l < 0.8 ? 1 : 0.3) * (skin ? 0.35 : 1);
       bin.x += Math.cos((h * Math.PI) / 180) * w;
       bin.y += Math.sin((h * Math.PI) / 180) * w;
       bin.s += sat * w;
@@ -58,9 +60,22 @@
       if (bn.w > 0 && w > bestW) (best = k), (bestW = w);
     });
     if (best < 0) return gw ? [0, 0, gl / gw] : null;
-    const bn = bins[best];
-    const h = Math.round(((Math.atan2(bn.y, bn.x) * 180) / Math.PI + 360) % 360);
-    return [h, bn.s / bn.w, bn.l / bn.w];
+    const hslOf = (bn) => [Math.round(((Math.atan2(bn.y, bn.x) * 180) / Math.PI + 360) % 360), bn.s / bn.w, bn.l / bn.w];
+    const main = hslOf(bins[best]);
+    // Second colour: the most vivid hue clearly apart from the main one (at least 60° away) that the art shows
+    // in more than a speck (2% of its colour). Null when the art is really one colour family.
+    const totalW = bins.reduce((a, b) => a + b.w, 0);
+    const totalV = bins.reduce((a, b) => a + b.v, 0);
+    const dist = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+    let second = null, bestV = 0;
+    for (const bn of bins) {
+      if (!bn.w || bn.w < totalW * 0.02) continue;
+      const c = hslOf(bn);
+      if (dist(c[0], main[0]) < 60) continue;
+      if (bn.v > bestV && bn.v > totalV * 0.04) (bestV = bn.v), (second = c);
+    }
+    main.second = second;
+    return main;
   }
 
   // Accent colour of an image; null if it can't be read.
@@ -85,17 +100,22 @@
     });
   }
 
+  // Two colours from the art: the main one tints the card and the panel (backgrounds, highlights, glow); a notable
+  // second colour (if the art has one) marks what you act on: play button, progress, now-playing marks, hearts, stars.
   async function tint(root, url) {
     const hsl = await dominant(url);
     if (!hsl || hsl[1] < 0.05) return; // black-and-white art: keep the default colours
-    const s = Math.round(Math.min(0.85, Math.max(0.4, hsl[1])) * 100);
-    const l = Math.round(Math.min(0.62, Math.max(0.45, hsl[2])) * 100);
-    const accent = `hsl(${hsl[0]} ${s}% ${l}%)`;
+    const vivid = (c, sMin, lMin, lMax) => [c[0], Math.round(Math.min(0.9, Math.max(sMin, c[1])) * 100), Math.round(Math.min(lMax, Math.max(lMin, c[2])) * 100)];
+    const css = (c) => `hsl(${c[0]} ${c[1]}% ${c[2]}%)`;
+    const main = vivid(hsl, 0.4, 0.45, 0.62);
+    const two = hsl.second ? vivid(hsl.second, 0.6, 0.5, 0.62) : null;
+    const accent = css(main);
+    const pop = two ? css(two) : accent;
+    // Hearts and stars: lighter version of the second colour (or of the main one, shifted a little warmer).
+    const light = two ? `hsl(${two[0]} ${Math.min(95, two[1] + 5)}% ${Math.min(74, two[2] + 14)}%)` : `hsl(${(main[0] + 20) % 360} ${Math.min(95, main[1] + 10)}% ${Math.min(75, main[2] + 18)}%)`;
     root.style.setProperty("--sp-a", accent);
-    // Hearts: the same family, lighter and slightly warmer so they stand out on the tinted card.
-    const light = `hsl(${(hsl[0] + 20) % 360} ${Math.min(95, s + 10)}% ${Math.min(75, l + 18)}%)`;
+    root.style.setProperty("--sp-b", pop);
     root.style.setProperty("--sp-h", light);
-    // The whole panel (tabs, stars, lists, links, background) takes the same colours.
     const rs = document.documentElement.style;
     rs.setProperty("--tint", accent);
     rs.setProperty("--tint-h", light);

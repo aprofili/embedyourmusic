@@ -27,6 +27,13 @@ assert.ok(near(a[0], 25), `skin when it dominates (got ${a[0]})`);
 // non-skin warm colour (saturated orange) is not penalised
 a = pickAccent(img([[400, 30, 0.95, 0.5], [300, 200, 0.5, 0.5]]));
 assert.ok(near(a[0], 30), `vivid orange isn't treated as skin (got ${a[0]})`);
+// mostly blue night scene with a red sign and some yellow light: blue main, red second
+a = pickAccent(img([[600, 215, 0.6, 0.4], [150, 220, 0.3, 0.2], [60, 355, 0.85, 0.5], [40, 50, 0.9, 0.6], [150, 0, 0, 0.1]]));
+assert.ok(near(a[0], 215), `main blue (got ${a[0]})`);
+assert.ok(a.second && near(a.second[0], 355), `second red (got ${a.second && a.second[0]})`);
+// one colour family only: no second colour
+a = pickAccent(img([[600, 215, 0.6, 0.4], [300, 230, 0.4, 0.6]]));
+assert.ok(!a.second, "no second colour in a one-hue cover");
 // greyscale image -> no hue, but a value
 a = pickAccent(img([[100, 0, 0, 0.5]]));
 assert.ok(a && a[1] === 0);

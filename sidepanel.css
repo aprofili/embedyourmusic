@@ -988,3 +988,23 @@ body.ready {
 #eym-toast.bad {
   background: #5a2320;
 }
+
+/* ---- Second art colour (--sp-b, set by spplayer.js tint(); the main colour when the art has none) ---- */
+.sp {
+  --sp-b: var(--sp-a);
+}
+.sp-play,
+.sp-bar-fill,
+.sp-bar-fill::after,
+.sp-eq i {
+  background: var(--sp-b);
+}
+.sp-play {
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--sp-b) 55%, transparent);
+}
+.sp-row.sp-current {
+  box-shadow: inset 3px 0 0 var(--sp-b);
+}
+.sp-row.sp-current .sp-n {
+  color: var(--sp-b);
+}
