@@ -24,6 +24,8 @@
     let timers = [];
     let lastToggle = 0;
     let lastEmit = 0;
+    let selectedAt = 0;
+    let fixes = 0; // reconcile attempts for the current want/actual mismatch
     const heard = new Map();
 
     const snap = () => ({ key, rymId, idx, want, seen: st.seen, paused: st.paused, pos: st.pos, dur: st.dur, got, failed, total: tracks.length, started });
@@ -54,6 +56,8 @@
       idx = i;
       want = !!autoplay;
       failed = false;
+      fixes = 0;
+      selectedAt = Date.now();
       st = { seen: false, paused: true, pos: 0, dur: 0 };
       readyOnce = false;
       frame.src = `https://open.spotify.com/embed/track/${tracks[i].id}?utm_source=embedyourmusic`;
@@ -98,11 +102,29 @@
       tracks = (m.tracks || []).map((t) => ({ id: t.id, ms: t.ms }));
     }
 
+    // What the embed is really doing is the truth; we steer it toward `want` with "toggle" (the command that is known
+    // to work) and never send one blindly: a toggle against the wrong state is what froze playback before.
+    function reconcile() {
+      if (idx < 0 || !st.seen) return;
+      const actual = !st.paused;
+      if (want === actual) {
+        fixes = 0;
+        return;
+      }
+      if (fixes < 4 && Date.now() - lastToggle > 1800) {
+        fixes++;
+        post("toggle");
+      }
+    }
+
     function toggle() {
       if (idx < 0) return select(0, true);
       want = !want;
-      if (!want) post("pause");
-      else post("toggle");
+      fixes = 0;
+      lastToggle = 0;
+      if (st.seen) reconcile();
+      else if (want) kick();
+      else post("pause"); // nothing heard from the embed yet
       out(null, true);
     }
 
@@ -119,6 +141,8 @@
         setTimeout(kick, 300);
       }
       if (typeof p.isPaused !== "boolean") return;
+      // The previous song's page can still be talking for a moment after the src changes: ignore that.
+      if (Date.now() - selectedAt < 900) return;
       // A message from the previous song's page still in flight: ignore it.
       const uri = String(p.playingURI || p.uri || "");
       if (/^spotify:track:/.test(uri) && idx >= 0 && tracks[idx] && !uri.includes(tracks[idx].id)) return;
@@ -128,11 +152,12 @@
       st = { seen: true, paused: p.isPaused, pos: Number(p.position) || 0, dur: Number(p.duration) || prevDur };
       failed = false;
       // Finished: it stopped at (or snapped back from) the very end -> next song.
-      const ended = want && st.paused && wasPlaying && prevDur && prevPos >= prevDur - 2500 && (st.pos === 0 || st.pos >= prevDur - 500);
+      const ended = want && st.paused && wasPlaying && prevDur && prevPos >= prevDur - 4000 && (st.pos === 0 || st.pos >= prevDur - 800);
       if (ended) {
         if (idx + 1 < tracks.length) return select(idx + 1, true);
         want = false;
       }
+      reconcile();
       out();
     });
 
