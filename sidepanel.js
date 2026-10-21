@@ -615,24 +615,11 @@
       if (!items.length) return failed({ label: "your 3.5+ star albums", error: error || "none found", page: "https://rateyourmusic.com/" });
       return { items: shuffle(items) };
     },
-    // Your RYM play history (newest first) after albums played here that aren't in it yet.
+    // History: what you played here, newest first. Separate from your RYM play history (only borrows its covers).
     async history() {
-      const d = await listData("history");
-      const theirs = d.items || [];
-      // Newest first: what you played here since RYM's history was last read (even if it is further down
-      // in RYM's list), then RYM's history, then older plays here that never made it to RYM.
       const rec = await store.get("sidebar:rymhist");
-      const readAt = (rec && rec.t) || 0;
-      const recent = played.filter((p) => (p.at || 0) > readAt);
-      const recentSet = new Set(recent.map((p) => p.href));
-      const theirsSet = new Set(theirs.map((i) => i.href));
-      const art = new Map(played.map((p) => [p.href, p.artUrl]));
-      const items = [
-        ...recent.map((p) => (p.artUrl ? p : { ...p, artUrl: (theirs.find((i) => i.href === p.href) || {}).artUrl || "" })),
-        ...theirs.filter((i) => !recentSet.has(i.href)).map((i) => (i.artUrl ? i : { ...i, artUrl: art.get(i.href) || "" })),
-        ...played.filter((p) => !recentSet.has(p.href) && !theirsSet.has(p.href)),
-      ];
-      if (!items.length && d.error) return failed(d);
+      const art = new Map(((rec && rec.items) || []).map((i) => [i.href, i.artUrl]));
+      const items = played.map((p) => (p.artUrl ? p : { ...p, artUrl: art.get(p.href) || "" }));
       return items.length ? { items } : { message: "Albums you listen to will show up here." };
     },
   };

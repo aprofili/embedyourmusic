@@ -1,4 +1,4 @@
-// History order (played again -> top, even if RYM's history has it lower) and remembered covers.
+// History tab lists only plays from here (newest first), independent of RYM's own play history.
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
@@ -36,8 +36,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   w.document.querySelector('.acc[data-kind="history"] .acc-head').click();
   await tick(20);
   const rows = [...w.document.querySelectorAll('.acc[data-kind="history"] .item')];
-  assert.deepStrictEqual(rows.map((r) => r.querySelector(".t").textContent), ["Z", "X", "Y", "Old"]);
-  assert.strictEqual(rows[1].querySelector("img").getAttribute("src"), "https://i.scdn.co/image/x", "remembered cover used");
+  assert.deepStrictEqual(rows.map((r) => r.querySelector(".t").textContent), ["Z", "Old"], "only plays from here, not RYM's history");
   // Ratings seen anywhere grey out list rows (by release path or id), and live when a page reports a new one
   w.document.querySelector('.acc[data-kind="recommended"] .acc-head').click();
   await tick(20);
