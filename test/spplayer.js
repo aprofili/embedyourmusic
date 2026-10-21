@@ -34,6 +34,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     storage: { local: { get: async (k) => ({ [k]: store[k] }), set: async (o) => Object.assign(store, o) }, onChanged: { addListener() {} } },
   };
   w.eval(read("content.js"));
+  w.eval(read("spengine.js"));
   w.eval(read("spplayer.js"));
   w.eval(read("sidepanel.js"));
   await tick();
@@ -74,6 +75,60 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   await tick(5);
   assert.ok(!d.querySelector(".sp-rate #rate-box"));
   assert.ok(d.querySelector("#now > #rate-box"), "rating restored");
+
+  // Offscreen mode: commands go to the background's offscreen engine; its broadcasts drive the card
+  {
+    const dom2 = new JSDOM(read("sidepanel.html").replace(/<script[^>]*><\/script>/g, ""), { runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
+    const w2 = dom2.window;
+    w2.IntersectionObserver = class { observe() {} unobserve() {} };
+    const cmds = [];
+    let broadcast;
+    let engState = { key: "", idx: -1, want: false, seen: false, paused: true, pos: 0, dur: 0 };
+    w2.chrome = {
+      runtime: {
+        connect: () => ({ onMessage: { addListener() {} }, onDisconnect: { addListener() {} }, postMessage() {} }),
+        onMessage: { addListener: (fn) => (broadcast = fn), removeListener() {} },
+        sendMessage: async (m) => {
+          if (m.type === "eng-ensure") return { ok: true };
+          if (m.type === "eng-cmd") {
+            cmds.push(m);
+            if (m.cmd === "load") engState = { ...engState, key: m.key };
+            if (m.cmd === "select") engState = { ...engState, idx: m.i, want: !!m.autoplay };
+            return { state: engState };
+          }
+          if (m.type === "spotify-status") return { connected: true };
+          if (m.type === "spotify-tracks") return { tracks: tracks.map((t) => ({ ...t })) };
+          return {};
+        },
+      },
+      storage: { local: { get: async (k) => ({ [k]: undefined }), set: async () => {} }, onChanged: { addListener() {} } },
+    };
+    w2.eval(read("content.js"));
+    w2.eval(read("spengine.js"));
+    w2.eval(read("spplayer.js"));
+    w2.eval(read("sidepanel.js"));
+    await tick();
+    const pay = { id: "1", title: "Album", artist: "Band", artUrl: "", href: "https://rateyourmusic.com/release/album/band/album/", rating: 0, entries: [{ service: "spotify", href: "https://open.spotify.com/album/49JPEgPvEaFp89xqzeQvF7" }] };
+    const info = w2.__embedYourMusic.classifyAny("https://open.spotify.com/album/49JPEgPvEaFp89xqzeQvF7");
+    const card = await w2.__eymSpPlayer.build(info, pay, {});
+    assert.ok(card, "card built with offscreen driver");
+    assert.ok(cmds.some((c) => c.cmd === "load" && c.tracks.length === 3), "tracks loaded into the engine");
+    assert.strictEqual(card.querySelector(".sp-frame"), null, "no iframe in the panel");
+    w2.document.body.append(card);
+    await tick(5);
+    assert.ok(cmds.some((c) => c.cmd === "select" && c.i === 0 && c.autoplay), "autoplay starts song 1");
+    broadcast({ type: "eng-state", state: { key: info.key, idx: 1, want: true, seen: true, paused: false, pos: 5000, dur: 180000 } });
+    assert.ok(card.querySelectorAll(".sp-row")[1].classList.contains("sp-on"), "state from offscreen shown");
+    assert.strictEqual(card.querySelector(".sp-play").textContent, "⏸");
+    // reopened while playing the same release: adopt, don't restart
+    engState = { key: info.key, idx: 1, want: true, seen: true, paused: false, pos: 9000, dur: 180000 };
+    cmds.length = 0;
+    const again = await w2.__eymSpPlayer.build(info, pay, {});
+    await tick(5);
+    assert.ok(!cmds.some((c) => c.cmd === "load" || c.cmd === "select"), "reopen adopts the running playback");
+    w2.document.body.append(again);
+    assert.ok(again.querySelectorAll(".sp-row")[1].classList.contains("sp-current"));
+  }
   console.log("spplayer tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

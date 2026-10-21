@@ -1,5 +1,4 @@
-// Side panel: our own Spotify player. Spotify's embed runs in a hidden iframe and is driven with
-// postMessage ({command:"toggle"|"pause"}); what you see is art, title, a track list you pick from,
+// Side panel: our own Spotify player (the engine is spengine.js). What you see is art, title, a track list you pick from,
 // play / pause, and a save-album button. Needs Spotify connected (the track list comes from its API).
 // Falls back (returns null) when it isn't, so the normal embed is used instead.
 (() => {
@@ -129,14 +128,9 @@
     const msg = el("div", "sp-msg");
     msg.hidden = true;
     const list = el("div", "sp-list");
-    const frame = document.createElement("iframe");
-    frame.className = "sp-frame";
-    frame.title = "Spotify player";
-    frame.allow = "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture";
-    frame.referrerPolicy = "strict-origin-when-cross-origin";
     const rateSlot = el("div", "sp-rate");
     root.rateSlot = rateSlot;
-    root.append(head, controls, barRow, msg, rateSlot, list, frame, embedBtn);
+    root.append(head, controls, barRow, msg, rateSlot, list, embedBtn);
 
     // ---- track list ----
     const rows = tracks.map((t, i) => {
@@ -210,122 +204,65 @@
     }
 
     // ---- playback ----
-    let idx = -1;
-    let want = false;
-    let st = { seen: false, paused: true, pos: 0, dur: 0 };
+    // The engine (Spotify's embed + a bit of state) lives in an offscreen document when the browser has one, so
+    // it keeps playing with the panel closed; otherwise here in the panel. This view only sends commands and paints.
+    const driver = await makeDriver(root);
+    let S = { key: "", idx: -1, want: false, seen: false, paused: true, pos: 0, dur: 0, failed: false, got: 0 };
     let started = false;
-    let got = 0; // messages heard from the embed (for the diagnostic line)
-    let readyOnce = false;
-    const heard = new Map();
-    let fired = false;
-    let timers = [];
-    let lastToggle = 0;
-    const post = (command) => {
-      if (command === "toggle") lastToggle = Date.now();
-      try {
-        frame.contentWindow.postMessage({ command }, "*");
-      } catch {}
-    };
-    // Start playback, but never twice in quick succession (two toggles = play then pause).
-    const kick = () => {
-      if (want && !(st.seen && !st.paused) && Date.now() - lastToggle > 2200) post("toggle");
-    };
     const paint = () => {
-      const playing = want && st.seen && !st.paused;
+      const playing = S.want && S.seen && !S.paused;
+      const idx = S.idx;
       play.textContent = playing ? "⏸" : "▶";
       root.classList.toggle("sp-playing", playing);
       rows.forEach((r, i) => {
         r.row.classList.toggle("sp-current", i === idx);
         r.row.classList.toggle("sp-on", i === idx && playing);
-        if (i === idx && tracks.length > 1) r.n.textContent = String(r.t.number || i + 1);
-        else r.n.textContent = tracks.length > 1 ? String(r.t.number || i + 1) : "▶";
+        r.n.textContent = tracks.length > 1 ? String(r.t.number || i + 1) : "▶";
       });
-      now.textContent = idx >= 0 ? tracks[idx].name : "";
-      clock.textContent = idx >= 0 && st.dur ? `${fmt(st.pos)} / ${fmt(st.dur)}` : "";
-      fill.style.width = st.dur ? `${Math.min(100, (st.pos / st.dur) * 100)}%` : "0";
+      now.textContent = idx >= 0 && tracks[idx] ? tracks[idx].name : "";
+      clock.textContent = idx >= 0 && S.dur ? `${fmt(S.pos)} / ${fmt(S.dur)}` : "";
+      fill.style.width = S.dur ? `${Math.min(100, (S.pos / S.dur) * 100)}%` : "0";
+      msg.hidden = !S.failed;
+      if (S.failed) {
+        msg.textContent = `Spotify's player didn't start (${S.got ? `${S.got} messages heard` : "no messages from it"}). Use the Spotify logo to open it directly.`;
+      }
     };
-
-    function select(i, autoplay) {
-      timers.forEach(clearTimeout);
-      timers = [];
-      idx = i;
-      want = autoplay;
-      st = { seen: false, paused: true, pos: 0, dur: 0 };
-      readyOnce = false;
-      msg.hidden = true;
-      frame.src = `https://open.spotify.com/embed/track/${tracks[i].id}?utm_source=embedyourmusic`;
-      if (autoplay && !started) {
+    driver.onState((s, event) => {
+      S = s;
+      if (event === "played" && opts.onPlay && !started) {
         started = true;
-        if (opts.onPlay) opts.onPlay();
+        opts.onPlay();
       }
-      if (autoplay) {
-        // Press play once the embed is up: on its "ready" message (see below), and again a few times in
-        // case that message is missed (toggle is the command Spotify documents). Stops once it plays.
-        for (const ms of [1500, 4000, 6500]) timers.push(setTimeout(kick, ms));
-        timers.push(
-          setTimeout(() => {
-            if (want && !(st.seen && !st.paused)) {
-              msg.hidden = false;
-              msg.textContent = `Spotify's player didn't start (${got ? `${got} messages heard` : "no messages from it"}). Press “Spotify player” to use it directly.`;
-            }
-          }, 8000)
-        );
-      }
-      paint();
-    }
-
-    play.addEventListener("click", () => {
-      if (idx < 0) return select(0, true);
-      want = !want;
-      if (!want) post("pause");
-      else post("toggle");
+      if (event === "listened" && opts.onListened) opts.onListened();
       paint();
     });
-
+    const command = async (c) => {
+      const s = await driver.cmd(c);
+      if (s) {
+        S = s;
+        paint();
+      }
+    };
+    const select = (i, autoplay) => command({ cmd: "select", i, autoplay });
+    play.addEventListener("click", () => command({ cmd: "toggle" }));
     embedBtn.addEventListener("click", () => {
-      frame.classList.toggle("sp-frame-shown");
-      if (idx < 0) select(0, false);
+      if (driver.remote) window.open(`https://open.spotify.com/${kind}/${id}`, "_blank", "noopener");
+      else {
+        driver.frame.classList.toggle("sp-frame-shown");
+        if (S.idx < 0) select(0, false);
+      }
     });
+    embedBtn.title = driver.remote ? "Open on Spotify" : "Show Spotify's own player";
 
-    window.addEventListener("message", (e) => {
-      if (e.origin !== "https://open.spotify.com" || !frame.isConnected || e.source !== frame.contentWindow) return;
-      const d = e.data && typeof e.data === "object" ? e.data : {};
-      const p = d.payload || d.data || d;
-      got++;
-      try {
-        if (localStorage.eymDebug) console.log("[EmbedYourMusic] spotify message", e.data);
-      } catch {}
-      if (d.type === "ready" && want && !readyOnce) {
-        readyOnce = true;
-        setTimeout(kick, 300);
-      }
-      if (typeof p.isPaused !== "boolean") return;
-      // A message from the previous song's page still in flight: ignore it.
-      const uri = String(p.playingURI || p.uri || "");
-      if (/^spotify:track:/.test(uri) && idx >= 0 && !uri.includes(tracks[idx].id)) return;
-      const prevPos = st.pos;
-      const prevDur = st.dur;
-      const wasPlaying = st.seen && !st.paused;
-      st = { seen: true, paused: p.isPaused, pos: Number(p.position) || 0, dur: Number(p.duration) || prevDur };
-      // Finished: it stopped at (or snapped back from) the very end -> next song.
-      const ended = want && st.paused && wasPlaying && prevDur && prevPos >= prevDur - 2500 && (st.pos === 0 || st.pos >= prevDur - 500);
-      if (ended) {
-        if (idx + 1 < tracks.length) return select(idx + 1, true);
-        want = false;
-      }
-      paint();
-    });
-
-    // Wall-clock listening time per song (doesn't depend on the embed's progress messages).
-    setInterval(() => {
-      if (!root.isConnected || idx < 0 || !want || (st.seen && st.paused)) return;
-      const secs = (heard.get(idx) || 0) + 1000;
-      heard.set(idx, secs);
-      if (!fired && opts.onListened && [...heard.values()].filter((ms) => ms >= 20000).length >= Math.min(4, tracks.length)) {
-        fired = true;
-        opts.onListened();
-      }
-    }, 1000);
+    // Already playing this release (the panel was closed and reopened): pick up where it is.
+    const cur = await driver.cmd({ cmd: "get" });
+    if (cur && cur.key === info.key && cur.idx >= 0) {
+      S = cur;
+      started = true;
+    } else {
+      S = (await driver.cmd({ cmd: "load", key: info.key, rymId: payload.id || "", tracks: tracks.map((t) => ({ id: t.id, ms: t.ms })) })) || S;
+      if (opts.autoplay !== false) setTimeout(() => S.idx < 0 && select(0, true), 0);
+    }
 
     paint();
     // Spotify's own cover (always loads, and its image host allows reading the colours); RYM's art as a fallback.
@@ -339,8 +276,36 @@
         tint(root, payload.artUrl);
       }
     });
-    if (opts.autoplay !== false) setTimeout(() => idx < 0 && select(0, true), 0);
     return root;
+  }
+
+  // Where the engine runs: the offscreen document if the browser has one (asked via the background), else here.
+  async function makeDriver(host) {
+    const r = await send({ type: "eng-ensure" });
+    const subs = new Set();
+    if (r && r.ok) {
+      let alive = false;
+      const onMsg = (m) => {
+        if (!m || m.type !== "eng-state") return;
+        if (!host.isConnected) {
+          if (alive) api.runtime.onMessage.removeListener(onMsg); // our card was replaced
+          return;
+        }
+        alive = true;
+        subs.forEach((f) => f(m.state, m.event));
+      };
+      api.runtime.onMessage.addListener(onMsg);
+      return {
+        remote: true,
+        onState: (f) => subs.add(f),
+        cmd: async (c) => {
+          const res = await send({ type: "eng-cmd", ...c });
+          return res && res.state;
+        },
+      };
+    }
+    const engine = globalThis.__eymSpEngine.create(host, (s, e) => subs.forEach((f) => f(s, e)));
+    return { remote: false, frame: engine.frame, onState: (f) => subs.add(f), cmd: async (c) => engine.handle(c) };
   }
 
   globalThis.__eymSpPlayer = { build };

@@ -116,3 +116,5 @@ The panel also has lists to play from: **Similar** (the suggestions on the curre
 
 ### Spotify player in the panel
 With Spotify connected, the panel hides Spotify's embed and shows its own player: art-tinted card, play/pause, a track list you pick from (♥ per song), your rating under the art, and a save-album button. Spotify's embed still plays the audio, driven by postMessage; the "Spotify player" button shows it if something doesn't respond. Without Spotify connected, the normal embed is used.
+
+Playback keeps going with the panel closed on Chromium browsers: the Spotify embed runs in an offscreen document (needs the `offscreen` permission). Firefox runs it in the panel, so it stops when the panel closes. Reopening the panel on the same release picks up the running playback.

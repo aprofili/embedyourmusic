@@ -477,6 +477,32 @@ async function relay(tabId, urlPart, message) {
   }
 }
 
+// Chromium: Spotify plays from an offscreen document so it keeps going when the side panel is closed.
+let offscreenJob = null;
+function ensureOffscreen() {
+  if (!api.offscreen || !api.offscreen.createDocument) return Promise.resolve(false);
+  if (!offscreenJob) {
+    offscreenJob = (async () => {
+      try {
+        const have = api.runtime.getContexts ? await api.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] }) : [];
+        if (!have.length) {
+          await api.offscreen.createDocument({
+            url: "offscreen.html",
+            reasons: ["AUDIO_PLAYBACK"],
+            justification: "Keep the Spotify player going while the side panel is closed",
+          });
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    })().finally(() => {
+      offscreenJob = null;
+    });
+  }
+  return offscreenJob;
+}
+
 // Fallback when RYM refuses a background fetch (bot check): load the release page the way you would,
 // in a background tab. Its content script records the page into the shared cache, then the tab closes.
 const scratch = new Map(); // tabId -> resolve
@@ -505,6 +531,15 @@ function openRelease(href) {
       })
       .catch(() => finish(false));
   });
+}
+
+async function markListeningBg(id) {
+  const o = await api.storage.local.get("sidebar:listened");
+  const seen = o["sidebar:listened"] || {};
+  if (seen[id] && Date.now() - seen[id] < 24 * 3600e3) return;
+  seen[id] = Date.now();
+  await api.storage.local.set({ "sidebar:listened": seen });
+  relay(null, null, { type: "set-listening", id }).catch(() => {});
 }
 
 function handleSidebar(msg, sender, sendResponse) {
@@ -547,6 +582,15 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && typeof msg.type === "string" && msg.type.startsWith("spotify-")) {
     handleSpotify(msg).then(sendResponse);
     return true;
+  }
+  if (msg && msg.type === "eng-ensure") {
+    ensureOffscreen().then((ok) => sendResponse({ ok }));
+    return true;
+  }
+  if (msg && msg.type === "eng-state" && msg.event === "listened" && !sidePorts.size && msg.state && msg.state.rymId) {
+    // Panel closed: set "listening" from here (the panel does it itself when open).
+    markListeningBg(msg.state.rymId);
+    return false;
   }
   if (msg && msg.type === "open-release") {
     openRelease(msg.href).then((ok) => sendResponse({ ok }));

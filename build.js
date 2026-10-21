@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 const root = __dirname;
-const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "main-bridge.js", "release-data.js", "sidepanel.html", "spplayer.js", "sidepanel.js", "sidepanel.css", "rules.json"];
+const FILES = ["background.js", "content.js", "content.css", "artist-ratings.js", "recommendations.js", "reco-ratings.js", "main-bridge.js", "release-data.js", "sidepanel.html", "spengine.js", "offscreen.html", "offscreen.js", "spplayer.js", "sidepanel.js", "sidepanel.css", "rules.json"];
 const base = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 // Releases set EYM_VERSION from the git tag.
 if (process.env.EYM_VERSION) base.version = process.env.EYM_VERSION;
@@ -15,7 +15,7 @@ const { key: _key, ...baseNoKey } = base; // `key` pins the Chromium extension i
 const { side_panel: _sp, ...baseNoPanel } = baseNoKey;
 const firefox = {
   ...baseNoPanel,
-  permissions: base.permissions.filter((p) => p !== "sidePanel"),
+  permissions: base.permissions.filter((p) => p !== "sidePanel" && p !== "offscreen"),
   sidebar_action: {
     default_panel: "sidepanel.html",
     default_title: "EmbedYourMusic player",
