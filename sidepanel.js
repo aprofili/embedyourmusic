@@ -723,7 +723,7 @@
     $("body").textContent = "Picking something…";
     const skipRated = kind !== "history" && kind !== "favorites";
     let tries = 0;
-    for (const item of shuffle(result.items)) {
+    for (const item of shuffle(kind === "history" ? result.items : result.items.filter((i) => !isVideo(i))).filter(goodTitle)) {
       if (skipRated && isRated(item)) continue;
       if (tries++ >= 8) {
         $("body").textContent = "Tried 8 albums and they were all rated. Try again.";
