@@ -557,6 +557,7 @@ async function relay(tabId, urlPart, message) {
     "load-release": "https://rateyourmusic.com/",
     "check-rating": "https://rateyourmusic.com/",
     "set-listening": "https://rateyourmusic.com/",
+    "load-similar": (message && message.href) || "https://rateyourmusic.com/",
     rate: "https://rateyourmusic.com/",
   }[message && message.type];
   if (!url) return first;
@@ -578,6 +579,43 @@ async function relayToTab(tabId, urlPart, message) {
   } catch {
     return { error: "no response (reload the RYM tab)" };
   }
+}
+
+// Open a RYM page in a background tab just long enough for its content script to save `key`, then close it.
+const pageJobs = new Map();
+function pageToStorage(url, key, ms = 30000) {
+  if (!/^https:\/\/([\w-]+\.)?rateyourmusic\.com\//.test(url)) return Promise.resolve(false);
+  if (pageJobs.has(url)) return pageJobs.get(url);
+  const job = new Promise((resolve) => {
+    let tabId = null;
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      api.storage.onChanged.removeListener(onChange);
+      if (tabId != null) {
+        scratch.delete(tabId);
+        api.tabs.remove(tabId).catch(() => {});
+      }
+      resolve(ok);
+    };
+    const onChange = (changes, area) => {
+      if (area === "local" && changes[key]) setTimeout(() => finish(true), 300);
+    };
+    api.storage.onChanged.addListener(onChange);
+    const timer = setTimeout(() => finish(false), ms);
+    api.tabs
+      .create({ url, active: false })
+      .then((tab) => {
+        tabId = tab.id;
+        scratch.set(tabId, () => {});
+        if (done) finish(false);
+      })
+      .catch(() => finish(false));
+  }).finally(() => pageJobs.delete(url));
+  pageJobs.set(url, job);
+  return job;
 }
 
 // One inactive RYM tab at a time per URL: wait for its content script, hand it the message, close it.
@@ -735,6 +773,10 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && typeof msg.type === "string" && msg.type.startsWith("spotify-")) {
     handleSpotify(msg).then(sendResponse);
+    return true;
+  }
+  if (msg && msg.type === "page-to-storage") {
+    pageToStorage(msg.url, msg.key).then((ok) => sendResponse({ ok }));
     return true;
   }
   if (msg && msg.type === "cover-art") {

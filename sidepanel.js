@@ -424,6 +424,25 @@
     }
   };
 
+  // Recommended / Challenge come from your recommendations page. Missing: open it in a background tab (closed again
+  // once it has saved the lists). Older than 12 h: show what we have and refresh the same way behind the scenes.
+  async function recoList(kind) {
+    const read = async () => {
+      const all = await store.get("sidebar:lists");
+      return { all, rec: all && all[kind] };
+    };
+    let { all, rec } = await read();
+    const fetchPage = () => api.runtime.sendMessage({ type: "page-to-storage", url: "https://rateyourmusic.com/recommendations/", key: "sidebar:lists" }).catch(() => null);
+    if (rec && rec.items.length) {
+      if (Date.now() - (rec.t || 0) > 12 * 3600e3) fetchPage();
+      return { items: rec.items };
+    }
+    await fetchPage();
+    ({ all, rec } = await read());
+    if (rec && rec.items.length) return { items: rec.items };
+    return { message: "Couldn't read your recommendations page.", retry: true, page: "https://rateyourmusic.com/recommendations/" };
+  }
+
   // -> { items } or { message }
   const SOURCES = {
     async similar() {
@@ -448,7 +467,7 @@
       // Not saved yet: ask the album's RYM tab to load and read its Suggestions.
       let res;
       try {
-        res = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, msg: { type: "load-similar", id: current.payload.id } });
+        res = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, msg: { type: "load-similar", id: current.payload.id, href: current.payload.href } });
       } catch {
         res = null;
       }
@@ -456,14 +475,10 @@
       return { message: `Couldn't load suggestions (${(res && res.error) || "no response"}).` };
     },
     async recommended() {
-      const all = await store.get("sidebar:lists");
-      const rec = all && all.recommended;
-      return rec && rec.items.length ? { items: rec.items } : { message: "Open your recommendations page once to fill this list." };
+      return recoList("recommended");
     },
     async challenge() {
-      const all = await store.get("sidebar:lists");
-      const rec = all && all.challenge;
-      return rec && rec.items.length ? { items: rec.items } : { message: "Open your recommendations page once to fill this list." };
+      return recoList("challenge");
     },
     // /new-music/ (saved when you visit it, else fetched through a RYM tab), minus videos, minus anything Spotify
     // doesn't have (checked fuzzily by the background; answers are cached for a week). Re-checked every 6 hours.
