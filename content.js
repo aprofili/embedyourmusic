@@ -257,7 +257,7 @@
         if (w.onListened && !w.fired && typeof p.position === "number" && !p.isPaused) {
           w.heard.set(i, Math.max(w.heard.get(i) || 0, p.position));
           const done = [...w.heard.values()].filter((ms) => ms >= 20000).length;
-          if (done >= Math.min(4, w.rows.length)) {
+          if (done >= Math.min(3, w.rows.length)) {
             w.fired = true;
             w.onListened();
           }

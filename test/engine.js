@@ -53,6 +53,31 @@ const tick = (ms) => new Promise((r) => setTimeout(r, ms));
   sent.length = 0;
   say({ isPaused: true, position: 4200, duration: 180000 });
   assert.strictEqual(sent.length, 0, "settled: nothing more is sent");
+  // listening thresholds: History after 10 s, RYM "listening" after 3 songs x 20 s (here: 2-song release -> 2)
+  {
+    const ev = [];
+    const e2 = w.__eymSpEngine.create(w.document.body, (st, e) => e && ev.push(e));
+    const f2 = { postMessage() {} };
+    Object.defineProperty(e2.frame, "contentWindow", { get: () => f2 });
+    const say2 = (payload) => {
+      const m = new w.Event("message");
+      Object.assign(m, { data: { type: "playback_update", payload }, origin: "https://open.spotify.com", source: f2 });
+      w.dispatchEvent(m);
+    };
+    e2.handle({ cmd: "load", key: "k2", tracks: [{ id: "a" }, { id: "b" }] });
+    e2.handle({ cmd: "select", i: 0, autoplay: true });
+    await tick(1000);
+    say2({ isPaused: false, position: 1000, duration: 180000 });
+    await tick(10500);
+    assert.ok(ev.includes("played"), "History after 10 s");
+    assert.ok(!ev.includes("listened"));
+    await tick(10000);
+    e2.handle({ cmd: "select", i: 1, autoplay: true });
+    await tick(1000);
+    say2({ isPaused: false, position: 1000, duration: 180000 });
+    await tick(20500);
+    assert.ok(ev.includes("listened"), "listening after 2 songs x 20 s on a 2-song release");
+  }
   // seek: fraction of the song -> seconds
   eng.handle({ cmd: "seek", frac: 0.5 });
   const sk = full.filter((m) => m.command === "seek").pop();

@@ -62,12 +62,8 @@
       st = { seen: false, paused: true, pos: 0, dur: 0 };
       readyOnce = false;
       frame.src = `https://open.spotify.com/embed/track/${tracks[i].id}?utm_source=embedyourmusic`;
-      let event = null;
+      const event = null;
       if (autoplay) {
-        if (!started) {
-          started = true;
-          event = "played";
-        }
         // Press play once the embed is up: on its "ready" message, and again a few times in case that is
         // missed (toggle is the command Spotify documents). Stops once it plays.
         for (const ms of [1500, 4000, 6500]) timers.push(setTimeout(kick, ms));
@@ -177,11 +173,18 @@
       out();
     });
 
-    // Wall-clock listening time per song (doesn't depend on the embed's progress messages).
+    // Wall-clock listening time per song, counted only while the embed says it is playing.
+    //  "played"   after 10 s in total: the album goes into the panel's History.
+    //  "listened" once 3 songs (fewer if the release is shorter) got 20 s each: RYM's "Currently listening".
     setInterval(() => {
-      if (idx < 0 || !want || (st.seen && st.paused)) return;
+      if (idx < 0 || !want || !st.seen || st.paused) return;
       heard.set(idx, (heard.get(idx) || 0) + 1000);
-      if (!fired && [...heard.values()].reduce((a, b) => a + b, 0) >= 30000) {
+      const vals = [...heard.values()];
+      if (!started && vals.reduce((a, b) => a + b, 0) >= 10000) {
+        started = true;
+        out("played", true);
+      }
+      if (!fired && vals.filter((ms) => ms >= 20000).length >= Math.min(3, tracks.length)) {
         fired = true;
         out("listened", true);
       }

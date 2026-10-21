@@ -114,12 +114,12 @@ const header = '<a class="header_profile_main" href="/~jkprilfools"></a>';
       const ev = new w.MessageEvent("message", { data: { type: "playback_update", payload: { playingURI: `spotify:track:${uri}`, position, isPaused } }, origin: "https://open.spotify.com", source: frame.contentWindow });
       w.dispatchEvent(ev);
     };
-    for (let n = 1; n <= 3; n++) post(`T${n}xxxxxxxxxxxxxxxxxxx`, 25000);
+    for (let n = 1; n <= 2; n++) post(`T${n}xxxxxxxxxxxxxxxxxxx`, 25000);
     post("T4xxxxxxxxxxxxxxxxxxx", 10000);
     post("T5xxxxxxxxxxxxxxxxxxx", 25000, true); // paused doesn't count
-    assert.strictEqual(fired, 0, "3 tracks heard, one short, one paused");
+    assert.strictEqual(fired, 0, "2 tracks heard, one short, one paused");
     post("T4xxxxxxxxxxxxxxxxxxx", 21000);
-    assert.strictEqual(fired, 1, "fires at 4 tracks");
+    assert.strictEqual(fired, 1, "fires at 3 tracks");
     post("T5xxxxxxxxxxxxxxxxxxx", 30000);
     assert.strictEqual(fired, 1, "only once");
   }
