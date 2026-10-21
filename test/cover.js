@@ -24,14 +24,12 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     return ev;
   };
 
-  // panel closed: normal navigation
+  // The extension always plays in its panel: the click opens it (synchronously, while the click's gesture lasts)
+  // and the album follows.
+  assert.ok(w.document.documentElement.classList.contains("eym-sidebar"), "panel mode on");
   let ev = click(w.document.getElementById("cover"));
-  assert.ok(!ev.defaultPrevented, "closed: link works normally");
-
-  // panel open
-  w.document.documentElement.classList.add("eym-sidebar");
-  ev = click(w.document.getElementById("cover"));
-  assert.ok(ev.defaultPrevented, "open: cover click is taken over");
+  assert.ok(ev.defaultPrevented, "cover click is taken over");
+  assert.strictEqual(sent[sent.length - 1].type, "open-panel", "panel opened right in the click");
   await tick(20);
   const play = sent.find((m) => m.type === "sidebar-play");
   assert.ok(play, "sent to the panel");

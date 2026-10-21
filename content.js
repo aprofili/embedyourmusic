@@ -795,6 +795,8 @@
 
 
   // ---- Any album cover, anywhere on the site, opens in the side panel while it is open ----
+  // The extension (side panel); the iOS userscript has none. (__eymNoPanel: tests of the in-page players.)
+  const PANEL = !globalThis.__eymBridge && !globalThis.__eymNoPanel;
   const sidebarIsOpen = () => !!(document.documentElement.classList && document.documentElement.classList.contains("eym-sidebar"));
   const pathOf = (a) => {
     try {
@@ -908,6 +910,7 @@
       e.preventDefault();
       e.stopPropagation();
       hideFloater();
+      openPanel();
       playCover(a);
     },
     true
@@ -915,22 +918,45 @@
   }
 
   // ---- Sidebar player (side panel) ----
-  // When the extension's side panel is open, "play" actions go there instead of embedding in the page.
+  // The extension plays everything in its side panel; pages carry no players of their own. (The iOS userscript has
+  // no panel, so there the in-page players below are the player.)
   async function sidebarOpen() {
-    const r = await send({ type: "sidebar-state" });
-    return !!(r && r.open);
+    return PANEL;
   }
 
-  // html.eym-sidebar lets the CSS simplify pages while the panel is open.
+  // html.eym-sidebar lets the CSS drop the in-page players and simplify pages.
   function setSidebarClass(open) {
     const cl = document.documentElement && document.documentElement.classList;
     if (cl && cl.toggle) cl.toggle("eym-sidebar", !!open);
   }
-  sidebarOpen().then(setSidebarClass);
-  if (api.runtime.onMessage) {
-    api.runtime.onMessage.addListener((msg) => {
-      if (msg && msg.type === "sidebar-changed") setSidebarClass(msg.open);
-    });
+  setSidebarClass(PANEL);
+
+  // Call synchronously inside a click handler: opening the panel needs the click's user gesture, which an
+  // await would lose. Whatever is sent to play next is held until the panel is there.
+  function openPanel() {
+    if (!PANEL) return;
+    try {
+      api.runtime
+        .sendMessage({ type: "open-panel" })
+        .then((r) => {
+          if (r && !r.open) pageNote("Open the EmbedYourMusic sidebar (toolbar button) to play this.");
+        })
+        .catch(() => pageNote("Reload this page: the extension was updated."));
+    } catch {}
+  }
+
+  // A short note at the bottom of the page.
+  function pageNote(text) {
+    let n = document.getElementById("eym-page-note");
+    if (!n) {
+      n = document.createElement("div");
+      n.id = "eym-page-note";
+      document.body.append(n);
+    }
+    n.textContent = text;
+    n.classList.add("show");
+    clearTimeout(n.__t);
+    n.__t = setTimeout(() => n.classList.remove("show"), 5000);
   }
 
   async function sidebarPlay(payload) {
@@ -1217,7 +1243,8 @@
         // Let modified clicks (new tab, etc.) behave like normal links.
         if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
         e.preventDefault();
-        // Sidebar open: play there and keep the page free of embeds. Otherwise embed in the page.
+        openPanel();
+        // Extension: play in the side panel. Userscript: embed in the page.
         sidebarPlay(releasePayload(entries, entry.info.service)).then((handled) => {
           if (!handled) select(entry);
           else
@@ -1583,7 +1610,7 @@
     trimHome();
     addCollapseToggles(document);
     for (const c of document.querySelectorAll(".media_link_container")) buildTabs(c);
-    scan(document);
+    if (!PANEL) scan(document);
     addArtPlay();
   }
 
@@ -1603,5 +1630,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, openPanel, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
 })();

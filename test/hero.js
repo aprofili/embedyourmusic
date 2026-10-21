@@ -6,7 +6,8 @@ const { JSDOM } = require("jsdom");
 
 const root = path.join(__dirname, "..");
 const css = fs.readFileSync(path.join(root, "content.css"), "utf8");
-const js = fs.readFileSync(path.join(root, "content.js"), "utf8");
+// In-page players (the iOS userscript's behaviour; the extension plays in its side panel).
+const js = "globalThis.__eymNoPanel = true;\n" + fs.readFileSync(path.join(root, "content.js"), "utf8");
 
 const html = `<!doctype html><html><head><style>.media_link_container{min-height:2.9em;margin:.5em 0;display:flex;justify-content:center}.ui_media_links{display:flex;max-width:31rem}${css}</style></head><body>
 <div class="release_page">

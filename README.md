@@ -110,7 +110,7 @@ Reading ratings and streaming links needs a release-page request per album, so `
 
 ## Side panel player
 
-Click the toolbar button to open the side panel (Firefox: View → Sidebars, or the toolbar button). While it is open, clicking a streaming tab on a release page, or an album cover on the recommendations page, plays in the panel instead of the page: art, service tabs, player, your star rating, and Spotify's ♥ track list. With the panel closed, players embed in the page as before. Ratings made in the panel use RYM's own rating request (through any RYM tab, or a helper tab).
+Everything plays in the side panel (the toolbar button opens it; Firefox: the sidebar). Clicking a streaming icon on a release page, the big ▶ on its cover, or any album cover on the site opens the panel if needed and plays there: art, service tabs, player, your star rating, and Spotify's ♥ track list. Pages carry no players of their own (the iOS userscript, which has no panel, keeps the in-page players). If the browser won't let the click open the panel (Firefox may not), a note asks you to open it, and the album you clicked plays as soon as you do (within 2 minutes). Ratings made in the panel use RYM's own rating request (through any RYM tab, or a helper tab).
 
 The panel also has lists to play from: **Similar** (RYM's suggestions for the current album), **Recommended** and **Challenge** (your recommendations page), **New music** (RYM's new-music page, only what Spotify has), **Favorites** (a random pick of your 3.5+ star albums, widened by one page a day) and **History** (your RYM play history, after anything played here that isn't in it yet). Opening one closes the others; each opens to the window height with a Show more button.
 

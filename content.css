@@ -804,9 +804,6 @@ a.rym-cover-loading {
   cursor: progress;
 }
 
-html.eym-sidebar .ui_media_links,
-html.eym-sidebar .ui_media_links_container,
-html.eym-sidebar .media_link_container,
 html.eym-sidebar .rym-embed,
 html.eym-sidebar .rym-embed-panel {
   display: none !important;
@@ -838,4 +835,32 @@ html.eym-sidebar .rym-embed-panel {
   opacity: 0.85;
   vertical-align: middle;
   white-space: nowrap;
+}
+
+/* ---- Extension: everything plays in the side panel (the iOS userscript keeps the in-page players) ---- */
+html.eym-sidebar #rym-reco-player {
+  display: none !important;
+}
+
+#eym-page-note {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 100000;
+  max-width: 90vw;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: #1d1f27;
+  color: #eee;
+  font-size: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translate(-50%, 10px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+
+#eym-page-note.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }

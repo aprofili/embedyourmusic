@@ -6,7 +6,7 @@
   const container = document.getElementById("page_sections_recommendations");
   if (!eym || !container) return;
 
-  const { classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, parseLinks, scrapeReleases, saveSidebarData, rememberId, LABELS } = eym;
+  const { classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, openPanel, parseLinks, scrapeReleases, saveSidebarData, rememberId, LABELS } = eym;
   // Phone layout: no sticky side panel; the player opens inline under the tapped row.
   const mobile = matchMedia("(max-width: 59.99em)").matches;
   // The iOS userscript has no page-world script, so it reads ratings itself (see ratedScan).
@@ -284,6 +284,7 @@
         art.addEventListener("click", (e) => {
           if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
           e.preventDefault();
+          if (openPanel) openPanel();
           if (mobile && li === currentLi && !host.hidden) {
             // Tapping the playing cover again closes the player.
             host.hidden = true;

@@ -501,9 +501,15 @@ async function handleSpotify(msg) {
 // ---- Side panel player ----
 // The panel connects a port while it is open, which is how pages learn whether to play there.
 const sidePorts = new Set();
+let pendingPlay = null; // an album clicked on a page while the panel was closed; played when it opens (2 min)
 api.runtime.onConnect.addListener((port) => {
   if (port.name !== "sidepanel") return;
   sidePorts.add(port);
+  if (pendingPlay && Date.now() - pendingPlay.t < 120e3) {
+    const p = pendingPlay;
+    setTimeout(() => port.postMessage({ type: "play", payload: p.payload, tabId: p.tabId }), 50);
+  }
+  pendingPlay = null;
   announceSidebar();
   port.onDisconnect.addListener(() => {
     sidePorts.delete(port);
@@ -731,7 +737,9 @@ function handleSidebar(msg, sender, sendResponse) {
       return false;
     case "sidebar-play":
       if (!sidePorts.size) {
-        sendResponse({ handled: false });
+        // The panel is on its way (opened by the click) or will be opened by hand: hold the album for it.
+        pendingPlay = { payload: msg.payload, tabId: sender.tab && sender.tab.id, t: Date.now() };
+        sendResponse({ handled: true, pending: true });
         return false;
       }
       for (const port of sidePorts) {
@@ -739,6 +747,28 @@ function handleSidebar(msg, sender, sendResponse) {
       }
       sendResponse({ handled: true });
       return false;
+    case "open-panel": {
+      // Must run synchronously in this handler: the page's click is the user gesture that allows opening.
+      if (sidePorts.size) {
+        sendResponse({ open: true });
+        return false;
+      }
+      let p = null;
+      try {
+        if (api.sidePanel && api.sidePanel.open && sender.tab) p = api.sidePanel.open({ tabId: sender.tab.id });
+        else if (api.sidebarAction && api.sidebarAction.open) p = api.sidebarAction.open();
+      } catch {
+        p = null;
+      }
+      if (!p) {
+        sendResponse({ open: false });
+        return false;
+      }
+      Promise.resolve(p)
+        .then(() => sendResponse({ open: true }))
+        .catch(() => sendResponse({ open: false }));
+      return true;
+    }
     case "rating-changed":
       for (const port of sidePorts) port.postMessage({ type: "rating", id: msg.id, rating: msg.rating });
       sendResponse({});
@@ -754,7 +784,7 @@ function handleSidebar(msg, sender, sendResponse) {
 }
 
 api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg && ["sidebar-state", "sidebar-play", "rating-changed", "rate", "to-rym"].includes(msg.type)) {
+  if (msg && ["sidebar-state", "sidebar-play", "open-panel", "rating-changed", "rate", "to-rym"].includes(msg.type)) {
     return handleSidebar(msg, sender, sendResponse);
   }
   return false;

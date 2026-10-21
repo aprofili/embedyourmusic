@@ -30,6 +30,7 @@ const releasePage = `<div data-links='${JSON.stringify(links)}'></div>`;
   w.fetch = async (u) => { fetched.push(u); return { ok: true, text: async () => releasePage }; };
   w.chrome = { runtime: { sendMessage: async () => ({ embed: { src: "https://bandcamp.com/EmbeddedPlayer/album=9/", height: 120 } }) } };
   w.__eymGapMs = 0;
+  w.__eymNoPanel = true; // in-page player (iOS userscript behaviour)
   w.eval(read("content.js"));
   w.eval(read("release-data.js"));
   w.eval(read("recommendations.js"));
