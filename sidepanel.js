@@ -644,7 +644,14 @@
         const img = document.createElement("img");
         img.referrerPolicy = "no-referrer";
         img.loading = "lazy";
-        img.src = item.artUrl || "";
+        const cands = [item.artUrl, ...(item.artAlts || [])].filter((u, k, a) => u && a.indexOf(u) === k);
+        let tried = 0;
+        img.addEventListener("error", () => {
+          if (++tried < cands.length) img.src = cands[tried];
+          else img.classList.add("noart");
+        });
+        if (cands.length) img.src = cands[0];
+        else img.classList.add("noart");
         const label = document.createElement("span");
         label.className = "lbl";
         const t = document.createElement("span");

@@ -944,3 +944,7 @@ body.ready {
 .sp-bar.sp-scrub .sp-bar-fill::after {
   transform: scale(1);
 }
+
+.item img.noart {
+  visibility: hidden;
+}

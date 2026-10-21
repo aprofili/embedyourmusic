@@ -489,6 +489,25 @@
     }
     return "";
   };
+  // Every candidate cover URL of a <picture> (jpeg first), for the panel to fall back on if one fails.
+  const altUrls = (img) => {
+    const pic = img && img.closest && img.closest("picture");
+    if (!pic) return [];
+    const out = [];
+    for (const type of ["image/jpeg", "image/webp"]) {
+      for (const src of pic.querySelectorAll("source")) {
+        if (src.getAttribute("type") !== type) continue;
+        const set = src.getAttribute("srcset") || src.getAttribute("data-srcset") || "";
+        for (const part of set.split(",")) {
+          let u = part.trim().split(/\s+/)[0];
+          if (!u) continue;
+          if (u.startsWith("//")) u = "https:" + u;
+          if (!out.includes(u)) out.push(u);
+        }
+      }
+    }
+    return out.slice(0, 4);
+  };
   const imgUrl = (img) => {
     let s = img && (img.currentSrc || img.getAttribute("src") || "");
     if (!s || s.startsWith("data:")) s = (img && img.getAttribute("data-src")) || fromPicture(img);
@@ -535,6 +554,7 @@
         artist: artist ? artist.textContent.replace(/\s+/g, " ").trim() : "",
         href: `https://rateyourmusic.com${path}`,
         artUrl: imgUrl(row && row.querySelector("img")),
+        artAlts: altUrls(row && row.querySelector("img")),
       });
       if (out.length >= limit) break;
     }
