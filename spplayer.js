@@ -351,6 +351,7 @@
   async function makeDriver(host) {
     const r = await send({ type: "eng-ensure" });
     const subs = new Set();
+    let lastLoad = null;
     if (r && r.ok) {
       let alive = false;
       const onMsg = (m) => {
@@ -367,7 +368,17 @@
         remote: true,
         onState: (f) => subs.add(f),
         cmd: async (c) => {
-          const res = await send({ type: "eng-cmd", ...c });
+          if (c.cmd === "load") lastLoad = c;
+          let res = await send({ type: "eng-cmd", ...c });
+          if (!(res && res.state) && c.cmd !== "get") {
+            // The offscreen document was closed by the browser (it does that after a while without audio): bring it
+            // back, hand it the album again, and repeat the command.
+            const r = await send({ type: "eng-ensure" });
+            if (r && r.ok) {
+              if (lastLoad && c.cmd !== "load") await send({ type: "eng-cmd", ...lastLoad });
+              res = await send({ type: "eng-cmd", ...c });
+            }
+          }
           return res && res.state;
         },
       };
