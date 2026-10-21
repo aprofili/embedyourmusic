@@ -302,7 +302,7 @@
       if (typeof p.isPaused !== "boolean") return;
       // A message from the previous song's page still in flight: ignore it.
       const uri = String(p.playingURI || p.uri || "");
-      if (uri && idx >= 0 && !uri.includes(tracks[idx].id)) return;
+      if (/^spotify:track:/.test(uri) && idx >= 0 && !uri.includes(tracks[idx].id)) return;
       const prevPos = st.pos;
       const prevDur = st.dur;
       const wasPlaying = st.seen && !st.paused;
