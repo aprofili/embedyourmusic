@@ -8,6 +8,17 @@ const dom = new JSDOM(fs.readFileSync(f, "utf8"), { runScripts: "outside-only", 
 const w = dom.window;
 w.IntersectionObserver = class { observe() {} unobserve() {} };
 w.chrome = { runtime: { sendMessage: async () => ({}), onMessage: { addListener() {} } } };
+// homepage trimming (synthetic markup: headings found by text)
+{
+  const hd = new JSDOM('<body><div id="top">bar</div><div id="main"><div class="a"><h1>Welcome to <b>RYM</b></h1><p>blurb</p></div><div class="stats">1,965,569 Artists</div><div class="row"><div><h2>Featured reviews</h2></div><div><h2>Features</h2></div></div></div></body>', { runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: new VirtualConsole(), url: "https://rateyourmusic.com/" });
+  const hw = hd.window;
+  hw.IntersectionObserver = class { observe() {} unobserve() {} };
+  hw.chrome = { runtime: { sendMessage: async () => ({}), onMessage: { addListener() {} } } };
+  hw.eval(fs.readFileSync(__dirname + "/../content.js", "utf8"));
+  const gone = [...hw.document.querySelectorAll(".rym-gone")].map((n) => n.className.split(" ")[0]);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(gone)), ["a", "stats"], "homepage trimmed");
+  assert.ok(!hw.document.querySelector(".row").classList.contains("rym-gone") && !hw.document.getElementById("top").classList.contains("rym-gone"));
+}
 (async () => {
 w.eval(fs.readFileSync(__dirname + "/../content.js", "utf8"));
 const d = w.document;

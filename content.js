@@ -1292,6 +1292,23 @@
     for (const tr of [artistRow, releasedRow, ratingRow]) if (tr) tr.classList.add("rym-gone");
   }
 
+  // Homepage: drop the welcome blurb and the site-wide counts, so the page starts at the two Featured sections.
+  // (Found by their headings, not RYM's class names: everything before the "Featured reviews" block goes.)
+  function trimHome() {
+    if (typeof location === "undefined" || location.pathname !== "/" || document.documentElement.dataset.eymHome) return;
+    const heads = [...document.querySelectorAll("h1, h2, h3, div, span, a")].filter((n) => !n.children.length && /^featured reviews\b/i.test(n.textContent.trim()));
+    const own = (n) => [...n.childNodes].filter((x) => x.nodeType === 3).map((x) => x.textContent).join("").trim();
+    const welcome = [...document.querySelectorAll("h1, h2, h3, div, span")].find((n) => /^welcome to\b/i.test(own(n)));
+    if (!heads.length || !welcome) return;
+    // Climb from the Featured heading to the level where the welcome blurb is an earlier relative.
+    let block = heads[0];
+    while (block.parentElement && !block.parentElement.contains(welcome)) block = block.parentElement;
+    const parent = block.parentElement;
+    if (!parent || parent === document.body) return;
+    document.documentElement.dataset.eymHome = "1";
+    for (let n = parent.firstElementChild; n && n !== block; n = n.nextElementSibling) n.classList.add("rym-gone");
+  }
+
   // "recommended" next to new music / genres / charts / lists in the top bar.
   function addNavLink() {
     if (document.querySelector(".eym-nav-reco")) return;
@@ -1353,6 +1370,7 @@
     addNavLink();
     buildHero();
     tidyHeader();
+    trimHome();
     addCollapseToggles(document);
     for (const c of document.querySelectorAll(".media_link_container")) buildTabs(c);
     scan(document);
