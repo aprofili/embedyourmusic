@@ -610,7 +610,7 @@
         .filter((l) => l.info && l.info.service === l.service);
     }
     return {
-      id: rec ? rec.id : "",
+      id: rec ? rec.id : item.id || "",
       title: item.title || (rec && rec.title) || "",
       artist: item.artist || (rec && rec.artist) || "",
       artUrl: item.artUrl || (rec && rec.art) || "",

@@ -114,31 +114,30 @@
     meta.append(now);
     head.append(meta);
 
-    const controls = el("div", "sp-controls");
     const play = el("button", "sp-play", "▶");
     play.type = "button";
     play.title = "Play / pause";
     const count = el("span", "sp-count");
+    const listHead = el("div", "sp-listhead");
+    listHead.append(count);
     // Spotify's logo (top right of the card) shows / hides Spotify's own player, for when ours doesn't respond.
     const embedBtn = el("button", "sp-embed-toggle");
     embedBtn.type = "button";
     embedBtn.title = "Show Spotify's own player";
     embedBtn.innerHTML =
       '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="currentColor"/><g fill="none" stroke="#000" stroke-linecap="round" stroke-opacity=".85"><path d="M5.6 9.2c4.2-1.2 8.7-.8 12.6 1.4" stroke-width="2"/><path d="M6.4 12.5c3.5-1 7.2-.6 10.4 1.2" stroke-width="1.7"/><path d="M7.2 15.5c2.8-.8 5.7-.5 8.2.9" stroke-width="1.4"/></g></svg>';
-    controls.append(play, count);
-
     const barRow = el("div", "sp-barrow");
     const bar = el("div", "sp-bar");
     const fill = el("div", "sp-bar-fill");
     bar.append(fill);
     const clock = el("span", "sp-clock", "");
-    barRow.append(bar, clock);
+    barRow.append(play, bar, clock);
     const msg = el("div", "sp-msg");
     msg.hidden = true;
     const list = el("div", "sp-list");
     const rateSlot = el("div", "sp-rate");
     root.rateSlot = rateSlot;
-    root.append(head, controls, barRow, msg, rateSlot, list, embedBtn);
+    root.append(head, barRow, msg, rateSlot, listHead, list, embedBtn);
 
     // ---- track list ----
     const rows = tracks.map((t, i) => {
@@ -172,7 +171,7 @@
           heart.title = `Failed: ${r.error}`;
         }
       });
-      row.append(heart, num, name, dur);
+      row.append(num, name, dur, heart);
       row.addEventListener("click", () => select(i, true));
       list.append(row);
       return { t, row, n };

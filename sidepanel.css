@@ -778,3 +778,49 @@ body {
 .item .x:hover {
   color: var(--tint-h);
 }
+
+/* ---- Layout round 2 ---- */
+.sp-album {
+  width: 38px;
+  height: 38px;
+  font-size: 22px;
+  line-height: 38px;
+  right: 6px;
+  bottom: 6px;
+}
+
+.sp-play {
+  width: 32px;
+  height: 32px;
+  font-size: 13px;
+  padding: 0;
+}
+
+.sp-barrow {
+  margin-top: 14px;
+}
+
+.sp-listhead {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 8px 0 0;
+  margin-top: 8px;
+}
+
+.sp-list {
+  margin-top: 2px;
+}
+
+.sp-count {
+  font-size: 0.78em;
+  color: var(--tint-h);
+}
+
+body {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+body.ready {
+  opacity: 1;
+}

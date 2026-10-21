@@ -155,6 +155,10 @@
     }
   }
 
+  // Stay blank until the first view is built, then fade in (no flash of the unloaded state).
+  const reveal = () => document.body.classList.add("ready");
+  setTimeout(reveal, 3500); // never stay blank
+
   // The rating box moves into the custom player (under the art); anything that clears the body puts it back first.
   const rateBox = $("rate-box");
   const rateHome = rateBox.parentNode;
@@ -231,6 +235,7 @@
       text.append(t, a, note);
       box.append(text);
       body.append(box);
+      reveal();
     } else {
       const slots = new Map();
       const buttons = new Map();
@@ -275,16 +280,19 @@
                 slot.append(node);
                 node.rateSlot.append(rateBox);
               } else plain();
+              reveal();
             })
             .catch(() => {
               if (my !== token) return;
               slot.textContent = "";
               plain();
+              reveal();
             });
           return;
         }
         if (info.kind !== "bandcamp") {
           plain();
+          reveal();
           return;
         }
         slot.textContent = "Loading…";
@@ -293,6 +301,7 @@
           slot.textContent = "";
           if (res) slot.append(makeFrame(res.src, res.height, "Bandcamp player"));
           else slot.append("Couldn't load the Bandcamp player.");
+          reveal();
         });
       };
 
@@ -380,7 +389,15 @@
   // -> { items } or { message }
   const SOURCES = {
     async similar() {
-      if (!current || !current.payload.id) return { message: "Play an album from its RYM page to see similar albums." };
+      if (!current) return { message: "Play an album to see similar albums." };
+      if (!current.payload.id && current.payload.href) {
+        // Id unknown (the album came from a list): ask a RYM tab to read it from the release page.
+        try {
+          const r = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, msg: { type: "load-release", item: { href: current.payload.href, title: current.payload.title, artist: current.payload.artist } } });
+          if (r && r.payload && r.payload.id) current.payload.id = r.payload.id;
+        } catch {}
+      }
+      if (!current.payload.id) return { message: "Couldn't find this album's RYM id, so no similar albums yet." };
       const all = await store.get("sidebar:similar");
       const rec = all && all[current.payload.id];
       if (rec && rec.items.length) return { items: rec.items };
@@ -699,5 +716,6 @@
     }
     if (!done) store.set("sidebar:migrated", true);
     if (!current && last) render(last);
+    else if (!current) reveal();
   });
 })();
