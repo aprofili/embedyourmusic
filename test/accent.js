@@ -30,4 +30,14 @@ assert.ok(near(a[0], 30), `vivid orange isn't treated as skin (got ${a[0]})`);
 // greyscale image -> no hue, but a value
 a = pickAccent(img([[100, 0, 0, 0.5]]));
 assert.ok(a && a[1] === 0);
+// list scraping never takes our own "▶" (inside a cover link whose image isn't loaded) as a title
+{
+  const d = new JSDOM(`<ol><li class="component_discography_item"><a class="component_discography_item_image_link" href="/release/album/a/b/"><span class="rym-play">▶</span></a><a class="component_discography_item_link release" href="/release/album/a/b/">Real Title <span class="rym-play">▶</span></a><a class="artist" href="/artist/a">A</a></li></ol>`, { url: "https://rateyourmusic.com/recommendations/", runScripts: "outside-only", virtualConsole: new VirtualConsole() }).window;
+  d.IntersectionObserver = class { observe() {} unobserve() {} };
+  d.chrome = { runtime: { sendMessage: async () => ({}), onMessage: { addListener() {} } }, storage: { local: { get: async () => ({}), set: async () => {} } } };
+  d.eval(fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8"));
+  const [it] = d.__embedYourMusic.scrapeReleases(d.document, 5);
+  assert.strictEqual(it.title, "Real Title");
+  assert.strictEqual(it.artist, "A");
+}
 console.log("accent tests passed");

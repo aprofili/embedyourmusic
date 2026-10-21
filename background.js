@@ -541,7 +541,7 @@ async function listJob(tabId, message) {
       user = w && w.user;
       if (!user) return { error: "sign in to rateyourmusic.com in this browser first" };
     }
-    path = t === "fetch-history" ? `/play-history/${user}/` : `/collection/${user}/r4.0-5.0${message.page > 1 ? `/${message.page}` : ""}`;
+    path = t === "fetch-history" ? `/play-history/${user}/` : `/collection/${user}/r3.5-5.0${message.page > 1 ? `/${message.page}` : ""}`;
   }
   const open = await relayToTab(tabId, path, message);
   if (!open.error) return open;

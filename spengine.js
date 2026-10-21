@@ -179,7 +179,7 @@
     setInterval(() => {
       if (idx < 0 || !want || (st.seen && st.paused)) return;
       heard.set(idx, (heard.get(idx) || 0) + 1000);
-      if (!fired && [...heard.values()].filter((ms) => ms >= 20000).length >= Math.min(4, tracks.length)) {
+      if (!fired && [...heard.values()].reduce((a, b) => a + b, 0) >= 30000) {
         fired = true;
         out("listened", true);
       }

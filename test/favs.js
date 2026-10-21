@@ -24,7 +24,7 @@ const header = '<a class="header_profile_main" href="/~jkprilfools"></a>';
 (async () => {
   if (!process.env.EYM_NO_REAL && fs.existsSync(real)) {
     const html = fs.readFileSync(real, "utf8");
-    const { ask } = page(`<body>${header}</body>`, { fetch: async (u) => { assert.ok(/^\/collection\/jkprilfools\/r4\.0-5\.0(\/2)?$/.test(u), u); return { ok: true, status: 200, text: async () => html }; } });
+    const { ask } = page(`<body>${header}</body>`, { fetch: async (u) => { assert.ok(/^\/collection\/jkprilfools\/r3\.5-5\.0(\/2)?$/.test(u), u); return { ok: true, status: 200, text: async () => html }; } });
     const r = await ask({ type: "fetch-favorites", page: 1 });
     assert.ok(r.items && r.items.length >= 10, "items " + JSON.stringify(r).slice(0, 200));
     assert.ok(r.pages >= 4, "pages " + r.pages);

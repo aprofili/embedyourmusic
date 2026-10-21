@@ -521,6 +521,18 @@
   function isVideoPath(p) {
     return /^\/release\/(video|musicvideo|music-video|concert|film|dvd)\//.test(p);
   }
+  // A link's text without anything this extension added to it (the ▶ play buttons).
+  function linkText(a) {
+    let t = "";
+    const walk = (n) => {
+      for (const c of n.childNodes) {
+        if (c.nodeType === 3) t += c.textContent;
+        else if (c.nodeType === 1 && !/(^|\s)(rym-|eym-)/.test(c.className || "")) walk(c);
+      }
+    };
+    walk(a);
+    return t.replace(/\s+/g, " ").trim();
+  }
   function scrapeReleases(root, limit = 60, skipPath = "") {
     const out = [];
     const seen = new Set();
@@ -533,9 +545,9 @@
       }
       if (!/^\/release\/[^/]+\/[^/]+\/[^/]+\/?$/.test(path) || seen.has(path) || path === skipPath) continue;
       if (isVideoPath(path)) continue; // live videos and the like: nothing to play in a music player
-      if (a.querySelector("img, picture")) continue; // a cover link, not the title link
-      const title = (a.textContent || "").replace(/\s+/g, " ").trim();
-      if (!title) continue; // image-only link
+      if (a.querySelector("img, picture") || /image_link|cover/.test(a.className || "")) continue; // a cover link, not the title link
+      const title = linkText(a);
+      if (!/[\p{L}\p{N}]/u.test(title)) continue; // image-only link, or only our ▶
       let row = a.closest("li, tr");
       if (!row) {
         // Plain divs: the smallest ancestor that has an artist link and only this release.
@@ -761,19 +773,19 @@
     return { items };
   }
 
-  // One page of your 4+ star albums (your collection filtered to 4.0-5.0; the side panel caches it).
+  // One page of your 3.5+ star albums (your collection filtered to 4.0-5.0; the side panel caches it).
   // -> { items, pages }
   async function fetchFavorites(page = 1) {
     const user = whoami();
     if (!user && !onPage(/^\/collection\//)) throw new Error("not signed in");
-    const doc = await docFor(/^\/collection\/[^/]+\/r4\.0-5\.0/, `/collection/${user}/r4.0-5.0${page > 1 ? `/${page}` : ""}`);
+    const doc = await docFor(/^\/collection\/[^/]+\/r3\.5-5\.0/, `/collection/${user}/r3.5-5.0${page > 1 ? `/${page}` : ""}`);
     const items = [];
     for (const it of scrapeReleases(doc, 300)) {
       const a = [...doc.querySelectorAll("a[href]")].find((x) => x.getAttribute("href") === new URL(it.href).pathname);
       const row = a && a.closest("tr");
       const img = row && row.querySelector('img[alt$="stars"]');
       const m = img && /([\d.]+) stars/.exec(img.getAttribute("alt"));
-      if (!m || Number(m[1]) >= 4) items.push(it); // the page is already filtered; this is a guard
+      if (!m || Number(m[1]) >= 3.5) items.push(it); // the page is already filtered; this is a guard
     }
     const nums = [...doc.querySelectorAll(".navlinknum, .navlinkcurrent")].map((n) => Number(n.textContent)).filter(Boolean);
     const pages = Math.max(1, ...nums);
@@ -1004,9 +1016,13 @@
         return false;
       }
       if (msg && msg.type === "set-listening") {
+        if (!msg.id) {
+          sendResponse({ error: "no album id" });
+          return false;
+        }
         setListening(msg.id);
-        sendResponse({ ok: true });
-        return false;
+        setTimeout(() => sendResponse({ ok: true }), 2500); // the request needs the page alive for a moment
+        return true;
       }
       if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history" || msg.type === "fetch-newmusic")) {
         (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-newmusic" ? fetchNewMusic() : fetchFavorites(msg.page))
@@ -1489,7 +1505,7 @@
     saveSidebarData("sidebar:newmusic", { items, t: Date.now() });
   }
 
-  // Your own play history / 4+ star collection pages: save them for the panel too (no request needed).
+  // Your own play history / 3.5+ star collection pages: save them for the panel too (no request needed).
   function publishMyPages() {
     if (typeof location === "undefined") return;
     const me = whoami();
@@ -1504,7 +1520,7 @@
         } catch {}
       }
     }
-    const fav = me && new RegExp(`^/collection/${me}/r4\\.0-5\\.0(?:/(\\d+))?/?$`).exec(location.pathname);
+    const fav = me && new RegExp(`^/collection/${me}/r3\\.5-5\\.0(?:/(\\d+))?/?$`).exec(location.pathname);
     if (fav && !de.dataset.eymFav) {
       const items = scrapeReleases(document, 300);
       if (items.length) {
@@ -1512,13 +1528,13 @@
         const page = Number(fav[1]) || 1;
         const nums = [...document.querySelectorAll(".navlinknum, .navlinkcurrent")].map((n) => Number(n.textContent)).filter(Boolean);
         api.storage.local
-          .get("sidebar:favs")
+          .get("sidebar:favs35")
           .then((o) => {
-            const rec = (o && o["sidebar:favs"]) || { pages: 0, got: {}, t: 0 };
+            const rec = (o && o["sidebar:favs35"]) || { pages: 0, got: {}, t: 0 };
             rec.got = { ...(rec.got || {}), [page]: items };
             rec.pages = Math.max(rec.pages || 0, 1, ...nums);
             rec.t = Date.now();
-            return api.storage.local.set({ "sidebar:favs": rec, "sidebar:favs-err": null });
+            return api.storage.local.set({ "sidebar:favs35": rec, "sidebar:favs-err": null });
           })
           .catch(() => {});
       }

@@ -964,3 +964,27 @@ body.ready {
   gap: 8px;
   margin-top: 6px;
 }
+
+#eym-toast {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tint) 30%, #1b1b1f);
+  color: #eee;
+  font-size: 0.85em;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+  z-index: 50;
+}
+#eym-toast.show {
+  opacity: 1;
+  transform: none;
+}
+#eym-toast.bad {
+  background: #5a2320;
+}

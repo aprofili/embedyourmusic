@@ -10,7 +10,7 @@
   const PLAYED_KEY = "sidebar:played";
   const LAST_KEY = "sidebar:last";
   const PLAYED_MAX = 100;
-  const FAVS_KEY = "sidebar:favs";
+  const FAVS_KEY = "sidebar:favs35";
   const FAVS_TTL = 24 * 3600 * 1000;
   const ROW = 44; // px, see .item in sidepanel.css
 
@@ -371,13 +371,45 @@
   }
 
   // After really listening (see watchPlayback), set the album as "currently listening" on RYM, once a day.
+  // Small status note at the bottom of the panel (play history sent, a list being re-read, ...).
+  let toastTimer;
+  function toast(text, bad) {
+    let t = document.getElementById("eym-toast");
+    if (!t) {
+      t = document.createElement("div");
+      t.id = "eym-toast";
+      document.body.append(t);
+    }
+    t.textContent = text;
+    t.classList.toggle("bad", !!bad);
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), bad ? 6000 : 3000);
+  }
+
   async function markListening(payload) {
-    if (!payload.id) return;
+    if (!payload.id && payload.href) {
+      // No id yet (album from a list): look it up the same way Check rating does.
+      try {
+        const ids = await store.get("sidebar:ids");
+        payload.id = (ids && ids[new URL(payload.href).pathname]) || "";
+      } catch {}
+      if (!payload.id) {
+        const r = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "check-rating", id: "", href: payload.href, title: payload.title, artist: payload.artist } }).catch(() => null);
+        if (r && r.id) {
+          payload.id = r.id;
+          rememberIdLocal(payload.href, r.id);
+        }
+      }
+    }
+    if (!payload.id) return toast("Couldn't add to RYM play history: album id not found", true);
     const seen = (await store.get("sidebar:listened")) || {};
-    if (seen[payload.id] && Date.now() - seen[payload.id] < 24 * 3600e3) return;
+    if (seen[payload.id] && Date.now() - seen[payload.id] < 6 * 3600e3) return;
+    const res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "set-listening", id: payload.id } }).catch(() => null);
+    if (!(res && res.ok)) return toast(`Couldn't add to RYM play history (${(res && res.error) || "no response"})`, true);
+    toast(`Added "${payload.title}" to your RYM play history`);
     seen[payload.id] = Date.now();
     store.set("sidebar:listened", seen);
-    api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "set-listening", id: payload.id } }).catch(() => {});
     setTimeout(() => store.set("sidebar:rymhist", { t: 0, items: [] }), 4000); // re-read RYM's history next time
   }
 
@@ -424,6 +456,10 @@
     }
   };
 
+  // A list scraped badly (titles missing, e.g. only "▶") is not shown; it is re-read from RYM instead.
+  const goodTitle = (i) => i && /[\p{L}\p{N}]/u.test(i.title || "");
+  const healthy = (items) => !!(items && items.length && items.filter(goodTitle).length >= items.length * 0.8);
+
   // Recommended / Challenge come from your recommendations page. Missing: open it in a background tab (closed again
   // once it has saved the lists). Older than 12 h: show what we have and refresh the same way behind the scenes.
   async function recoList(kind) {
@@ -433,14 +469,15 @@
     };
     let { all, rec } = await read();
     const fetchPage = () => api.runtime.sendMessage({ type: "page-to-storage", url: "https://rateyourmusic.com/recommendations/", key: "sidebar:lists" }).catch(() => null);
-    if (rec && rec.items.length) {
+    if (rec && healthy(rec.items)) {
       if (Date.now() - (rec.t || 0) > 12 * 3600e3) fetchPage();
-      return { items: rec.items };
+      return { items: rec.items.filter(goodTitle) };
     }
+    toast(rec && rec.items && rec.items.length ? "Recommendations list looked broken; re-reading it from RYM…" : "Reading your recommendations page from RYM…");
     await fetchPage();
     ({ all, rec } = await read());
-    if (rec && rec.items.length) return { items: rec.items };
-    return { message: "Couldn't read your recommendations page.", retry: true, page: "https://rateyourmusic.com/recommendations/" };
+    if (rec && healthy(rec.items)) return { items: rec.items.filter(goodTitle) };
+    return { message: rec && rec.items && rec.items.length ? "Your recommendations page was read but the list came out broken." : "Couldn't read your recommendations page.", retry: true, page: "https://rateyourmusic.com/recommendations/" };
   }
 
   // -> { items } or { message }
@@ -486,9 +523,9 @@
       const SIX = 6 * 3600e3;
       const done = await store.get("sidebar:newmusic-f");
       let raw = await store.get("sidebar:newmusic");
-      if (done && done.items && done.items.length && Date.now() - done.t < SIX && (!raw || done.t >= raw.t)) return { items: done.items };
+      if (done && healthy(done.items) && Date.now() - done.t < SIX && (!raw || done.t >= raw.t)) return { items: done.items };
       let error = "";
-      if (!raw || !raw.items || !raw.items.length || Date.now() - raw.t > SIX) {
+      if (!raw || !healthy(raw.items) || Date.now() - raw.t > SIX) {
         let res = null;
         try {
           res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-newmusic" } });
@@ -539,7 +576,7 @@
       }
       const items = Object.values(rec.got || {}).flat();
       if (!items.length) {
-        return { message: `Couldn't read your 4+ star albums (${(res && res.error) || "RYM didn't answer"}).`, retry: true, page: "https://rateyourmusic.com/" };
+        return { message: `Couldn't read your 3.5+ star albums (${(res && res.error) || "RYM didn't answer"}).`, retry: true, page: "https://rateyourmusic.com/" };
       }
       return { items: shuffle(items) };
     },
@@ -669,7 +706,7 @@
       }
       return;
     }
-    const items = kind === "history" ? result.items : result.items.filter((i) => !isVideo(i));
+    const items = (kind === "history" ? result.items : result.items.filter((i) => !isVideo(i))).filter(goodTitle);
     // Two columns. Show as many rows as fit in the window; "Show more" extends past it (the page then scrolls).
     const top = body.getBoundingClientRect().top;
     const fit = Math.max(6, Math.floor((window.innerHeight - top - 48) / ROW) * 2);
@@ -822,7 +859,7 @@
       if (theirs("sidebar:similar")) refreshOpenList("similar");
       if (theirs("sidebar:newmusic")) refreshOpenList("newmusic");
       if (theirs("sidebar:rymhist")) refreshOpenList("history");
-      if (theirs("sidebar:favs")) refreshOpenList("favorites");
+      if (theirs("sidebar:favs35")) refreshOpenList("favorites");
     });
   }
 
