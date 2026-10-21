@@ -968,6 +968,13 @@
           sendResponse({ error: "not ready" });
           return false;
         }
+        if (!msg.id) {
+          // Id unknown: read it from the release page itself, then rating comes with it.
+          loadRelease({ href: msg.href, title: msg.title, artist: msg.artist })
+            .then((r) => (r.id ? sendResponse({ id: r.id, rating: r.rating || 0, ratingKnown: !!r.ratingKnown }) : sendResponse({ error: "couldn't read the album id from RYM" })))
+            .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
+          return true;
+        }
         let p;
         try {
           p = new URL(msg.href).pathname;
@@ -1431,9 +1438,18 @@
   }
 
   // Opening a release page tells the shared cache its rating and links, so nothing needs fetching later.
+  // Release pages where the rating box is missing still tell us their id (the [Album123] shortcut field).
+  function rememberPageId() {
+    if (typeof location === "undefined" || !/^\/release\//.test(location.pathname)) return;
+    const sc = document.querySelector("input.album_shortcut");
+    const m = sc && /Album(\d+)/.exec(sc.value || sc.getAttribute("value") || "");
+    if (m) rememberId(location.pathname, m[1]);
+  }
+
   function recordThisRelease() {
     const rel = globalThis.__eymRelease;
     const box = document.querySelector('[id^="my_catalog_rating_l_"]');
+    if (!box) rememberPageId();
     const holder = document.querySelector(".media_link_container[data-links]");
     if (!rel || !rel.put || !box || document.documentElement.dataset.eymRecorded) return;
     const id = box.id.replace("my_catalog_rating_l_", "");

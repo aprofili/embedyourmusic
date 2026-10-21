@@ -12,7 +12,8 @@ const tick = (ms) => new Promise((r) => setTimeout(r, ms));
   const states = [];
   const eng = w.__eymSpEngine.create(w.document.body, (s, e) => states.push([s, e]));
   const sent = [];
-  const fake = { postMessage: (m) => sent.push(m.command) };
+  const full = [];
+  const fake = { postMessage: (m) => (full.push(m), sent.push(m.command)) };
   Object.defineProperty(eng.frame, "contentWindow", { get: () => fake });
   const say = (payload) => {
     const ev = new w.Event("message");
@@ -52,6 +53,13 @@ const tick = (ms) => new Promise((r) => setTimeout(r, ms));
   sent.length = 0;
   say({ isPaused: true, position: 4200, duration: 180000 });
   assert.strictEqual(sent.length, 0, "settled: nothing more is sent");
+  // seek: fraction of the song -> seconds
+  eng.handle({ cmd: "seek", frac: 0.5 });
+  const sk = full.filter((m) => m.command === "seek").pop();
+  assert.ok(sk && sk.timestamp === 90, "seek posts seconds");
+  assert.strictEqual(eng.handle({ cmd: "get" }).pos, 90000);
+  eng.handle({ cmd: "next" });
+  assert.strictEqual(eng.handle({ cmd: "get" }).idx, 1, "next song");
   console.log("engine tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

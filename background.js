@@ -672,3 +672,16 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   return false;
 });
+
+
+// Keyboard media keys -> the player (offscreen engine; in Firefox the open panel answers).
+if (api.commands && api.commands.onCommand) {
+  api.commands.onCommand.addListener(async (name) => {
+    const cmd = { "media-play-pause": "toggle", "media-next": "next", "media-prev": "prev" }[name];
+    if (!cmd) return;
+    try {
+      await ensureOffscreen();
+    } catch {}
+    api.runtime.sendMessage({ type: "eng-cmd", cmd }).catch(() => {});
+  });
+}

@@ -52,6 +52,18 @@
     };
   }
 
+  // The release id, from whichever marker the page has.
+  const ID_MARKS = [/\[Album(\d+)\]/, /my_catalog_rating_l_(\d+)/, /rating_stars_l_(\d+)/, /["']assoc_id["']\s*[:=]\s*["']?(\d+)/, /CatalogSetRating[^)]*?(\d{3,})/];
+  function idFromHtml(html) {
+    const m = RATING.exec(html);
+    if (m) return m[1];
+    for (const re of ID_MARKS) {
+      const x = re.exec(html);
+      if (x) return x[1];
+    }
+    return "";
+  }
+
   function cached(id) {
     try {
       const rec = JSON.parse(store.get(key(id)));
@@ -124,7 +136,7 @@
     store.set(COUNT_KEY, "0");
     const html = await res.text();
     const m = RATING.exec(html);
-    const rid = id != null ? id : m ? m[1] : "";
+    const rid = id != null ? id : idFromHtml(html);
     const doc = new DOMParser().parseFromString(html, "text/html");
     // One request, everything: links, your rating, title / artist / art / year.
     const rec = {
@@ -231,5 +243,5 @@
     } catch {}
   }
 
-  globalThis.__eymRelease = { get, getLinks, getByHref, put, extractMeta, noteStatus, peek, setRating, blocked, blockMessage, clearBlock };
+  globalThis.__eymRelease = { get, getLinks, getByHref, put, extractMeta, idFromHtml, noteStatus, peek, setRating, blocked, blockMessage, clearBlock };
 })();

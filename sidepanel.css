@@ -903,3 +903,44 @@ body.ready {
   padding: 2px 9px;
   font-size: 0.95em;
 }
+
+/* ---- Interactive scrub bar ---- */
+.sp-bar {
+  position: relative;
+  overflow: visible;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.sp-bar::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -9px;
+  bottom: -9px;
+}
+
+.sp-bar-fill {
+  position: relative;
+  border-radius: 2px;
+}
+
+.sp-bar-fill::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--sp-a);
+  transform: scale(0);
+  transition: transform 0.15s ease;
+}
+
+.sp-bar:hover .sp-bar-fill::after,
+.sp-bar.sp-scrub .sp-bar-fill::after {
+  transform: scale(1);
+}

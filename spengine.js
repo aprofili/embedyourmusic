@@ -38,10 +38,10 @@
       } catch {}
     };
     const playing = () => want && st.seen && !st.paused;
-    const post = (command) => {
+    const post = (command, extra) => {
       if (command === "toggle") lastToggle = Date.now();
       try {
-        frame.contentWindow.postMessage({ command }, "*");
+        frame.contentWindow.postMessage({ command, ...(extra || {}) }, "*");
       } catch {}
     };
     // Start playback, but never twice in quick succession (two toggles = play then pause).
@@ -128,6 +128,20 @@
       out(null, true);
     }
 
+    // Jump to a fraction (0..1) of the current song (Spotify's iFrame API: seek, in seconds).
+    function seek(frac) {
+      if (idx < 0 || !st.dur || !(frac >= 0)) return;
+      const f = Math.min(0.999, frac);
+      post("seek", { timestamp: Math.round((f * st.dur) / 1000) });
+      st.pos = f * st.dur;
+      selectedAtGuard();
+      out(null, true);
+    }
+    const selectedAtGuard = () => {
+      // The next progress message may still carry the old position; ended-detection must not read the jump as a finish.
+      lastEmit = 0;
+    };
+
     window.addEventListener("message", (e) => {
       if (e.origin !== "https://open.spotify.com" || e.source !== frame.contentWindow) return;
       const d = e.data && typeof e.data === "object" ? e.data : {};
@@ -177,6 +191,12 @@
         if (m.cmd === "load") load(m);
         else if (m.cmd === "select") select(m.i, m.autoplay);
         else if (m.cmd === "toggle") toggle();
+        else if (m.cmd === "seek") seek(m.frac);
+        else if (m.cmd === "next") {
+          if (idx + 1 < tracks.length) select(idx + 1, true);
+        } else if (m.cmd === "prev") {
+          if (idx > 0) select(st.pos > 3000 ? idx : idx - 1, true);
+        }
         return snap();
       },
     };

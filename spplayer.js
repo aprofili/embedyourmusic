@@ -220,6 +220,7 @@
     let shownPct = 0;
     let shownIdx = -1;
     let swapping = false;
+    let scrubbing = false;
     let nextPct = 0;
     const paint = () => {
       const playing = S.want && S.seen && !S.paused;
@@ -232,9 +233,11 @@
         r.n.textContent = tracks.length > 1 ? String(r.t.number || i + 1) : "▶";
       });
       now.textContent = idx >= 0 && tracks[idx] ? tracks[idx].name : "";
-      clock.textContent = idx >= 0 && S.dur ? `${fmt(S.pos)} / ${fmt(S.dur)}` : "";
+      if (!scrubbing) clock.textContent = idx >= 0 && S.dur ? `${fmt(S.pos)} / ${fmt(S.dur)}` : "";
       const pct = S.dur ? Math.min(100, (S.pos / S.dur) * 100) : 0;
-      if (swapping) {
+      if (scrubbing) {
+        // the user is dragging: leave the bar and clock alone
+      } else if (swapping) {
         nextPct = pct;
       } else if (pct < shownPct - 5 || (idx !== shownIdx && pct < shownPct)) {
         // New song (or a restart): fade the old bar out, then fade the new one in from the start, no sliding back.
@@ -278,6 +281,38 @@
     };
     const select = (i, autoplay) => command({ cmd: "select", i, autoplay });
     play.addEventListener("click", () => command({ cmd: "toggle" }));
+    // Scrub bar: click or drag to jump within the current song.
+    const fracAt = (e) => {
+      const r = bar.getBoundingClientRect();
+      return r.width ? Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) : 0;
+    };
+    const preview = (f) => {
+      fill.style.transition = "none";
+      fill.style.width = `${f * 100}%`;
+      shownPct = f * 100;
+      if (S.dur) clock.textContent = `${fmt(f * S.dur)} / ${fmt(S.dur)}`;
+    };
+    bar.addEventListener("pointerdown", (e) => {
+      if (S.idx < 0 || !S.dur) return;
+      scrubbing = true;
+      bar.classList.add("sp-scrub");
+      try {
+        bar.setPointerCapture(e.pointerId);
+      } catch {}
+      preview(fracAt(e));
+    });
+    bar.addEventListener("pointermove", (e) => {
+      if (scrubbing) preview(fracAt(e));
+    });
+    const endScrub = (e, commit) => {
+      if (!scrubbing) return;
+      scrubbing = false;
+      bar.classList.remove("sp-scrub");
+      fill.style.transition = "";
+      if (commit) command({ cmd: "seek", frac: fracAt(e) });
+    };
+    bar.addEventListener("pointerup", (e) => endScrub(e, true));
+    bar.addEventListener("pointercancel", (e) => endScrub(e, false));
     embedBtn.addEventListener("click", () => {
       if (driver.remote) window.open(`https://open.spotify.com/${kind}/${id}`, "_blank", "noopener");
       else {
@@ -340,6 +375,11 @@
     const engine = globalThis.__eymSpEngine.create(host, (s, e) => {
       subs.forEach((f) => f(s, e));
       send({ type: "eng-state", state: s, event: null }); // toolbar badge (the event stays with the panel)
+    });
+    if (api.runtime.onMessage) api.runtime.onMessage.addListener((m, _s, reply) => {
+      if (!m || m.type !== "eng-cmd" || !host.isConnected) return false;
+      reply({ state: engine.handle(m) });
+      return false;
     });
     return { remote: false, frame: engine.frame, onState: (f) => subs.add(f), cmd: async (c) => engine.handle(c) };
   }

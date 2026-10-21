@@ -121,17 +121,29 @@
     drawStars();
   }
 
+  async function rememberIdLocal(href, id) {
+    try {
+      const ids = (await store.get("sidebar:ids")) || {};
+      ids[new URL(href).pathname] = id;
+      await store.set("sidebar:ids", ids);
+    } catch {}
+  }
+
   async function checkRating() {
-    if (!current || !current.payload.id) return;
+    if (!current) return;
     const who = current;
     $("rating-note").textContent = "Checking…";
     let res;
     try {
-      res = await api.runtime.sendMessage({ type: "to-rym", tabId: who.tabId, msg: { type: "check-rating", id: who.payload.id, href: who.payload.href } });
+      res = await api.runtime.sendMessage({ type: "to-rym", tabId: who.tabId, msg: { type: "check-rating", id: who.payload.id || "", href: who.payload.href, title: who.payload.title, artist: who.payload.artist } });
     } catch {
       res = null;
     }
     if (current !== who) return;
+    if (res && res.id && !who.payload.id) {
+      who.payload.id = res.id;
+      rememberIdLocal(who.payload.href, res.id);
+    }
     if (res && res.ratingKnown) setRating(res.rating, true);
     else {
       setRating(rating, false);
@@ -140,7 +152,21 @@
   }
 
   async function rate(value) {
-    if (!current || !current.payload.id) return;
+    if (!current) return;
+    if (!current.payload.id) {
+      $("rating-note").textContent = "Finding album…";
+      try {
+        const r = await api.runtime.sendMessage({ type: "to-rym", tabId: current.tabId, msg: { type: "check-rating", id: "", href: current.payload.href, title: current.payload.title, artist: current.payload.artist } });
+        if (r && r.id) {
+          current.payload.id = r.id;
+          rememberIdLocal(current.payload.href, r.id);
+        }
+      } catch {}
+      if (!current.payload.id) {
+        $("rating-note").textContent = "Couldn't find this album's RYM id.";
+        return;
+      }
+    }
     $("rating-note").textContent = "Saving…";
     let res;
     try {
