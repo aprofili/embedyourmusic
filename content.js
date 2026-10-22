@@ -769,35 +769,46 @@
     return { items, t: Date.now() };
   }
 
-  // Other albums by an artist: the Albums section of their /artist/<slug> page. RYM lists only the first few
-  // there when there are many ("Showing 11 of 40", with a "show all" link): on a real page load that link is pressed
-  // and the rest waited for. -> { items, name }
+  // Other releases by an artist: the Albums and EPs sections of their /artist/<slug> page (albums first). RYM lists
+  // only the first few there when there are many ("Showing 11 of 40", with a "show all" link): on a real page load
+  // those links are pressed and the rest waited for. -> { items, name }
   async function fetchArtist(path, name, skip) {
     if (!/^\/artist\/[^/]+\/?$/.test(path || "")) throw new Error("no artist page");
     const doc = await docFor(new RegExp("^" + path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), path);
+    const SECTIONS = ["s", "e"]; // albums, EPs
     if (doc === document) {
-      const more = document.getElementById("disco_header_show_link_s");
-      if (more && more.offsetParent !== null) {
-        more.click();
-        for (let i = 0; i < 40; i++) {
-          await new Promise((r) => setTimeout(r, 200));
-          const st = document.getElementById("disco_header_showing_s");
-          if (st && /Showing all/i.test(st.textContent)) break;
+      const pressed = SECTIONS.filter((k) => {
+        const more = document.getElementById(`disco_header_show_link_${k}`);
+        if (more && more.offsetParent !== null) {
+          more.click();
+          return true;
         }
+        return false;
+      });
+      for (let i = 0; i < 40 && pressed.length; i++) {
+        await new Promise((r) => setTimeout(r, 200));
+        if (pressed.every((k) => /Showing all/i.test((document.getElementById(`disco_header_showing_${k}`) || {}).textContent || ""))) break;
       }
     }
     const slug = path.replace(/^\/artist\//, "").replace(/\/$/, "");
-    const section = doc.getElementById("disco_type_s");
-    const own = (i) => new RegExp(`^/release/album/${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`).test(new URL(i.href).pathname);
-    const items = scrapeReleases(section || doc, 400, skip || "")
-      .filter((i) => /^\/release\/album\//.test(new URL(i.href).pathname) && (section || own(i)))
-      .map((i) => ({ ...i, artist: i.artist || name || "" }));
+    const esc = slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const own = (i) => new RegExp(`^/release/(album|ep)/${esc}/`).test(new URL(i.href).pathname);
+    const have = SECTIONS.map((k) => doc.getElementById(`disco_type_${k}`)).filter(Boolean);
+    const seen = new Set();
+    const items = [];
+    for (const root of have.length ? have : [doc]) {
+      for (const i of scrapeReleases(root, 400, skip || "")) {
+        if (!/^\/release\/(album|ep)\//.test(new URL(i.href).pathname) || (!have.length && !own(i)) || seen.has(i.href)) continue;
+        seen.add(i.href);
+        items.push(i);
+      }
+    }
     const h = doc.querySelector(".artist_name_hdr");
     let nm = "";
     if (h) for (const n of h.childNodes) if (n.nodeType === 3) nm += n.textContent;
     nm = nm.replace(/\s+/g, " ").trim() || (h ? h.textContent.replace(/\s+/g, " ").trim() : "") || name || "";
-    if (!items.length) throw new Error("no other albums found");
-    return { items: items.map((i) => ({ ...i, artist: nm || i.artist })), name: nm, t: Date.now() };
+    if (!items.length) throw new Error("no other albums or EPs found");
+    return { items: items.map((i) => ({ ...i, artist: nm || i.artist || name || "" })), name: nm, t: Date.now() };
   }
 
   // Your RYM play history (what "Set listening" records): newest first, one entry per release.

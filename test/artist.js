@@ -29,8 +29,10 @@ const { JSDOM, VirtualConsole } = require("jsdom");
     const r2 = await new Promise((r) => h2({ type: "fetch-artist", path: "/artist/the-beatles", name: "x", skip: "/release/album/the-beatles/help/" }, {}, r));
     const it2 = JSON.parse(JSON.stringify(r2.items));
     assert.strictEqual(r2.name, "The Beatles");
-    assert.strictEqual(it2.length, 15, "16 albums minus the current one");
-    assert.ok(it2.every((i) => /\/release\/album\/the-beatles\//.test(i.href)));
+    assert.ok(it2.length > 15, "albums (16 minus the current one) plus the EPs shown");
+    assert.ok(it2.slice(0, 15).every((i) => /\/release\/album\/the-beatles\//.test(i.href)), "albums first");
+    assert.ok(it2.some((i) => /\/release\/ep\/the-beatles\//.test(i.href)), "EPs included");
+    assert.ok(it2.every((i) => /\/release\/(album|ep)\/the-beatles\//.test(i.href)), "no singles / appears-on");
   }
   console.log("artist tests passed");
   process.exit(0);

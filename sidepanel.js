@@ -832,7 +832,7 @@
       if (!m) return { message: "Play an album to see more by its artist." };
       const path = `/artist/${m[1]}`;
       const skip = new URL(current.payload.href).pathname;
-      const all = (await store.get("sidebar:artist")) || {};
+      const all = (await store.get("sidebar:artist2")) || {};
       const rec = all[path];
       setArtistHead((rec && rec.name) || current.payload.artist);
       const fresh = rec && rec.name && rec.items && rec.items.length && Date.now() - rec.t < 7 * 24 * H;
@@ -846,11 +846,11 @@
           setArtistHead(res.name || current.payload.artist);
           const keys = Object.keys(all);
           if (keys.length > 40) keys.sort((a, b) => all[a].t - all[b].t).slice(0, keys.length - 40).forEach((k) => delete all[k]);
-          store.set("sidebar:artist", all);
+          store.set("sidebar:artist2", all);
         } else if (!items) return failed({ label: "the artist's page", error: (res && res.error) || "no response", page: `https://rateyourmusic.com${path}` });
       }
       items = items.filter((i) => new URL(i.href).pathname !== skip);
-      return items.length ? { items } : { message: "No other albums by this artist." };
+      return items.length ? { items } : { message: "No other albums or EPs by this artist." };
     },
     async recommended() {
       const d = await listData("recommended");
