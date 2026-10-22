@@ -1025,9 +1025,9 @@
       return;
     }
     const items = (kind === "history" ? result.items : result.items.filter((i) => !isVideo(i))).filter(goodTitle);
-    // Two columns. Show as many rows as fit in the window; "Show more" extends past it (the page then scrolls).
+    // Two columns. Show twice as many rows as fit in the window; "Show more" extends past it (the page then scrolls).
     const top = body.getBoundingClientRect().top;
-    const fit = Math.max(6, Math.floor((window.innerHeight - top - 48) / ROW) * 2);
+    const fit = Math.max(12, Math.floor((window.innerHeight - top - 48) / ROW) * 4);
     let shown = Math.min(items.length, fit);
     const list = document.createElement("div");
     list.className = "grid";

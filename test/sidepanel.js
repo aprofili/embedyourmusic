@@ -94,7 +94,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   assert.strictEqual(store["sidebar:played"].length, 1);
 
   // Opening one list closes the others; long lists start truncated with Show more
-  Object.defineProperty(w, "innerHeight", { value: 400, configurable: true });
+  Object.defineProperty(w, "innerHeight", { value: 250, configurable: true });
   head("recommended").click();
   await tick();
   assert.ok(d.querySelector('.acc[data-kind="recommended"]').classList.contains("open"));
