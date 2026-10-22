@@ -51,9 +51,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   } });
   // RYM link first, then services; Spotify is the default
   const tabs = [...d.querySelectorAll("#tabs > *")];
-  assert.deepStrictEqual(tabs.map((t) => t.textContent), ["RYM", "Spotify", "Tidal"]);
-  assert.strictEqual(tabs[0].tagName, "A");
-  assert.strictEqual(tabs[0].getAttribute("href"), "https://rateyourmusic.com/release/album/band/album/");
+  assert.deepStrictEqual(tabs.map((t) => t.textContent), ["Spotify", "Tidal"], "no RYM tab: title and artist are the links");
   assert.ok(d.querySelector("#body iframe").src.includes("open.spotify.com/embed/album"));
   assert.strictEqual(d.querySelectorAll("#rating .star.full").length, 2);
 
@@ -121,7 +119,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   // Playing a list item loads it through the RYM tab and plays it here
   d.querySelector('.acc[data-kind="recommended"] .item').click();
   await tick(5);
-  assert.strictEqual(d.querySelector("#tabs a").getAttribute("href"), "https://rateyourmusic.com/release/album/a/r1/"); // r0 was excluded
+  assert.strictEqual(d.querySelector("#body a.sp-title").getAttribute("href"), "https://rateyourmusic.com/release/album/a/r1/"); // r0 was excluded
   assert.ok(sent.some((m) => m.type === "to-rym" && m.msg.type === "load-release"));
 
   // Dice: skips rated entries (list flag), plays a random unrated one

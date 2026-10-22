@@ -170,7 +170,22 @@
       else img.hidden = true;
     });
     const meta = el("div", "sp-meta");
-    meta.append(el("div", "sp-title", payload.title || "Untitled"), el("div", "sp-artist", payload.artist || ""));
+    // Title and artist link to their RYM pages (the artist page is read off the release's address).
+    const link = (cls, text, href) => {
+      const n = el(href ? "a" : "div", cls, text);
+      if (href) {
+        n.href = href;
+        n.target = "_blank";
+        n.rel = "noopener";
+      }
+      return n;
+    };
+    let artistHref = "";
+    try {
+      const m = /^\/release\/[^/]+\/([^/]+)\//.exec(new URL(payload.href, "https://rateyourmusic.com").pathname);
+      if (m) artistHref = `https://rateyourmusic.com/artist/${m[1]}`;
+    } catch {}
+    meta.append(link("sp-title", payload.title || "Untitled", payload.href || ""), link("sp-artist", payload.artist || "", artistHref));
     const now = el("div", "sp-now", ""); // (kept for the painter; hidden: the track list already shows the song)
     now.hidden = true;
     const rateSlot = el("div", "sp-rate");

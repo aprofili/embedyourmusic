@@ -168,8 +168,24 @@ a {
   background: var(--line);
 }
 
-#tabs .rym-link {
+a.sp-title,
+a.sp-artist {
+  display: block;
+  color: inherit;
   text-decoration: none;
+}
+
+a.sp-artist {
+  color: var(--muted);
+}
+
+a.sp-title:hover,
+a.sp-artist:hover {
+  text-decoration: underline;
+}
+
+.plain-head {
+  margin-bottom: 6px;
 }
 
 #lists {

@@ -454,6 +454,26 @@
     store.set("sidebar:resume", resume);
   }
 
+  // Album title and artist as links to their RYM pages (the artist page is read off the release's address).
+  function titleLinks(payload) {
+    const box = document.createElement("div");
+    box.className = "plain-head";
+    const mk = (cls, text, href) => {
+      const a = document.createElement(href ? "a" : "div");
+      a.className = cls;
+      a.textContent = text;
+      if (href) Object.assign(a, { href, target: "_blank", rel: "noopener" });
+      return a;
+    };
+    let artistHref = "";
+    try {
+      const m = /^\/release\/[^/]+\/([^/]+)\//.exec(new URL(payload.href, "https://rateyourmusic.com").pathname);
+      if (m) artistHref = `https://rateyourmusic.com/artist/${m[1]}`;
+    } catch {}
+    box.append(mk("sp-title", payload.title || "Untitled", payload.href), mk("sp-artist", payload.artist || "", artistHref));
+    return box;
+  }
+
   // ---- Player ----
   function render(payload, restore) {
     const my = ++token;
@@ -472,16 +492,6 @@
     tabs.textContent = "";
     body.textContent = "";
     body.className = "";
-
-    // First tab: RYM, a plain link to the album page.
-    const rym = document.createElement("a");
-    rym.className = "rym-reco-tab rym-link";
-    rym.textContent = "RYM";
-    rym.href = payload.href || "#";
-    rym.target = "_blank";
-    rym.rel = "noopener";
-    rym.title = "Open the album page on RYM";
-    tabs.append(rym);
 
     const entries = [];
     for (const service of ORDER) {
@@ -502,14 +512,10 @@
         box.append(img);
       }
       const text = document.createElement("div");
-      const t = document.createElement("strong");
-      t.textContent = payload.title || "Untitled";
-      const a = document.createElement("div");
-      a.textContent = payload.artist || "";
       const note = document.createElement("div");
       note.className = "hint";
       note.textContent = "No streaming links found for this release.";
-      text.append(t, a, note);
+      text.append(titleLinks(payload), note);
       box.append(text);
       body.append(box);
       reveal();
@@ -524,7 +530,7 @@
           if (globalThis.__eymSpPlayer) globalThis.__eymSpPlayer.resetTint();
           if (info.maxWidth) slot.style.maxWidth = `${info.maxWidth}px`;
           const frame = makeFrame(info.src, info.height, `${LABELS[service]} player`);
-          slot.append(frame);
+          slot.append(titleLinks(payload), frame);
           if (service === "spotify") {
             // Best effort: once the embed reports it is paused, press play for the user.
             const kick = (e) => {
@@ -578,7 +584,7 @@
         resolveBandcamp(info.url).then((res) => {
           if (my !== token) return;
           slot.textContent = "";
-          if (res) slot.append(makeFrame(res.src, res.height, "Bandcamp player"));
+          if (res) slot.append(titleLinks(payload), makeFrame(res.src, res.height, "Bandcamp player"));
           else slot.append("Couldn't load the Bandcamp player.");
           reveal();
         });
