@@ -1118,3 +1118,49 @@ body.ready {
 #review-btn[hidden] {
   display: none !important;
 }
+
+/* Long titles and track names are shortened instead of pushing the card wider than the panel */
+html,
+body {
+  overflow-x: hidden;
+}
+
+#now {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#now,
+#body,
+.sp,
+.sp-head,
+.sp-barrow,
+.rym-embed-slot {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sp-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sp-row {
+  min-width: 0;
+}
+
+.sp-title,
+a.sp-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.sp-artist,
+a.sp-artist {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
