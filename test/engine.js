@@ -108,6 +108,37 @@ const tick = (ms) => new Promise((r) => setTimeout(r, ms));
     say3({ isPaused: true, position: 95500, duration: 200000 }); // it got there
     assert.strictEqual(e3.handle({ cmd: "get" }).pos, 95500);
   }
+  // end of the album: back to song 1, stopped (repeat off) or playing again (repeat on); also when the embed goes quiet
+  {
+    const e4 = w.__eymSpEngine.create(w.document.body, () => {});
+    const f4 = { postMessage() {} };
+    Object.defineProperty(e4.frame, "contentWindow", { get: () => f4 });
+    const say4 = (payload) => {
+      const m = new w.Event("message");
+      Object.assign(m, { data: { type: "playback_update", payload }, origin: "https://open.spotify.com", source: f4 });
+      w.dispatchEvent(m);
+    };
+    e4.handle({ cmd: "load", key: "k4", tracks: [{ id: "a" }, { id: "b" }] });
+    for (const rep of [false, true]) {
+      e4.handle({ cmd: "repeat", on: rep });
+      e4.handle({ cmd: "select", i: 1, autoplay: true });
+      await tick(1000);
+      say4({ isPaused: false, position: 175000, duration: 180000 });
+      say4({ isPaused: true, position: 0, duration: 180000 }); // Spotify's stop at the end
+      const s4 = e4.handle({ cmd: "get" });
+      assert.strictEqual(s4.idx, 0, "back to song 1");
+      assert.strictEqual(s4.want, rep, rep ? "repeat on: plays again" : "repeat off: stays stopped");
+      assert.strictEqual(s4.repeat, rep);
+    }
+    // the embed never reports the stop: running past the song's length ends it anyway
+    e4.handle({ cmd: "repeat", on: false });
+    e4.handle({ cmd: "select", i: 1, autoplay: true });
+    await tick(1000);
+    say4({ isPaused: false, position: 170000, duration: 172000 });
+    await tick(6200);
+    const q = e4.handle({ cmd: "get" });
+    assert.ok(q.idx === 0 && !q.want, "silent end: song 1, stopped");
+  }
   console.log("engine tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

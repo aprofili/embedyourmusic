@@ -1164,3 +1164,24 @@ a.sp-artist {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Repeat toggle (off by default) */
+.sp-repeat {
+  flex: none;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  line-height: 0;
+  cursor: pointer;
+}
+
+.sp-repeat:hover {
+  color: var(--fg);
+}
+
+.sp-repeat.sp-repeat-on {
+  color: var(--sp-a);
+  background: color-mix(in srgb, var(--sp-a) 20%, transparent);
+}

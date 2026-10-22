@@ -433,6 +433,8 @@
 
   // ---- Where you were: one song number and one timestamp for the album last played (sidebar:resume) ----
   // Playing a different album starts it from the top, and that is what gets stored.
+  let repeatOn = false; // the repeat toggle (off unless you turn it on; remembered)
+  const repeatReady = store.get("sidebar:repeat").then((r) => (repeatOn = !!r));
   let resume = null; // { key, idx, pos(ms) }
   let resumeSaved = 0;
   const resumeReady = store.get("sidebar:resume").then((r) => {
@@ -549,8 +551,8 @@
         if (service === "spotify" && globalThis.__eymSpPlayer) {
           // Our own player (hidden embed + track list) when Spotify is connected; else the plain embed.
           slot.textContent = "Loading…";
-          resumeReady
-            .then(() => globalThis.__eymSpPlayer.build(info, payload, { autoplay: !restore, resume: resumeFor(info.key), onProgress: (s) => saveResume(info.key, s), onArt: (u) => noteArt(payload.href, u), onPlay: () => {
+          Promise.all([resumeReady, repeatReady])
+            .then(() => globalThis.__eymSpPlayer.build(info, payload, { autoplay: !restore, resume: resumeFor(info.key), repeat: repeatOn, onRepeat: (on) => { repeatOn = on; store.set("sidebar:repeat", on); }, onProgress: (s) => saveResume(info.key, s), onArt: (u) => noteArt(payload.href, u), onPlay: () => {
               if (current && current.payload === payload && !current.counted) {
                 current.counted = true;
                 addPlayed(payload);

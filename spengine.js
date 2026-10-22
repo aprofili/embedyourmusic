@@ -27,12 +27,13 @@
     let lastEmit = 0;
     let selectedAt = 0;
     let fixes = 0; // reconcile attempts for the current want/actual mismatch
+    let repeat = false; // at the end of the last song: back to song 1 and keep playing (else back to song 1, stopped)
     let startAt = 0; // ms into the song to resume from (set by select); posted as a seek until the embed reports it
     let seekTries = 0;
     let seekedAt = 0;
     const heard = new Map();
 
-    const snap = () => ({ key, rymId, ...about, idx, want, seen: st.seen, paused: st.paused, pos: startAt || st.pos, dur: st.dur, got, failed, total: tracks.length, started });
+    const snap = () => ({ key, rymId, ...about, idx, want, seen: st.seen, paused: st.paused, pos: startAt || st.pos, dur: st.dur, got, failed, total: tracks.length, started, repeat });
     const out = (event, force) => {
       const now = Date.now();
       if (!force && !event && now - lastEmit < 700) return;
@@ -151,6 +152,12 @@
       out(null, true);
     }
 
+    // The song ran out: on to the next one; after the last, back to song 1 (playing again only with repeat on).
+    function finished() {
+      if (idx + 1 < tracks.length) return select(idx + 1, true);
+      return select(0, repeat);
+    }
+
     // Jump to a fraction (0..1) of the current song (Spotify's iFrame API: seek, in seconds).
     function seek(frac) {
       if (idx < 0 || !st.dur || !(frac >= 0)) return;
@@ -189,11 +196,9 @@
       st = { seen: true, paused: p.isPaused, pos: Number(p.position) || 0, dur: Number(p.duration) || prevDur };
       failed = false;
       // Finished: it stopped at (or snapped back from) the very end -> next song.
-      const ended = want && st.paused && wasPlaying && prevDur && prevPos >= prevDur - 4000 && (st.pos === 0 || st.pos >= prevDur - 800);
-      if (ended) {
-        if (idx + 1 < tracks.length) return select(idx + 1, true);
-        want = false;
-      }
+      st.at = Date.now();
+      const ended = want && st.paused && wasPlaying && prevDur && prevPos >= prevDur - 6000 && (st.pos === 0 || st.pos >= prevDur - 800);
+      if (ended) return finished();
       applyStart();
       reconcile();
       out();
@@ -203,6 +208,8 @@
     //  "played"   after 10 s in total: the album goes into the panel's History.
     //  "listened" once 3 songs (fewer if the release is shorter) got 20 s each: RYM's "Currently listening".
     setInterval(() => {
+      // The embed can go quiet at the very end without ever reporting a stop: past the song's length = finished.
+      if (idx >= 0 && want && st.seen && !st.paused && st.dur && st.at && st.pos + (Date.now() - st.at) >= st.dur + 3500) return finished();
       if (idx < 0 || !want || !st.seen || st.paused) return;
       heard.set(idx, (heard.get(idx) || 0) + 1000);
       const vals = [...heard.values()];
@@ -221,6 +228,7 @@
       handle(m) {
         if (m.cmd === "load") load(m);
         else if (m.cmd === "select") select(m.i, m.autoplay, m.startMs);
+        else if (m.cmd === "repeat") repeat = !!m.on;
         else if (m.cmd === "toggle") toggle();
         else if (m.cmd === "seek") seek(m.frac);
         else if (m.cmd === "next") {

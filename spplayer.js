@@ -210,7 +210,13 @@
     const fill = el("div", "sp-bar-fill");
     bar.append(fill);
     const clock = el("span", "sp-clock", "");
-    barRow.append(play, bar, clock);
+    const repeatBtn = el("button", "sp-repeat");
+    repeatBtn.type = "button";
+    repeatBtn.title = "Repeat the album";
+    repeatBtn.setAttribute("aria-pressed", "false");
+    repeatBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>';
+    barRow.append(play, bar, clock, repeatBtn);
     const msg = el("div", "sp-msg");
     msg.hidden = true;
     const list = el("div", "sp-list");
@@ -302,6 +308,8 @@
       const playing = S.want && S.seen && !S.paused;
       const idx = S.idx;
       play.textContent = playing ? "⏸" : "▶";
+      repeatBtn.classList.toggle("sp-repeat-on", !!S.repeat);
+      repeatBtn.setAttribute("aria-pressed", String(!!S.repeat));
       root.classList.toggle("sp-playing", playing);
       rows.forEach((r, i) => {
         r.row.classList.toggle("sp-current", i === idx);
@@ -358,6 +366,11 @@
     };
     const select = (i, autoplay) => command({ cmd: "select", i, autoplay });
     play.addEventListener("click", () => command({ cmd: "toggle" }));
+    repeatBtn.addEventListener("click", () => {
+      const on = !S.repeat;
+      command({ cmd: "repeat", on });
+      if (opts.onRepeat) opts.onRepeat(on);
+    });
     // Scrub bar: click or drag to jump within the current song.
     const fracAt = (e) => {
       const r = bar.getBoundingClientRect();
@@ -414,6 +427,7 @@
       for (let waited = 0; waited < (globalThis.__eymReadyWait ?? 6000) && !(S.seen || S.got > 0); waited += 150) await new Promise((r) => setTimeout(r, 150));
     }
 
+    if (opts.repeat !== undefined && !!S.repeat !== !!opts.repeat) await command({ cmd: "repeat", on: !!opts.repeat });
     paint();
     // Spotify's own cover (always loads, and its image host allows reading the colours); RYM's art as a fallback.
     send({ type: "spotify-art", kind, id }).then((r) => {
