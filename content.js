@@ -1122,6 +1122,45 @@
         sendResponse(de.dataset.eymRecorded ? { ok: true } : { pending: true });
         return false;
       }
+      if (msg && msg.type === "check-review") {
+        // Helper tab (or open tab) on a release page: is there a review of yours on it?
+        const r = extractReview(document);
+        if (!r) {
+          sendResponse({ pending: true });
+          return false;
+        }
+        publishReview();
+        sendResponse({ reviewed: r.reviewed, url: r.reviewed ? r.url || `https://rateyourmusic.com${location.pathname}#my_review` : "" });
+        return false;
+      }
+      if (msg && msg.type === "save-review") {
+        // Fill in RYM's own review form on this release page (through the page's world) and wait for it to save.
+        if (!document.getElementById("review_body") || !document.getElementById("review_save_btn")) {
+          sendResponse({ pending: true });
+          return false;
+        }
+        const text = String(msg.text || "").trim();
+        if (!text) {
+          sendResponse({ error: "nothing to save" });
+          return false;
+        }
+        document.dispatchEvent(new CustomEvent("eym-main", { detail: JSON.stringify({ action: "review", id: String(msg.id || "0"), text, publish: !!msg.publish }) }));
+        (async () => {
+          for (let i = 0; i < 40; i++) {
+            await new Promise((r) => setTimeout(r, 250));
+            const mine = document.getElementById("my_review");
+            const saved = mine && mine.querySelector("#saved_review_inner .rendered_text");
+            if (saved && saved.textContent.trim()) {
+              const r = extractReview(document);
+              publishReview();
+              sendResponse({ ok: true, url: (r && r.url) || `https://rateyourmusic.com${location.pathname}#my_review` });
+              return;
+            }
+          }
+          sendResponse({ error: "RYM didn't confirm the review was saved (check the album page)" });
+        })();
+        return true;
+      }
       if (msg && msg.type === "whoami") {
         sendResponse({ user: whoami() });
         return false;
@@ -1611,6 +1650,45 @@
       true
     );
 
+  // Your own review of the release this page is about: written (text in your review box) or not, and where to read it.
+  function extractReview(doc) {
+    const mine = doc.getElementById("my_review");
+    if (!mine) return null;
+    const text = (el) => (el ? el.textContent.replace(/\s+/g, " ").trim() : "");
+    const body = doc.getElementById("review_body");
+    const reviewed = !!(text(mine.querySelector("#saved_review_inner .rendered_text")) || (body && (body.value || body.textContent || "").trim()));
+    const a = mine.querySelector("#saved_review_inner .review_date a[href]");
+    const link = a && a.getAttribute("href");
+    return { reviewed, url: reviewed ? (link ? new URL(link, "https://rateyourmusic.com").href : "") : "" };
+  }
+  // Save it for the side panel, which shows "Add Review" or "Read Review" next to your rating.
+  function publishReview() {
+    if (typeof location === "undefined" || !/^\/release\/[^/]+\/[^/]+\/[^/]+\/?$/.test(location.pathname)) return;
+    const r = extractReview(document);
+    if (!r) return;
+    const url = r.reviewed && !r.url ? `https://rateyourmusic.com${location.pathname}#my_review` : r.url;
+    try {
+      api.storage.local.get("sidebar:reviews").then((o) => {
+        const all = (o && o["sidebar:reviews"]) || {};
+        const old = all[location.pathname];
+        if (old && old.reviewed === r.reviewed && old.url === url && Date.now() - old.t < 60e3) return;
+        all[location.pathname] = { reviewed: r.reviewed, url, t: Date.now() };
+        const keys = Object.keys(all);
+        if (keys.length > 4000) keys.sort((a, b) => all[a].t - all[b].t).slice(0, keys.length - 4000).forEach((k) => delete all[k]);
+        return api.storage.local.set({ "sidebar:reviews": all });
+      });
+    } catch {}
+  }
+  // Writing or deleting a review on the page itself: look again a moment after the buttons are pressed.
+  if (typeof document !== "undefined" && document.addEventListener)
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (e.target && e.target.closest && e.target.closest("#review_save_btn, #review_delete_btn")) setTimeout(publishReview, 3000);
+      },
+      true
+    );
+
   function recordThisRelease() {
     const rel = globalThis.__eymRelease;
     const box = document.querySelector('[id^="my_catalog_rating_l_"]');
@@ -1690,6 +1768,7 @@
     publishNewMusic();
     publishMyPages();
     recordThisRelease();
+    publishReview();
     publishSimilar();
     if (HELPER) return;
     addNavLink();

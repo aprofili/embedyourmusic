@@ -16,6 +16,16 @@
       <div id="rate-box">
         <div id="rating" role="group" aria-label="Your rating"></div>
         <div id="rating-note"></div>
+        <button type="button" id="review-btn" class="more" hidden></button>
+      </div>
+      <div id="review-box" hidden>
+        <textarea id="review-text" rows="5" placeholder="Write your review…" aria-label="Your review"></textarea>
+        <div class="review-row">
+          <label><input type="checkbox" id="review-pub"> Publish to the album page</label>
+          <span id="review-status"></span>
+          <button type="button" id="review-cancel" class="more">Cancel</button>
+          <button type="button" id="review-send" class="more">Send</button>
+        </div>
       </div>
     </section>
     <section id="lists">

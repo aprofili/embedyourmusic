@@ -4,6 +4,7 @@
 //  - "suggestions": run RYM's own SuggestionsLoad for a release into the hidden list
 //    #suggestions_release_<id> that the requester created (the album page doesn't need to be open).
 //  - "rate": RYM's own CatalogSetRating for a release.
+//  - "review": fill in and press RYM's own review form on the release page (text, optional publish).
 //  - "listening": RYM's own "Set listening" request (AddPlayHistoryFromText) for a release.
 (() => {
   const loadScript = (path, ready, cb) => {
@@ -54,6 +55,21 @@
     }
   }
 
+  // RYM's review form on a release page (#review_body, #review_publish, #review_save_btn), driven like a person would.
+  function review(text, publish) {
+    const body = document.getElementById("review_body");
+    const save = document.getElementById("review_save_btn");
+    if (!body || !save || !window.review) return false;
+    body.value = String(text || "");
+    body.dispatchEvent(new Event("input", { bubbles: true }));
+    body.dispatchEvent(new Event("change", { bubbles: true }));
+    const pub = document.getElementById("review_publish");
+    if (pub && pub.checked !== !!publish) pub.click();
+    save.disabled = false;
+    save.click();
+    return true;
+  }
+
   document.addEventListener("eym-main", (e) => {
     let d;
     try {
@@ -65,5 +81,6 @@
     if (d.action === "suggestions") suggestions(d.id);
     else if (d.action === "listening") listening(d.id);
     else if (d.action === "rate") rate(d.id, d.rating);
+    else if (d.action === "review") review(d.text, d.publish);
   });
 })();

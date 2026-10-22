@@ -127,6 +127,128 @@
     dimRows();
   }
 
+  // ---- Reviews: "Add Review" once an album is rated, "Read Review" once it has one ----
+  // sidebar:reviews = { "<release path>": { reviewed, url, t } }, written by content.js when a release page is seen,
+  // and here when a review is sent. An album rated here for the first time opens the box straight away.
+  let reviews = {};
+  const reviewKey = () => {
+    try {
+      return current && current.payload.href ? new URL(current.payload.href, "https://rateyourmusic.com").pathname : "";
+    } catch {
+      return "";
+    }
+  };
+  const reviewBox = $("review-box");
+  const reviewBtn = $("review-btn");
+  const reviewDrafts = new Map();
+  const checking = new Set();
+  function closeReview() {
+    const k = reviewKey();
+    if (k && !reviewBox.hidden) reviewDrafts.set(k, $("review-text").value);
+    reviewBox.hidden = true;
+  }
+  function openReview(focus = true) {
+    const k = reviewKey();
+    if (!k) return;
+    $("review-text").value = reviewDrafts.get(k) || "";
+    $("review-status").textContent = "";
+    reviewBox.hidden = false;
+    if (focus) {
+      $("review-text").focus();
+      if (reviewBox.scrollIntoView) reviewBox.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+    paintReview();
+  }
+  function paintReview() {
+    const k = reviewKey();
+    const rec = k && reviews[k];
+    reviewBtn.hidden = true;
+    if (!current || !k) return closeReview();
+    if (rec && rec.reviewed) {
+      reviewBtn.textContent = "Read Review";
+      reviewBtn.title = "Open your review on RYM";
+      reviewBtn.hidden = false;
+      reviewBox.hidden = true;
+      return;
+    }
+    if (!rating) {
+      reviewBox.hidden = true;
+      return; // not rated, not reviewed: nothing to offer
+    }
+    if (!rec) {
+      checkReview(); // rated, review status unknown: find out (the button appears once it is)
+      return;
+    }
+    reviewBtn.textContent = reviewBox.hidden ? "Add Review" : "Hide review box";
+    reviewBtn.title = "Write a review on RYM";
+    reviewBtn.hidden = false;
+    if (Date.now() - (rec.t || 0) > 6 * 3600e3) checkReview(true);
+  }
+  async function checkReview(quiet) {
+    const who = current;
+    const k = reviewKey();
+    if (!who || !k || !who.payload.href || checking.has(k)) return;
+    checking.add(k);
+    let res;
+    try {
+      res = await api.runtime.sendMessage({ type: "to-rym", tabId: who.tabId, msg: { type: "check-review", href: who.payload.href } });
+    } catch {
+      res = null;
+    }
+    checking.delete(k);
+    const rec = res && typeof res.reviewed === "boolean" ? { reviewed: res.reviewed, url: res.url || "", t: Date.now() } : reviews[k] || { reviewed: false, url: "", t: Date.now() - 5 * 3600e3 }; // unreadable: offer "Add Review" anyway
+    reviews[k] = rec;
+    if (res && typeof res.reviewed === "boolean") store.get("sidebar:reviews").then((all) => store.set("sidebar:reviews", { ...(all || {}), [k]: rec }));
+    if (current === who) paintReview();
+  }
+  reviewBtn.addEventListener("click", () => {
+    const rec = reviews[reviewKey()];
+    if (rec && rec.reviewed) {
+      window.open(rec.url || `${new URL(current.payload.href, "https://rateyourmusic.com").href}#my_review`, "_blank", "noopener");
+    } else if (reviewBox.hidden) openReview();
+    else {
+      closeReview();
+      paintReview();
+    }
+  });
+  $("review-cancel").addEventListener("click", () => {
+    closeReview();
+    paintReview();
+  });
+  $("review-send").addEventListener("click", async () => {
+    const who = current;
+    const k = reviewKey();
+    const text = $("review-text").value.trim();
+    const status = $("review-status");
+    if (!who || !k || !text) {
+      status.textContent = "Write something first.";
+      return;
+    }
+    const send = $("review-send");
+    send.disabled = true;
+    status.textContent = "Saving…";
+    if (!who.payload.id) await ensureId(who);
+    let res;
+    try {
+      res = await api.runtime.sendMessage({ type: "to-rym", tabId: who.tabId, msg: { type: "save-review", href: who.payload.href, id: who.payload.id || "", text, publish: $("review-pub").checked } });
+    } catch {
+      res = null;
+    }
+    send.disabled = false;
+    if (res && res.ok) {
+      const rec = { reviewed: true, url: res.url || "", t: Date.now() };
+      reviews[k] = rec;
+      reviewDrafts.delete(k);
+      store.get("sidebar:reviews").then((all) => store.set("sidebar:reviews", { ...(all || {}), [k]: rec }));
+      $("review-text").value = "";
+      if (current === who) {
+        reviewBox.hidden = true;
+        paintReview();
+      }
+      toast("Review saved on RYM");
+    } else status.textContent = `Couldn't save (${(res && res.error) || "no response"}).`;
+  });
+
   function setRating(value, known = true) {
     rating = value;
     hover = 0;
@@ -149,6 +271,7 @@
       note.append(btn);
     } else note.textContent = value ? `Your rating: ${value / 2}` : "Not rated";
     drawStars();
+    if (typeof paintReview === "function" && reviewBtn) paintReview();
   }
 
   async function rememberIdLocal(href, id) {
@@ -216,7 +339,9 @@
       res = null;
     }
     if (res && res.ok) {
+      const first = !rating && value > 0;
       setRating(value); // confirmed by the page's own widget a moment later
+      if (first && !(reviews[reviewKey()] || {}).reviewed) openReview(true); // first rating: offer the review box right away
     } else {
       $("rating-note").textContent = `Couldn't rate (${(res && res.error) || "no response"}).`;
     }
@@ -289,6 +414,7 @@
   const rateHome = rateBox.parentNode;
   const restoreRate = () => {
     if (rateBox.parentNode !== rateHome) rateHome.append(rateBox);
+    if (reviewBox.parentNode !== rateHome) rateHome.append(reviewBox);
   };
   {
     const bodyEl = $("body");
@@ -308,6 +434,7 @@
   // ---- Player ----
   function render(payload, restore) {
     const my = ++token;
+    closeReview(); // (keeps what was typed for that album)
     current = { payload, tabId: payload.tabId == null ? null : payload.tabId, counted: false };
     $("empty").hidden = true;
     $("now").hidden = false;
@@ -406,6 +533,8 @@
               if (node) {
                 slot.append(node);
                 node.rateSlot.append(rateBox);
+                const bar = node.querySelector(".sp-barrow");
+                if (bar) node.insertBefore(reviewBox, bar); // the review box opens inside the card, under the title and stars
               } else plain();
               reveal();
             })
@@ -1033,6 +1162,10 @@
       }
       const theirs = (k) => changes[k] && !(Date.now() - (selfWrites[k] || 0) < 3000);
       if (theirs("sidebar:similar")) refreshOpenList("similar");
+      if (theirs("sidebar:reviews")) {
+        reviews = { ...reviews, ...(changes["sidebar:reviews"].newValue || {}) };
+        paintReview();
+      }
       if (theirs("sidebar:ratings")) {
         ratings = { ...ratings, ...(changes["sidebar:ratings"].newValue || {}) };
         dimRows();
@@ -1065,6 +1198,10 @@
     for (const [k, v] of Object.entries(r || {})) fixed[/^[pi]:/.test(k) ? k : pathKey(k)] = v;
     ratings = { ...fixed, ...ratings };
     dimRows();
+  });
+  store.get("sidebar:reviews").then((r) => {
+    reviews = { ...(r || {}), ...reviews };
+    paintReview();
   });
   Promise.all([store.get(PLAYED_KEY), store.get(LAST_KEY), store.get("sidebar:history"), store.get("sidebar:migrated")]).then(([p, last, old, done]) => {
     played = p || [];

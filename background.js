@@ -586,6 +586,8 @@ async function pageFor(msg) {
     case "fetch-artist":
       return msg.path;
     case "page-record":
+    case "check-review":
+    case "save-review":
       return pathOf(msg.href);
     case "fetch-history":
     case "fetch-favorites": {
