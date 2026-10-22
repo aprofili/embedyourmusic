@@ -1020,3 +1020,9 @@ body.ready {
 .sp-row.sp-current .sp-n {
   color: var(--sp-b);
 }
+
+/* While an album loads: just the word "Loading…" */
+#now.loading #tabs,
+#now.loading #rate-box {
+  display: none;
+}

@@ -270,7 +270,15 @@
     an.onfinish = an.oncancel = () => (now.style.overflow = "");
   }
 
+  // While an album loads the player area shows only "Loading…" (no tabs, stars or half-built card).
+  const loading = (on) => {
+    const now = $("now");
+    now.classList.toggle("loading", on);
+    clearTimeout(loading.t);
+    if (on) loading.t = setTimeout(() => now.classList.remove("loading"), 15000); // never stay hidden
+  };
   const reveal = () => {
+    loading(false);
     document.body.classList.add("ready");
     settlePlace();
   };
@@ -310,6 +318,7 @@
     const tabs = $("tabs");
     const body = $("body");
     if (!anchorOff) holdPlace(null);
+    loading(true);
     tabs.textContent = "";
     body.textContent = "";
     body.className = "";
@@ -730,12 +739,14 @@
     $("tabs").textContent = "";
     $("body").className = "hint";
     $("body").textContent = "Picking something…";
+    loading(true);
     const skipRated = kind !== "history" && kind !== "favorites";
     let tries = 0;
     for (const item of shuffle(kind === "history" ? result.items : result.items.filter((i) => !isVideo(i))).filter(goodTitle)) {
       if (skipRated && isRated(item)) continue;
       if (tries++ >= 8) {
         $("body").textContent = "Tried 8 albums and they were all rated. Try again.";
+        loading(false);
         return;
       }
       let res;
@@ -748,6 +759,7 @@
       if (!res || !res.payload) {
         if (res && /open a rateyourmusic|paused/.test(res.error || "")) {
           $("body").textContent = `Couldn't load (${res.error}).`;
+          loading(false);
           return;
         }
         continue;
@@ -761,11 +773,13 @@
       return;
     }
     $("body").textContent = skipRated ? "Everything in this list is already rated." : "Nothing to play.";
+    loading(false);
   }
 
   async function playItem(item, row) {
     const my = ++token;
     holdPlace(row);
+    loading(true);
     $("empty").hidden = true;
     $("now").hidden = false;
     $("tabs").textContent = "";
@@ -781,6 +795,7 @@
     if (res && res.payload) render({ ...res.payload, tabId: res.tabId });
     else {
       $("body").textContent = `Couldn't load that album (${(res && res.error) || "no response"}).`;
+      loading(false);
       settlePlace();
     }
   }
