@@ -556,6 +556,40 @@
   const goodTitle = (i) => i && /[\p{L}\p{N}]/u.test(i.title || "");
   const healthy = (items) => !!(items && items.length && items.filter(goodTitle).length >= items.length * 0.8);
 
+  // ---- The dice: each section's die gets a random face (1-6) the first time it is drawn, and keeps it ----
+  const faces = {};
+  const PIPS = { 1: [[12, 12]], 2: [[8.5, 8.5], [15.5, 15.5]], 3: [[8.5, 8.5], [12, 12], [15.5, 15.5]], 4: [[8.5, 8.5], [15.5, 8.5], [8.5, 15.5], [15.5, 15.5]], 5: [[8.5, 8.5], [15.5, 8.5], [12, 12], [8.5, 15.5], [15.5, 15.5]], 6: [[8.5, 8], [15.5, 8], [8.5, 12], [15.5, 12], [8.5, 16], [15.5, 16]] };
+  function dieFace(kind) {
+    const n = faces[kind] || (faces[kind] = 1 + Math.floor(Math.random() * 6));
+    const dots = PIPS[n].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.6"/>`).join("");
+    return `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><g fill="currentColor" stroke="none">${dots}</g></svg>`;
+  }
+
+  // The RYM page a section comes from (null when there isn't one yet).
+  async function pageUrl(kind) {
+    const base = "https://rateyourmusic.com";
+    const user = await store.get("sidebar:user");
+    const href = current && current.payload && current.payload.href;
+    switch (kind) {
+      case "recommended":
+      case "challenge":
+        return user ? `${base}/recommendations/${user}/release/` : `${base}/recommendations/`;
+      case "newmusic":
+        return `${base}/new-music/`;
+      case "history":
+        return user ? `${base}/play-history/${user}/` : null;
+      case "favorites":
+        return user ? `${base}/collection/${user}/r3.5-5.0/` : null;
+      case "similar":
+        return href || null;
+      case "artist": {
+        const m = href && /^\/release\/[^/]+\/([^/]+)\//.exec(new URL(href).pathname);
+        return m ? `${base}/artist/${m[1]}` : null;
+      }
+    }
+    return null;
+  }
+
   // ---- List data: one loader for every list read from a RYM page ----
   // Visiting the page saves the list too. Missing or broken: read it now (the background uses a RYM tab you have open
   // on that page, else a helper tab it closes again). Older than its ttl: show it and refresh behind the scenes.
@@ -970,11 +1004,20 @@
     const die = document.createElement("button");
     die.type = "button";
     die.className = "dice";
-    die.innerHTML =
-      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><g fill="currentColor" stroke="none"><circle cx="8.5" cy="8.5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="15.5" cy="15.5" r="1.6"/></g></svg>';
+    die.innerHTML = dieFace(acc.dataset.kind);
     die.title = "Play a random one";
     die.addEventListener("click", () => dice(acc.dataset.kind, acc));
-    bar.append(die);
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "open-page";
+    go.innerHTML =
+      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
+    go.title = "Open this page on RYM";
+    go.addEventListener("click", async () => {
+      const url = await pageUrl(acc.dataset.kind);
+      if (url) window.open(url, "_blank", "noopener");
+    });
+    bar.append(die, go);
     head.addEventListener("click", () => {
       if (acc.classList.contains("open")) closeList(acc);
       else openList(acc);

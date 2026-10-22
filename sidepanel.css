@@ -306,9 +306,10 @@ button.rym-like-count.rym-open {
   flex: 1;
 }
 
-.dice {
+.dice,
+.open-page {
   position: absolute;
-  right: 26px;
+  right: 54px;
   top: 50%;
   transform: translateY(-50%);
   padding: 4px;
@@ -320,7 +321,12 @@ button.rym-like-count.rym-open {
   cursor: pointer;
 }
 
-.dice:hover {
+.open-page {
+  right: 26px;
+}
+
+.dice:hover,
+.open-page:hover {
   color: var(--fg);
   background: rgba(128, 128, 128, 0.18);
 }
@@ -782,7 +788,8 @@ body {
   background: color-mix(in srgb, var(--tint) 16%, transparent);
 }
 
-.dice:hover {
+.dice:hover,
+.open-page:hover {
   color: var(--tint-h);
   background: color-mix(in srgb, var(--tint) 20%, transparent);
 }

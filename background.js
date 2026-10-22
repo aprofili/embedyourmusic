@@ -578,8 +578,11 @@ async function pageFor(msg) {
     case "fetch-newmusic":
       return "/new-music/";
     case "read-reco":
-    case "exclude":
-      return "/recommendations/";
+    case "exclude": {
+      const user = await rymUser();
+      if (!user) throw new Error("sign in to rateyourmusic.com in this browser first");
+      return `/recommendations/${user}/release/`;
+    }
     case "fetch-artist":
       return msg.path;
     case "page-record":
