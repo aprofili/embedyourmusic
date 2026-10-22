@@ -27,9 +27,12 @@
     let lastEmit = 0;
     let selectedAt = 0;
     let fixes = 0; // reconcile attempts for the current want/actual mismatch
+    let startAt = 0; // ms into the song to resume from (set by select); posted as a seek until the embed reports it
+    let seekTries = 0;
+    let seekedAt = 0;
     const heard = new Map();
 
-    const snap = () => ({ key, rymId, ...about, idx, want, seen: st.seen, paused: st.paused, pos: st.pos, dur: st.dur, got, failed, total: tracks.length, started });
+    const snap = () => ({ key, rymId, ...about, idx, want, seen: st.seen, paused: st.paused, pos: startAt || st.pos, dur: st.dur, got, failed, total: tracks.length, started });
     const out = (event, force) => {
       const now = Date.now();
       if (!force && !event && now - lastEmit < 700) return;
@@ -50,7 +53,24 @@
       if (want && !playing() && Date.now() - lastToggle > 2200) post("toggle");
     };
 
-    function select(i, autoplay) {
+    // Resuming mid-song: ask the embed to jump there (retried while it reports somewhere else), then drop the target.
+    function applyStart() {
+      if (!startAt) return;
+      if (st.seen && st.pos > 0 && Math.abs(st.pos - startAt) <= 3000) {
+        startAt = 0;
+        return;
+      }
+      if (Date.now() - seekedAt < 1200) return;
+      if (seekTries >= 6) {
+        startAt = 0;
+        return;
+      }
+      seekTries++;
+      seekedAt = Date.now();
+      post("seek", { timestamp: Math.round(startAt / 1000) });
+    }
+
+    function select(i, autoplay, startMs) {
       if (i < 0 || i >= tracks.length) return;
       timers.forEach(clearTimeout);
       timers = [];
@@ -60,8 +80,12 @@
       fixes = 0;
       selectedAt = Date.now();
       st = { seen: false, paused: true, pos: 0, dur: 0 };
+      startAt = Number(startMs) > 2000 ? Number(startMs) : 0;
+      seekTries = 0;
+      seekedAt = 0;
       readyOnce = false;
       frame.src = `https://open.spotify.com/embed/track/${tracks[i].id}?utm_source=embedyourmusic`;
+      if (startAt) for (const ms of [1300, 2600, 4200, 6500]) timers.push(setTimeout(applyStart, ms));
       const event = null;
       if (autoplay) {
         // Press play once the embed is up: on its "ready" message, and again a few times in case that is
@@ -90,6 +114,7 @@
         started = false;
         fired = false;
         heard.clear();
+        startAt = 0;
         st = { seen: false, paused: true, pos: 0, dur: 0 };
         try {
           frame.src = "about:blank";
@@ -169,6 +194,7 @@
         if (idx + 1 < tracks.length) return select(idx + 1, true);
         want = false;
       }
+      applyStart();
       reconcile();
       out();
     });
@@ -194,7 +220,7 @@
       frame,
       handle(m) {
         if (m.cmd === "load") load(m);
-        else if (m.cmd === "select") select(m.i, m.autoplay);
+        else if (m.cmd === "select") select(m.i, m.autoplay, m.startMs);
         else if (m.cmd === "toggle") toggle();
         else if (m.cmd === "seek") seek(m.frac);
         else if (m.cmd === "next") {

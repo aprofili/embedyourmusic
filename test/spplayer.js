@@ -128,6 +128,12 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     assert.ok(!cmds.some((c) => c.cmd === "load" || c.cmd === "select"), "reopen adopts the running playback");
     w2.document.body.append(again);
     assert.ok(again.querySelectorAll(".sp-row")[1].classList.contains("sp-current"));
+    // engine gone (timed out) and the panel reopened on the same album: back to the saved song and second
+    engState = null;
+    cmds.length = 0;
+    const back = await w2.__eymSpPlayer.build(info, pay, { autoplay: false, resume: { key: info.key, idx: 2, pos: 61000 } });
+    assert.ok(back);
+    assert.ok(cmds.some((c) => c.cmd === "select" && c.i === 2 && c.startMs === 61000 && !c.autoplay), "resumes song 3 at 1:01, paused");
   }
   console.log("spplayer tests passed");
   process.exit(0);

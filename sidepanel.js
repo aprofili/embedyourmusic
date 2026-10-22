@@ -431,6 +431,29 @@
     });
   }
 
+  // ---- Where you were: one song number and one timestamp for the album last played (sidebar:resume) ----
+  // Playing a different album starts it from the top, and that is what gets stored.
+  let resume = null; // { key, idx, pos(ms) }
+  let resumeSaved = 0;
+  const resumeReady = store.get("sidebar:resume").then((r) => {
+    if (!resume) resume = r;
+  });
+  const resumeFor = (key) => {
+    if (resume && resume.key === key) return resume;
+    resume = { key, idx: 0, pos: 0 };
+    store.set("sidebar:resume", resume);
+    return null; // a different album: from the start
+  };
+  function saveResume(key, s) {
+    if (!resume || resume.key !== key) resume = { key, idx: 0, pos: 0 };
+    const pos = Math.max(0, Math.round(s.pos || 0));
+    const moved = s.idx !== resume.idx || Math.abs(pos - resume.pos) >= 3000 || (s.paused && pos !== resume.pos);
+    if (!moved || Date.now() - resumeSaved < 1500 && s.idx === resume.idx) return;
+    resume = { key, idx: s.idx, pos };
+    resumeSaved = Date.now();
+    store.set("sidebar:resume", resume);
+  }
+
   // ---- Player ----
   function render(payload, restore) {
     const my = ++token;
@@ -520,13 +543,13 @@
         if (service === "spotify" && globalThis.__eymSpPlayer) {
           // Our own player (hidden embed + track list) when Spotify is connected; else the plain embed.
           slot.textContent = "Loading…";
-          globalThis.__eymSpPlayer
-            .build(info, payload, { autoplay: !restore, onArt: (u) => noteArt(payload.href, u), onPlay: () => {
+          resumeReady
+            .then(() => globalThis.__eymSpPlayer.build(info, payload, { autoplay: !restore, resume: resumeFor(info.key), onProgress: (s) => saveResume(info.key, s), onArt: (u) => noteArt(payload.href, u), onPlay: () => {
               if (current && current.payload === payload && !current.counted) {
                 current.counted = true;
                 addPlayed(payload);
               }
-            } })
+            } }))
             .then((node) => {
               if (my !== token) return;
               slot.textContent = "";

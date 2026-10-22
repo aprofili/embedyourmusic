@@ -1096,3 +1096,9 @@ body.ready {
 #review-status:empty {
   display: none;
 }
+
+/* display:grid / inline-flex above must not defeat [hidden] */
+#review-box[hidden],
+#review-btn[hidden] {
+  display: none !important;
+}

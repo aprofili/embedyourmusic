@@ -331,6 +331,7 @@
         opts.onPlay();
       }
       if (event === "listened" && opts.onListened) opts.onListened();
+      if (opts.onProgress && s.idx >= 0) opts.onProgress(s);
       paint();
     });
     const command = async (c) => {
@@ -392,7 +393,9 @@
       S = (await driver.cmd({ cmd: "load", key: info.key, rymId: payload.id || "", href: payload.href || "", title: payload.title || "", artist: payload.artist || "", tracks: tracks.map((t) => ({ id: t.id, ms: t.ms })) })) || S;
       // Start the first song's embed now (paused unless this was asked for) and wait until it answers, so the
       // card only appears once pressing play does something.
-      await command({ cmd: "select", i: 0, autoplay: opts.autoplay !== false });
+      // Same album as last time: back to the song (and second) it was at.
+      const rs = opts.resume && opts.resume.idx >= 0 && opts.resume.idx < tracks.length ? opts.resume : null;
+      await command({ cmd: "select", i: rs ? rs.idx : 0, autoplay: opts.autoplay !== false, startMs: rs ? rs.pos : 0 });
       for (let waited = 0; waited < (globalThis.__eymReadyWait ?? 6000) && !(S.seen || S.got > 0); waited += 150) await new Promise((r) => setTimeout(r, 150));
     }
 

@@ -85,6 +85,29 @@ const tick = (ms) => new Promise((r) => setTimeout(r, ms));
   assert.strictEqual(eng.handle({ cmd: "get" }).pos, 90000);
   eng.handle({ cmd: "next" });
   assert.strictEqual(eng.handle({ cmd: "get" }).idx, 1, "next song");
+  // resume: select a song with a start time -> shows that time, seeks the embed there until it reports it
+  {
+    const e3 = w.__eymSpEngine.create(w.document.body, () => {});
+    const out3 = [];
+    const f3 = { postMessage: (m) => out3.push(m) };
+    Object.defineProperty(e3.frame, "contentWindow", { get: () => f3 });
+    const say3 = (payload) => {
+      const m = new w.Event("message");
+      Object.assign(m, { data: { type: "playback_update", payload }, origin: "https://open.spotify.com", source: f3 });
+      w.dispatchEvent(m);
+    };
+    e3.handle({ cmd: "load", key: "k3", tracks: [{ id: "a" }, { id: "b" }, { id: "c" }] });
+    const r3 = e3.handle({ cmd: "select", i: 2, autoplay: false, startMs: 95000 });
+    assert.strictEqual(r3.idx, 2);
+    assert.strictEqual(r3.pos, 95000, "shows the saved time straight away");
+    await tick(1000);
+    say3({ isPaused: true, position: 0, duration: 200000 }); // the embed starts at 0: not reported as the position
+    assert.strictEqual(e3.handle({ cmd: "get" }).pos, 95000);
+    assert.ok(out3.some((m) => m.command === "seek" && m.timestamp === 95), "seek to the saved second");
+    await tick(1300);
+    say3({ isPaused: true, position: 95500, duration: 200000 }); // it got there
+    assert.strictEqual(e3.handle({ cmd: "get" }).pos, 95500);
+  }
   console.log("engine tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
