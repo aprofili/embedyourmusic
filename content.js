@@ -648,6 +648,20 @@
     document.dispatchEvent(new CustomEvent("eym-main", { detail: JSON.stringify({ action: "listening", id: String(id) }) }));
   }
 
+  // The rating the release page we are on shows right now (the page's own widget is the truth), or null.
+  function liveRating(href) {
+    try {
+      if (typeof location === "undefined" || new URL(href, location.href).pathname !== location.pathname) return null;
+    } catch {
+      return null;
+    }
+    const box = document.querySelector('[id^="my_catalog_rating_l_"]');
+    const id = box ? box.id.replace("my_catalog_rating_l_", "") : "";
+    const stars = id && document.getElementById(`rating_stars_l_${id}`);
+    const m = stars && /star-(\d+)m/.exec(stars.className);
+    return m ? { id, rating: Number(m[1]) } : null;
+  }
+
   // Side panel asked for a release by URL: its streaming links, id and your rating.
   async function loadRelease(item) {
     const rel = globalThis.__eymRelease;
@@ -667,6 +681,12 @@
       entries = ((res && res.links) || [])
         .map((l) => ({ ...l, info: classifyAny(l.href) }))
         .filter((l) => l.info && l.info.service === l.service);
+    }
+    const live = liveRating(item.href); // on that very page: what it shows beats anything cached
+    if (live && (!rec || !rec.ratingKnown || rec.rating !== live.rating)) {
+      rec = { ...(rec || {}), id: live.id, rating: live.rating, ratingKnown: true };
+      if (rel.setRating) rel.setRating(live.id, live.rating);
+      rememberRating(live.id, new URL(item.href, location.href).pathname, live.rating);
     }
     const id = (rec && rec.id) || item.id || (await knownId(item.href)) || "";
     rememberId(item.href, id);
@@ -1714,6 +1734,30 @@
     const meta = rel.extractMeta ? rel.extractMeta(document) : { links: holder ? holder.getAttribute("data-links") : null };
     rel.put(id, { rating: Number(m[1]), ratingKnown: true, ...meta }, location.pathname);
     rememberId(location.pathname, id);
+    watchRating(id, stars);
+  }
+
+  // However the rating changes on the page (clicks, keyboard, the panel's stars), keep the cache and panel in step:
+  // look again once the pointer has left the widget and the class has settled.
+  function watchRating(id, stars) {
+    if (typeof MutationObserver === "undefined" || stars.dataset.eymWatched) return;
+    stars.dataset.eymWatched = "1";
+    let last = (/star-(\d+)m/.exec(stars.className) || [])[1];
+    let timer;
+    new MutationObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const box = document.getElementById(`my_catalog_rating_l_${id}`);
+        if (box && box.matches && box.matches(":hover")) return;
+        const m = /star-(\d+)m/.exec(stars.className);
+        if (!m || m[1] === last) return;
+        last = m[1];
+        const rel = globalThis.__eymRelease;
+        if (rel && rel.setRating) rel.setRating(id, Number(m[1]));
+        rememberRating(id, location.pathname, Number(m[1]));
+        send({ type: "rating-changed", id, rating: Number(m[1]) });
+      }, 1200);
+    }).observe(stars, { attributes: true, attributeFilter: ["class"] });
   }
 
   // Visiting /new-music/ saves its list for the panel (no request needed).
