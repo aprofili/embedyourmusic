@@ -122,6 +122,23 @@ function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, wind
     await tick(2000);
     assert.deepStrictEqual(sets, ["1", "2", "1"], "sent again once another album was in between; never doubled");
   }
+  // 8. A send that fails is queued and goes out first, in order, once RYM answers again
+  {
+    let broken = true;
+    const g = load({ answer: async (id, msg) => (msg.type !== "set-listening" ? { ok: true } : broken ? { error: "RYM is down" } : { ok: true }) });
+    const opened = () => g.created.map((c) => /album\/a\/(\d)\//.exec(c.url)[1]).join("");
+    const heard = (rymId) => g.ask({ type: "eng-state", event: "listened", state: { rymId, href: `/release/album/a/${rymId}/`, title: `T${rymId}` } });
+    heard("1");
+    await tick(7500); // the helper gives up on an erroring page after about 5 s
+    assert.strictEqual(opened(), "1", "tried once, failed");
+    broken = false;
+    heard("2");
+    await tick(3500);
+    assert.strictEqual(opened(), "112", "the failed one goes first (retry), then the new one");
+    heard("3");
+    await tick(2000);
+    assert.strictEqual(opened(), "1123", "queue was emptied");
+  }
   console.log("gateway tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

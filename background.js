@@ -518,6 +518,7 @@ let pendingPlay = null; // an album clicked on a page while the panel was closed
 api.runtime.onConnect.addListener((port) => {
   if (port.name !== "sidepanel") return;
   sidePorts.add(port);
+  getListenQueue().then((q) => q.length && flushListening()).catch(() => {});
   if (pendingPlay && Date.now() - pendingPlay.t < 120e3) {
     const p = pendingPlay;
     setTimeout(() => port.postMessage({ type: "play", payload: p.payload, tabId: p.tabId }), 50);
@@ -763,44 +764,80 @@ function setPlayingBadge(on) {
 
 // RYM play history ("Set listening"): the player reports "listened" once you have listened for a bit; this sends it,
 // whether the panel is open or not, and tells the panel how it went.
-const listeningBusy = new Set();
-async function markListening(state) {
-  let id = state.rymId || "";
-  const href = state.href || "";
-  if (!id && href) {
-    const ids = ((await api.storage.local.get("sidebar:ids")) || {})["sidebar:ids"] || {};
-    try {
-      id = ids[new URL(href).pathname] || "";
-    } catch {}
-    if (!id) {
-      const r = await rymTask({ msg: { type: "check-rating", id: "", href, title: state.title || "", artist: state.artist || "" } });
-      id = (r && r.id) || "";
-    }
-  }
-  const tell = (ok, text) => {
-    for (const port of sidePorts) port.postMessage({ type: "history", ok, text });
-  };
-  if (!id) return tell(false, "Couldn't add to RYM play history: album id not found");
-  // Once per album change: nothing is sent if the album sent last time is this one (listening to a, b, a sends all
-  // three; a, a does not send twice). Claimed before the request so two "listened" signals can't both go through.
-  if (listeningBusy.has(id)) return;
-  const prev = ((await api.storage.local.get("sidebar:lastlistened")) || {})["sidebar:lastlistened"] || "";
-  if (prev === id) return;
-  listeningBusy.add(id);
-  let res;
+// Play history sends. A send that fails (RYM down, no tab, no id...) stays in a persistent queue
+// (sidebar:listenqueue) and goes out first the next time anything can be sent: on the next listened album, when the
+// panel connects, or on a retry a few minutes later. Order is kept; the same album is never sent twice in a row.
+const LISTEN_QUEUE = "sidebar:listenqueue";
+let listenFlushing = false;
+let listenRetry = null;
+const tellListening = (ok, text) => {
+  for (const port of sidePorts) port.postMessage({ type: "history", ok, text });
+};
+const getListenQueue = async () => ((await api.storage.local.get(LISTEN_QUEUE)) || {})[LISTEN_QUEUE] || [];
+async function listenId(item) {
+  if (item.id) return item.id;
+  if (!item.href) return "";
   try {
-    await api.storage.local.set({ "sidebar:lastlistened": id });
-    res = await rymTask({ msg: { type: "set-listening", id, href } });
-    if (!(res && res.ok)) {
-      await api.storage.local.set({ "sidebar:lastlistened": prev }); // didn't go: allow another try
-      return tell(false, `Couldn't add to RYM play history (${(res && res.error) || "no response"})`);
+    const ids = ((await api.storage.local.get("sidebar:ids")) || {})["sidebar:ids"] || {};
+    const hit = ids[new URL(item.href).pathname];
+    if (hit) return hit;
+  } catch {}
+  const r = await rymTask({ msg: { type: "check-rating", id: "", href: item.href, title: item.title || "", artist: item.artist || "" } });
+  return (r && r.id) || "";
+}
+async function flushListening() {
+  if (listenFlushing) return;
+  listenFlushing = true;
+  try {
+    for (;;) {
+      let q = (await getListenQueue()).filter((x) => Date.now() - (x.t || 0) < 7 * 24 * 3600e3);
+      if (!q.length) {
+        await api.storage.local.set({ [LISTEN_QUEUE]: [] });
+        return;
+      }
+      const item = q[0];
+      const id = await listenId(item);
+      const res = id ? await rymTask({ msg: { type: "set-listening", id, href: item.href || "" } }) : { error: "album id not found" };
+      if (!(res && res.ok)) {
+        tellListening(false, `Couldn't add "${item.title || "this album"}" to RYM play history (${(res && res.error) || "no response"}); it will be sent when RYM answers (${q.length} waiting)`);
+        clearTimeout(listenRetry);
+        listenRetry = setTimeout(flushListening, 3 * 60e3);
+        return;
+      }
+      q = (await getListenQueue()).filter((x) => (x.id || x.href) !== (item.id || item.href));
+      await api.storage.local.set({ [LISTEN_QUEUE]: q, "sidebar:lastlistened": id });
+      const o = await api.storage.local.get("sidebar:rymhist");
+      if (o && o["sidebar:rymhist"]) await api.storage.local.set({ "sidebar:rymhist": { ...o["sidebar:rymhist"], t: 0 } }); // re-read next time
+      tellListening(true, `Added "${item.title || "this album"}" to your RYM play history`);
     }
   } finally {
-    listeningBusy.delete(id);
+    listenFlushing = false;
   }
-  const o = await api.storage.local.get("sidebar:rymhist");
-  if (o && o["sidebar:rymhist"]) await api.storage.local.set({ "sidebar:rymhist": { ...o["sidebar:rymhist"], t: 0 } }); // re-read next time
-  tell(true, `Added "${state.title || "this album"}" to your RYM play history`);
+}
+
+// After a restart: whatever was left in the queue goes out once things are up.
+setTimeout(() => getListenQueue().then((q) => q.length && flushListening()).catch(() => {}), 8000);
+
+let listenChain = Promise.resolve();
+function markListening(state) {
+  listenChain = listenChain.then(() => doMarkListening(state)).catch(() => {});
+  return listenChain;
+}
+async function doMarkListening(state) {
+  const item = { id: state.rymId || "", href: state.href || "", title: state.title || "", artist: state.artist || "", t: Date.now() };
+  if (!item.id && !item.href) return tellListening(false, "Couldn't add to RYM play history: album not identified");
+  // The same album as the last one in line (queued, else last sent) is not sent again.
+  const q = await getListenQueue();
+  const key = (x) => x.id || x.href;
+  const last = q.length ? key(q[q.length - 1]) : ((await api.storage.local.get("sidebar:lastlistened")) || {})["sidebar:lastlistened"] || "";
+  const same = (a) => a && (a === key(item) || (item.id && a === item.id));
+  if (same(last) || q.some((x) => key(x) === key(item))) {
+    if (q.length) await flushListening();
+    return;
+  }
+  q.push(item);
+  await api.storage.local.set({ [LISTEN_QUEUE]: q.slice(-30) });
+  await flushListening();
 }
 
 function handleSidebar(msg, sender, sendResponse) {
