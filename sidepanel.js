@@ -738,6 +738,8 @@
         return user ? `${base}/recommendations/${user}/release/` : `${base}/recommendations/`;
       case "newmusic":
         return `${base}/new-music/`;
+      case "charts":
+        return `${base}${chartSel}`;
       case "history":
         return user ? `${base}/play-history/${user}/` : null;
       case "favorites":
@@ -750,6 +752,75 @@
       }
     }
     return null;
+  }
+
+  // ---- Top albums: which chart ----
+  const CHART_BASE = "/charts/top/album/";
+  const chartPeriods = () => {
+    const y = new Date().getFullYear();
+    return [
+      [String(y), `${CHART_BASE}${y}/`],
+      ["All time", `${CHART_BASE}all-time/`],
+      ...[1, 2, 3].map((i) => [String(y - i), `${CHART_BASE}${y - i}/`]),
+      ...["2020s", "2010s", "2000s", "1990s", "1980s", "1970s"].map((d) => [d, `${CHART_BASE}${d}/`]),
+    ];
+  };
+  let chartSel = chartPeriods()[0][1];
+  let chartExtra = []; // charts you filtered or saved on the website: [{ path, label }]
+  const chartSelReady = Promise.all([store.get("sidebar:chartsel"), store.get("sidebar:charts-seen"), store.get("sidebar:charts-saved")]).then(([s, seen, saved]) => {
+    chartExtra = [...(saved || []), ...(seen || [])].filter((x, i, a) => x && x.path && a.findIndex((y) => y.path === x.path) === i);
+    if (s && typeof s === "string" && s.startsWith(CHART_BASE)) chartSel = s;
+  });
+  const chartLabel = (path) => {
+    const hit = chartPeriods().find((x) => x[1] === path) || chartExtra.find((x) => x.path === path);
+    return hit ? (hit.label || `${hit[0]} albums`) : "top albums";
+  };
+  function chartPicker(acc) {
+    const sel = document.createElement("select");
+    sel.className = "chart-pick";
+    sel.title = "Which chart";
+    sel.setAttribute("aria-label", "Which chart");
+    const group = (label, opts) => {
+      const g = document.createElement("optgroup");
+      g.label = label;
+      for (const [text, value] of opts) {
+        const o = document.createElement("option");
+        o.textContent = text;
+        o.value = value;
+        g.append(o);
+      }
+      return g;
+    };
+    sel.append(group("Top albums of…", chartPeriods()));
+    const extra = chartExtra.map((x) => [x.label, x.path]);
+    if (extra.length) sel.append(group("Your filtered & saved charts", extra));
+    sel.value = chartSel;
+    if (sel.value !== chartSel) {
+      // a chart not in the list any more: keep it selectable
+      sel.append(group("Current", [[chartLabel(chartSel), chartSel]]));
+      sel.value = chartSel;
+    }
+    sel.addEventListener("change", () => {
+      chartSel = sel.value;
+      store.set("sidebar:chartsel", chartSel);
+      openList(acc);
+    });
+    return sel;
+  }
+  async function chartMore() {
+    const all = (await store.get("sidebar:charts")) || {};
+    const path = chartSel;
+    const rec = all[path];
+    if (!rec || (rec.loaded || 1) >= (rec.pages || 1)) return;
+    const next = (rec.loaded || 1) + 1;
+    toast(`Reading page ${next} of ${chartLabel(path)}…`);
+    const res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-chart", path: `${path}${next}/` } }).catch(() => null);
+    if (!(res && res.items && res.items.length)) return toast(`Couldn't read page ${next} (${(res && res.error) || "no response"})`, true);
+    const have = new Set(rec.items.map((i) => i.href));
+    rec.items = [...rec.items, ...res.items.filter((i) => !have.has(i.href))];
+    rec.loaded = next;
+    await store.set("sidebar:charts", { ...all, [path]: rec });
+    if (path === chartSel) refreshOpenList("charts");
   }
 
   // ---- List data: one loader for every list read from a RYM page ----
@@ -855,6 +926,36 @@
       }
       items = items.filter((i) => new URL(i.href).pathname !== skip);
       return items.length ? { items } : { message: "No other albums or EPs by this artist." };
+    },
+    // Top albums: the chart picked in the section's dropdown (this year by default); more pages load on "Show more".
+    async charts() {
+      await chartSelReady;
+      const path = chartSel;
+      const all = (await store.get("sidebar:charts")) || {};
+      let rec = all[path];
+      const ok = rec && healthy(rec.items);
+      if (!ok || Date.now() - (rec.t || 0) > 6 * 3600e3) {
+        const reread = async () => {
+          const res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-chart", path } }).catch(() => null);
+          if (res && res.items && healthy(res.items)) {
+            const fresh = (await store.get("sidebar:charts")) || {};
+            fresh[path] = { t: Date.now(), items: res.items, pages: res.pages || 1, loaded: 1 };
+            const keys = Object.keys(fresh);
+            if (keys.length > 20) keys.sort((a, b) => fresh[a].t - fresh[b].t).slice(0, keys.length - 20).forEach((k) => delete fresh[k]);
+            await store.set("sidebar:charts", fresh);
+            return fresh[path];
+          }
+          return { error: (res && res.error) || "the page had no albums on it" };
+        };
+        if (ok) reread().then((r) => r.items && path === chartSel && refreshOpenList("charts")); // stale: show it, refresh behind
+        else {
+          toast(`Reading ${chartLabel(path)}…`);
+          const r = await reread();
+          if (!r.items) return failed({ label: `the ${chartLabel(path)} chart`, error: r.error, page: `https://rateyourmusic.com${path}` });
+          rec = r;
+        }
+      }
+      return { items: rec.items.filter(goodTitle), morePages: (rec.loaded || 1) < (rec.pages || 1) };
     },
     async recommended() {
       const d = await listData("recommended");
@@ -1018,6 +1119,7 @@
   function fillList(acc, kind, result) {
     const body = acc.querySelector(".acc-body");
     body.textContent = "";
+    if (kind === "charts") body.append(chartPicker(acc));
     if (!result.items) {
       const p = document.createElement("p");
       p.className = "hint";
@@ -1126,10 +1228,11 @@
         }
         list.append(row);
       }
-      more.hidden = shown >= items.length;
+      more.hidden = shown >= items.length && !(kind === "charts" && result.morePages);
     };
     more.addEventListener("click", () => {
-      shown = Math.min(items.length, 200);
+      if (kind === "charts" && shown >= items.length && result.morePages) return chartMore(); // next chart page
+      shown = Math.min(items.length, kind === "charts" ? Infinity : 200);
       paint();
     });
     paint();

@@ -584,6 +584,7 @@ async function pageFor(msg) {
       return `/recommendations/${user}/release/`;
     }
     case "fetch-artist":
+    case "fetch-chart":
       return msg.path;
     case "set-listening": // the album's own page when we know it: RYM's "Set listening" box lives there
       return msg.href ? pathOf(msg.href) : "";

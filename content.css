@@ -864,3 +864,11 @@ html.eym-sidebar #rym-reco-player {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+/* The side panel plays everything: RYM's own streaming icon rows are not needed on the page */
+html.eym-sidebar .ui_media_links,
+html.eym-sidebar .ui_media_links_container,
+html.eym-sidebar .media_link_container,
+html.eym-sidebar [class*="ui_stream_links"] {
+  display: none !important;
+}

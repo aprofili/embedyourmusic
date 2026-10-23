@@ -792,6 +792,52 @@
     return { items, t: Date.now() };
   }
 
+  // A chart page (/charts/top/album/<period>/<filters>/[page/]): the albums on it. -> { items, pages }
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  async function fetchChart(path) {
+    if (!/^\/charts\/top\/album\/[^?#]*$/.test(path || "")) throw new Error("not an album chart page");
+    const doc = await docFor(new RegExp("^" + escRe(path.replace(/\/$/, "")) + "/?$"), path);
+    const items = scrapeReleases(doc, 200).filter((i) => /^\/release\/album\//.test(new URL(i.href).pathname));
+    const nums = [...doc.querySelectorAll(".navlinknum, .navlinkcurrent")].map((n) => Number(n.textContent)).filter(Boolean);
+    if (!items.length) throw new Error("no albums found on the chart page");
+    return { items, pages: Math.max(1, ...nums), t: Date.now() };
+  }
+
+  // Visiting a chart you filtered yourself (or one you saved with the bookmark) makes it available in the panel's
+  // "Top albums" picker: the plain periods are built in, the rest is remembered here.
+  const STD_CHART = /^\/charts\/top\/album\/(all-time|\d{4}|\d{4}s)\/?$/;
+  function publishChart() {
+    if (typeof location === "undefined" || !/^\/charts\/top\/album\//.test(location.pathname) || !api || !api.storage || !api.storage.local) return;
+    const clean = (p) => p.replace(/\/\d+\/?$/, "/").replace(/\/?$/, "/"); // drop a page number
+    const label = (t) => t.replace(/\s*[-–|]\s*Rate Your Music.*$/i, "").replace(/\s+/g, " ").trim();
+    const path = clean(location.pathname);
+    const seen = STD_CHART.test(path) ? null : { path, label: label(document.title) || path, t: Date.now() };
+    // "Saved charts" box on the page: the links under its heading.
+    const saved = [];
+    const head = [...document.querySelectorAll("h1, h2, h3, h4, h5, div, span")].find((e) => !e.children.length && /^saved charts$/i.test(e.textContent.trim()));
+    let box = head && head.parentElement;
+    for (let i = 0; box && i < 3 && !box.querySelector('a[href^="/charts/top/album/"]'); i++) box = box.parentElement;
+    if (box) {
+      for (const a of box.querySelectorAll('a[href^="/charts/top/album/"]')) {
+        const p = clean(new URL(a.getAttribute("href"), "https://rateyourmusic.com").pathname);
+        const l = a.textContent.replace(/\s+/g, " ").trim();
+        if (l && !saved.some((s) => s.path === p)) saved.push({ path: p, label: l });
+      }
+    }
+    api.storage.local
+      .get(["sidebar:charts-seen", "sidebar:charts-saved"])
+      .then((o) => {
+        const out = {};
+        if (seen) {
+          const list = ((o && o["sidebar:charts-seen"]) || []).filter((x) => x.path !== seen.path);
+          out["sidebar:charts-seen"] = [seen, ...list].slice(0, 12);
+        }
+        if (saved.length) out["sidebar:charts-saved"] = saved.slice(0, 30);
+        if (Object.keys(out).length) return api.storage.local.set(out);
+      })
+      .catch(() => {});
+  }
+
   // Other releases by an artist: the Albums and EPs sections of their /artist/<slug> page (albums first). RYM lists
   // only the first few there when there are many ("Showing 11 of 40", with a "show all" link): on a real page load
   // those links are pressed and the rest waited for. -> { items, name }
@@ -1216,8 +1262,8 @@
         })();
         return true;
       }
-      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-artist")) {
-        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-newmusic" ? fetchNewMusic() : fetchFavorites(msg.page))
+      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-artist" || msg.type === "fetch-chart")) {
+        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-chart" ? fetchChart(msg.path) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-newmusic" ? fetchNewMusic() : fetchFavorites(msg.page))
           .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : r))
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
@@ -1835,6 +1881,7 @@
     publishMyPages();
     recordThisRelease();
     publishReview();
+    publishChart();
     publishSimilar();
     if (HELPER) return;
     addNavLink();
