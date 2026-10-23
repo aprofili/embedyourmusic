@@ -51,11 +51,13 @@
   // Connected while open: this is how pages know to play here. The worker can be stopped and
   // restarted by the browser (which drops this port), so reconnect and ping to keep it alive.
   let port;
+  let taskStatus = { text: "", t: 0 }; // what the background says it is waiting on
   function connect() {
     port = api.runtime.connect({ name: "sidepanel" });
     port.onMessage.addListener((msg) => {
       if (msg.type === "play") render({ ...msg.payload, tabId: msg.tabId });
       else if (msg.type === "rating" && current && current.payload.id === msg.id) setRating(msg.rating);
+      else if (msg.type === "task-status") taskStatus = { text: msg.text, t: Date.now() };
       else if (msg.type === "history") {
         toast(msg.text, !msg.ok);
         if (msg.ok) refreshOpenList("history");
@@ -400,7 +402,7 @@
     const now = $("now");
     now.classList.toggle("loading", on);
     clearTimeout(loading.t);
-    if (on) loading.t = setTimeout(() => now.classList.remove("loading"), 15000); // never stay hidden
+    if (on) loading.t = setTimeout(() => now.classList.remove("loading"), 60000); // never stay hidden
   };
   const reveal = () => {
     loading(false);
@@ -943,12 +945,7 @@
         loading(false);
         return;
       }
-      let res;
-      try {
-        res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "load-release", item } });
-      } catch {
-        res = null;
-      }
+      const res = await loadReleaseWithStatus(item, my, "Picking something…");
       if (my !== token) return;
       if (!res || !res.payload) {
         if (res && /open a rateyourmusic|paused/.test(res.error || "")) {
@@ -970,6 +967,34 @@
     loading(false);
   }
 
+  // After a few seconds of "Loading…", say what it is waiting on (the background reports its steps) and for how long.
+  let loadSeq = 0; // numbers album requests so the background and the page can drop the ones you moved on from
+  function watchLoading(my, label, startedAt = Date.now()) {
+    const tick = () => {
+      if (my !== token) return stop();
+      const s = Math.round((Date.now() - startedAt) / 1000);
+      if (s < 3) return;
+      const st = taskStatus.t >= startedAt - 500 ? taskStatus.text : "";
+      $("body").textContent = `${label} ${s} s${st ? ` — ${st}` : " — waiting for RYM"}`;
+    };
+    const timer = setInterval(tick, 1000);
+    const stop = () => clearInterval(timer);
+    return stop;
+  }
+  async function loadReleaseWithStatus(item, my, label) {
+    const seq = ++loadSeq;
+    const stop = watchLoading(my, label);
+    try {
+      const res = await Promise.race([
+        api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, seq, msg: { type: "load-release", item: { ...item, seq } } }).catch(() => null),
+        new Promise((r) => setTimeout(() => r({ error: `timed out after 50 s${taskStatus.text ? ` (last: ${taskStatus.text})` : ""}` }), 50000)),
+      ]);
+      return res;
+    } finally {
+      stop();
+    }
+  }
+
   async function playItem(item, row) {
     const my = ++token;
     holdPlace(row);
@@ -979,12 +1004,8 @@
     $("tabs").textContent = "";
     $("body").textContent = "Loading…";
     $("body").className = "hint";
-    let res;
-    try {
-      res = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "load-release", item } });
-    } catch {
-      res = null;
-    }
+    taskStatus = { text: "", t: 0 };
+    const res = await loadReleaseWithStatus(item, my, "Loading…");
     if (my !== token) return;
     if (res && res.payload) render({ ...res.payload, tabId: res.tabId });
     else {

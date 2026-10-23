@@ -606,13 +606,28 @@ async function liveTab(tabId, page) {
   return pool.find((t) => t.id === tabId) || pool.find((t) => t.active) || pool[0] || null;
 }
 
+// What the extension is waiting on, shown in the panel when something takes a while.
+let latestSeq = 0; // the panel's newest album request; helper jobs for older ones are skipped or stopped
+let queued = 0;
+function status(text) {
+  for (const port of sidePorts) {
+    try {
+      port.postMessage({ type: "task-status", text });
+    } catch {}
+  }
+}
+
 let helperChain = Promise.resolve();
 const helperJobs = new Map();
-function inHelperTab(page, msg, now = false) {
+function inHelperTab(page, msg, now = false, seq = 0) {
   const key = page + "|" + JSON.stringify(msg);
   if (helperJobs.has(key)) return helperJobs.get(key);
   // `now`: asked for by a helper tab itself (it is waiting on this), so it can't queue behind it.
+  if (!now && queued) status(`Waiting for ${queued} earlier RYM page${queued > 1 ? "s" : ""} to finish loading`);
+  queued++;
   const job = (now ? Promise.resolve() : helperChain).then(async () => {
+    queued--;
+    if (seq && seq < latestSeq) return { error: "superseded by a newer request" };
     let tab;
     // The tab you're on stays the tab you're on: Edge activates some other tab when a background tab closes,
     // so remember where you were (or moved to meanwhile) and go back there afterwards.
@@ -625,11 +640,18 @@ function inHelperTab(page, msg, now = false) {
     try {
       tab = await api.tabs.create({ url: `https://rateyourmusic.com${page || "/"}#eym-helper`, active: false, ...(prev ? { openerTabId: prev.id, windowId: prev.windowId } : {}) });
       helperTabs.add(tab.id);
+      status(`Opened ${page || "/"} on RYM in a background tab`);
       const start = Date.now();
       let last = null;
       let firstError = 0;
+      let said = 0;
       while (Date.now() - start < 30000) {
         await sleep(600);
+        if (seq && seq < latestSeq) return { error: "superseded by a newer request" };
+        if (Date.now() - said > 2500) {
+          said = Date.now();
+          status(`Waiting for RYM's ${page || "/"} page${last ? ` (it answered: ${last.error})` : " to load"}… ${Math.round((Date.now() - start) / 1000)} s`);
+        }
         let res;
         try {
           res = await api.tabs.sendMessage(tab.id, msg);
@@ -665,7 +687,8 @@ function inHelperTab(page, msg, now = false) {
   return done;
 }
 
-async function rymTask({ tabId = null, msg }) {
+async function rymTask({ tabId = null, msg, seq = 0 }) {
+  if (seq) latestSeq = Math.max(latestSeq, seq);
   let page;
   try {
     page = await pageFor(msg);
@@ -674,6 +697,7 @@ async function rymTask({ tabId = null, msg }) {
   }
   const tab = await liveTab(tabId, page);
   if (tab) {
+    status("Asking your open RYM tab");
     try {
       const res = await api.tabs.sendMessage(tab.id, msg);
       if (res && !res.error && !res.pending) return { ...res, tabId: tab.id };
@@ -681,14 +705,14 @@ async function rymTask({ tabId = null, msg }) {
       /* a tab from before the extension was reloaded: no one answers */
     }
   }
-  return inHelperTab(page, msg);
+  return inHelperTab(page, msg, false, seq);
 }
 
 // release-data.js could not read a release page by script (bot check): load it in a helper tab, whose content
 // script records it into the shared cache.
-async function openRelease(href, fromHelper) {
+async function openRelease(href, fromHelper, seq = 0) {
   if (!/^https:\/\/([\w-]+\.)?rateyourmusic\.com\/release\//.test(href)) return false;
-  const r = await inHelperTab(pathOf(href), { type: "page-record" }, fromHelper);
+  const r = await inHelperTab(pathOf(href), { type: "page-record" }, fromHelper, seq);
   return !!(r && r.ok);
 }
 
@@ -808,7 +832,7 @@ function handleSidebar(msg, sender, sendResponse) {
       sendResponse({});
       return false;
     case "to-rym":
-      rymTask({ tabId: msg.tabId, msg: msg.msg }).then(sendResponse);
+      rymTask({ tabId: msg.tabId, msg: msg.msg, seq: msg.seq || 0 }).then(sendResponse);
       return true;
     case "rate": // from the panel: any RYM tab can carry it out (RYM's own rating request)
       rymTask({ tabId: msg.tabId, msg: { type: "rate", id: msg.id, rating: msg.rating } }).then((r) => sendResponse(r.error ? { ok: false, error: r.error } : r));
@@ -857,7 +881,7 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
   }
   if (msg && msg.type === "open-release") {
-    openRelease(msg.href, !!(_sender.tab && helperTabs.has(_sender.tab.id))).then((ok) => sendResponse({ ok }));
+    openRelease(msg.href, !!(_sender.tab && helperTabs.has(_sender.tab.id)), msg.seq || 0).then((ok) => sendResponse({ ok }));
     return true;
   }
   if (msg && msg.type === "find-album") {

@@ -663,13 +663,16 @@
   }
 
   // Side panel asked for a release by URL: its streaming links, id and your rating.
+  let latestSeq = 0; // the panel numbers its album requests; older ones are dropped when a newer one arrives
   async function loadRelease(item) {
     const rel = globalThis.__eymRelease;
     if (!rel || !rel.getByHref) throw new Error("not ready");
+    const seq = Number(item.seq) || 0;
+    if (seq) latestSeq = Math.max(latestSeq, seq);
     let rec;
     let entries = [];
     try {
-      rec = await rel.getByHref(item.href);
+      rec = await rel.getByHref(item.href, { seq, skip: () => seq && seq < latestSeq });
       entries = rec.links ? parseLinks(rec.links) : [];
     } catch (e) {
       rec = null;

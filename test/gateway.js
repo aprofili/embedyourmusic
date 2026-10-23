@@ -93,6 +93,17 @@ function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, wind
     assert.ok(r.ok);
     assert.strictEqual(g.created.length, 1);
   }
+  // 6. Clicking on to another album drops the older request (it would otherwise hold up the queue for 30 s).
+  {
+    const g = load({ answer: async (id, msg) => (msg.item.seq === 1 ? { pending: true } : { payload: { id: "2" } }) });
+    const a = g.ask({ type: "to-rym", seq: 1, msg: { type: "load-release", item: { href: "/release/album/a/one/", seq: 1 } } });
+    await tick(900);
+    const b = g.ask({ type: "to-rym", seq: 2, msg: { type: "load-release", item: { href: "/release/album/a/two/", seq: 2 } } });
+    const [ra, rb] = await Promise.all([a, b]);
+    assert.ok(/superseded/.test(ra.error), "older request abandoned");
+    assert.strictEqual(rb.payload.id, "2");
+    assert.strictEqual(g.stats().maxOpen, 1);
+  }
   console.log("gateway tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

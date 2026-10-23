@@ -108,11 +108,11 @@
   }
 
   // Background-tab fallback (extension only). The tab's content script stores the record; read it back.
-  async function openInTab(href) {
+  async function openInTab(href, seq) {
     try {
       const rt = globalThis.chrome && chrome.runtime;
       if (!rt || !rt.sendMessage || !rt.id) return null;
-      const res = await rt.sendMessage({ type: "open-release", href });
+      const res = await rt.sendMessage({ type: "open-release", href, seq: seq || 0 });
       if (!res || !res.ok) return null;
       const id = store.get(hrefKey(href));
       let rec = null;
@@ -127,7 +127,8 @@
     }
   }
 
-  async function network(id, href) {
+  let botCheckUntil = 0; // a script request just met RYM's bot check: go straight to a real page load for a while
+  async function network(id, href, seq) {
     const wait = lastFetch + GAP_MS - Date.now();
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     if (blocked()) {
@@ -136,11 +137,16 @@
       if (viaTab) return viaTab;
       throw new Error(blockMessage());
     }
+    if (href && botCheckUntil > Date.now()) {
+      const viaTab = await openInTab(href, seq);
+      if (viaTab) return viaTab;
+    }
     lastFetch = Date.now();
     const res = await fetch(href, { credentials: "same-origin" });
     if (res.status === 403) {
       // Bot check on a script request: a real page load in a background tab usually gets through.
-      const viaTab = await openInTab(href);
+      botCheckUntil = Date.now() + 10 * 60e3;
+      const viaTab = await openInTab(href, seq);
       if (viaTab) return viaTab;
     }
     if (!res.ok) {
@@ -227,7 +233,8 @@
     }
   };
   const hrefJobs = new Map();
-  function getByHref(href) {
+  // opts.skip(): true once nobody wants this any more (the panel moved on to another album): don't start it.
+  function getByHref(href, opts) {
     const known = store.get(hrefKey(href));
     const hit = known && cachedAny(known);
     if (hit) return Promise.resolve({ ...hit, id: known });
@@ -235,7 +242,10 @@
     if (bad) return bad;
     if (!hrefJobs.has(href)) {
       const job = tail
-        .then(() => network(null, href))
+        .then(() => {
+          if (opts && opts.skip && opts.skip()) throw new Error("superseded");
+          return network(null, href, opts && opts.seq);
+        })
         .then((rec) => {
           if (rec.id) store.set(hrefKey(href), rec.id);
           return rec;
