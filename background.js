@@ -482,6 +482,52 @@ async function findAlbum(want) {
   return [...spotify, ...others];
 }
 
+// ---- Newer editions: a Spotify album that has a deluxe / remastered / anniversary edition released later is played
+// as that edition (better mixes, extra tracks). Only the same artist's albums whose base title is the same and whose
+// name says it is an edition are considered; the newest release date wins. Remembered per album (sp:newer).
+const EDITION_WORDS = /\b(deluxe|expanded|anniversary|remaster(?:ed)?|edition|bonus|special|collector'?s?|super|reissue|re-?mix(?:ed)?|new mix|stereo mix|\d{4} mix)\b/i;
+const NOT_THE_ALBUM = /\b(live|karaoke|instrumentals?|tribute|made famous|originally performed|covers?)\b/i;
+function albumBase(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/\(.*?\)|\[.*?\]/g, " ")
+    .replace(/\s[-–—:]\s.*$/, " ")
+    .replace(EDITION_WORDS, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+const fullDate = (d) => (/^\d{4}$/.test(d || "") ? `${d}-01-01` : /^\d{4}-\d\d$/.test(d || "") ? `${d}-01` : d || "");
+function pickNewerEdition(orig, cands) {
+  const base = albumBase(orig.name);
+  const origMono = /\bmono\b/i.test(orig.name);
+  const artist = ((orig.artists || [])[0] || {}).id;
+  let best = null;
+  for (const c of cands || []) {
+    if (!c || c.id === orig.id || (c.album_type && c.album_type !== "album")) continue;
+    if (albumBase(c.name) !== base || !EDITION_WORDS.test(c.name) || NOT_THE_ALBUM.test(c.name)) continue;
+    if (/\bmono\b/i.test(c.name) && !origMono) continue;
+    if (artist && !(c.artists || []).some((a) => a.id === artist)) continue;
+    if (!(fullDate(c.release_date) > fullDate(orig.release_date))) continue;
+    if (!best || fullDate(c.release_date) > fullDate(best.release_date) || (c.release_date === best.release_date && (c.total_tracks || 0) > (best.total_tracks || 0))) best = c;
+  }
+  return best ? { id: best.id, name: best.name, date: best.release_date } : null;
+}
+async function newerEdition(id) {
+  const key = "sp:newer";
+  const all = ((await api.storage.local.get(key)) || {})[key] || {};
+  const hit = all[id];
+  if (hit && Date.now() - hit.t < (hit.id ? 7 : 3) * 24 * 3600e3) return hit.id ? { id: hit.id, name: hit.name } : {};
+  const orig = await spotifyJson(`/albums/${id}`);
+  const q = `album:"${albumBase(orig.name) || orig.name}" artist:"${((orig.artists || [])[0] || {}).name || ""}"`;
+  const res = await spotifyJson("/search", { q, type: "album", limit: "10" });
+  const found = pickNewerEdition({ ...orig, id }, (res.albums && res.albums.items) || []);
+  all[id] = { t: Date.now(), id: found ? found.id : "", name: found ? found.name : "" };
+  const keys = Object.keys(all);
+  if (keys.length > 300) keys.sort((a, b) => all[a].t - all[b].t).slice(0, keys.length - 300).forEach((k) => delete all[k]);
+  await api.storage.local.set({ [key]: all });
+  return found ? { id: found.id, name: found.name } : {};
+}
+
 async function handleSpotify(msg) {
   try {
     switch (msg.type) {
@@ -492,6 +538,8 @@ async function handleSpotify(msg) {
         return { ok: true };
       case "spotify-tracks":
         return { tracks: await spotifyTracks(msg.kind, msg.id) };
+      case "spotify-newer":
+        return await newerEdition(msg.id).catch(() => ({}));
       case "spotify-save":
         await setSaved(msg.id, !!msg.save);
         return { ok: true };

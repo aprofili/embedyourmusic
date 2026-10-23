@@ -82,6 +82,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     const w2 = dom2.window;
     w2.IntersectionObserver = class { observe() {} unobserve() {} };
     const cmds = [];
+    const asked = [];
     let broadcast;
     let dead = false;
     let engState = { key: "", idx: -1, want: false, seen: false, paused: true, pos: 0, dur: 0 };
@@ -102,7 +103,8 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
             return { state: engState };
           }
           if (m.type === "spotify-status") return { connected: true };
-          if (m.type === "spotify-tracks") return { tracks: tracks.map((t) => ({ ...t })) };
+          if (m.type === "spotify-tracks") { asked.push(m.id); return { tracks: tracks.map((t) => ({ ...t })) }; }
+          if (m.type === "spotify-newer") return { id: "NEWID", name: "Album (Super Deluxe)" };
           return {};
         },
       },
@@ -115,18 +117,22 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     await tick();
     const pay = { id: "1", title: "Album", artist: "Band", artUrl: "", href: "https://rateyourmusic.com/release/album/band/album/", rating: 0, entries: [{ service: "spotify", href: "https://open.spotify.com/album/49JPEgPvEaFp89xqzeQvF7" }] };
     const info = w2.__embedYourMusic.classifyAny("https://open.spotify.com/album/49JPEgPvEaFp89xqzeQvF7");
+    const EK = "spotify:album:NEWID";
     const card = await w2.__eymSpPlayer.build(info, pay, {});
     assert.ok(card, "card built with offscreen driver");
+    assert.deepStrictEqual(asked, ["NEWID"], "newer edition's tracks are used");
+    assert.ok(cmds.some((c) => c.cmd === "load" && c.key === "spotify:album:NEWID"), "engine keyed by the edition");
+    assert.ok(/Super Deluxe/.test(card.querySelector(".sp-edition").textContent), "edition shown");
     assert.ok(cmds.some((c) => c.cmd === "load" && c.tracks.length === 3), "tracks loaded into the engine");
     assert.strictEqual(card.querySelector(".sp-frame"), null, "no iframe in the panel");
     w2.document.body.append(card);
     await tick(5);
     assert.ok(cmds.some((c) => c.cmd === "select" && c.i === 0 && c.autoplay), "autoplay starts song 1");
-    broadcast({ type: "eng-state", state: { key: info.key, idx: 1, want: true, seen: true, paused: false, pos: 5000, dur: 180000 } });
+    broadcast({ type: "eng-state", state: { key: EK, idx: 1, want: true, seen: true, paused: false, pos: 5000, dur: 180000 } });
     assert.ok(card.querySelectorAll(".sp-row")[1].classList.contains("sp-on"), "state from offscreen shown");
     assert.strictEqual(card.querySelector(".sp-play").textContent, "⏸");
     // reopened while playing the same release: adopt, don't restart
-    engState = { key: info.key, idx: 1, want: true, seen: true, paused: false, pos: 9000, dur: 180000 };
+    engState = { key: EK, idx: 1, want: true, seen: true, paused: false, pos: 9000, dur: 180000 };
     cmds.length = 0;
     const again = await w2.__eymSpPlayer.build(info, pay, {});
     await tick(5);

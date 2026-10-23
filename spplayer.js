@@ -135,10 +135,14 @@
   }
 
   async function build(info, payload, opts = {}) {
-    const [, kind, id] = (info.key || "").split(":");
+    const [, kind, firstId] = (info.key || "").split(":");
     if (kind !== "album" && kind !== "track") return null;
     const status = await send({ type: "spotify-status" });
     if (!status.connected) return null;
+    // A newer edition of the album (deluxe, remaster...) is played in its place.
+    const newer = kind === "album" ? await send({ type: "spotify-newer", id: firstId }).catch(() => null) : null;
+    const id = (newer && newer.id) || firstId;
+    const engKey = newer && newer.id ? `spotify:album:${id}` : info.key;
     const res = await send({ type: "spotify-tracks", kind, id });
     if (res.error || !res.tracks || !res.tracks.length) return null;
     const tracks = res.tracks;
@@ -186,6 +190,7 @@
       if (m) artistHref = `https://rateyourmusic.com/artist/${m[1]}`;
     } catch {}
     meta.append(link("sp-title", payload.title || "Untitled", payload.href || ""), link("sp-artist", payload.artist || "", artistHref));
+    if (newer && newer.id) meta.append(el("div", "sp-edition", `Playing: ${newer.name}`));
     const now = el("div", "sp-now", ""); // (kept for the painter; hidden: the track list already shows the song)
     now.hidden = true;
     const rateSlot = el("div", "sp-rate");
@@ -414,9 +419,9 @@
     embedBtn.title = driver.remote ? "Open on Spotify" : "Show Spotify's own player";
 
     // Already playing this release (the panel was closed and reopened): pick up where it is.
-    const loadCmd = { cmd: "load", key: info.key, rymId: payload.id || "", href: payload.href || "", title: payload.title || "", artist: payload.artist || "", tracks: tracks.map((t) => ({ id: t.id, ms: t.ms })) };
+    const loadCmd = { cmd: "load", key: engKey, rymId: payload.id || "", href: payload.href || "", title: payload.title || "", artist: payload.artist || "", tracks: tracks.map((t) => ({ id: t.id, ms: t.ms })) };
     const cur = await driver.cmd({ cmd: "get" });
-    if (cur && cur.key === info.key && cur.idx >= 0) {
+    if (cur && cur.key === engKey && cur.idx >= 0) {
       if (driver.setLoad) driver.setLoad(loadCmd); // (so a vanished engine can be rebuilt from this)
       S = cur;
       started = true;

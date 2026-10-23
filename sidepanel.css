@@ -1216,3 +1216,12 @@ a.sp-artist {
   background: var(--bg);
   color: var(--fg);
 }
+
+.sp-edition {
+  margin-top: 2px;
+  font-size: 0.75em;
+  color: color-mix(in srgb, var(--sp-a) 70%, var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

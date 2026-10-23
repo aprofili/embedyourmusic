@@ -60,6 +60,21 @@ const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
         method === "PUT" ? saved.add(id) : saved.delete(id);
         return json({});
       }
+      if (u.pathname === "/v1/albums/rs") return json({ name: "Rubber Soul (Remastered)", release_date: "1965-12-03", total_tracks: 14, artists: [{ id: "bt", name: "The Beatles" }] });
+      if (u.pathname === "/v1/albums/none") return json({ name: "Plain", release_date: "2000-01-01", artists: [{ id: "x", name: "X" }] });
+      if (u.pathname === "/v1/search") {
+        const a = [{ id: "bt" }];
+        return json({ albums: { items: u.searchParams.get("q").includes("plain")
+          ? [{ id: "p2", name: "Plain (Live)", album_type: "album", release_date: "2010-01-01", artists: [{ id: "x" }] }]
+          : [
+            { id: "rs-orig", name: "Rubber Soul", album_type: "album", release_date: "1965-12-03", artists: a },
+            { id: "rs-mono", name: "Rubber Soul (Mono Remaster)", album_type: "album", release_date: "2025-01-01", artists: a },
+            { id: "rs-tribute", name: "Rubber Soul (Tribute)", album_type: "album", release_date: "2026-01-01", artists: [{ id: "z" }] },
+            { id: "rs-sd", name: "Rubber Soul (Super Deluxe)", album_type: "album", release_date: "2026-09-12", total_tracks: 70, artists: a },
+            { id: "rs-dx", name: "Rubber Soul (Deluxe)", album_type: "album", release_date: "2021-01-01", artists: a },
+            { id: "other", name: "Other Album (Deluxe)", album_type: "album", release_date: "2026-09-12", artists: a },
+          ] } });
+      }
       return json({}, 500);
     },
     crypto: require("crypto").webcrypto,
@@ -90,6 +105,16 @@ const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
   assert.ok(saved.has("t1"));
   assert.ok((await ask({ type: "spotify-save", id: "t1", save: false })).ok);
   assert.ok(!saved.has("t1"));
+
+  // newer edition: the latest same-title edition by the same artist wins; cached afterwards
+  r = await ask({ type: "spotify-newer", id: "rs" });
+  assert.strictEqual(r.id, "rs-sd", JSON.stringify(r));
+  const n = calls.length;
+  r = await ask({ type: "spotify-newer", id: "rs" });
+  assert.strictEqual(r.id, "rs-sd");
+  assert.strictEqual(calls.length, n, "cached, no new requests");
+  r = await ask({ type: "spotify-newer", id: "none" });
+  assert.ok(!r.id, "live/unrelated albums are not editions");
 
   // expired token refreshes
   store["sp:auth"].expires = 0;
