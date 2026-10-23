@@ -83,6 +83,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     w2.IntersectionObserver = class { observe() {} unobserve() {} };
     const cmds = [];
     let broadcast;
+    let dead = false;
     let engState = { key: "", idx: -1, want: false, seen: false, paused: true, pos: 0, dur: 0 };
     w2.chrome = {
       runtime: {
@@ -92,6 +93,10 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
           if (m.type === "eng-ensure") return { ok: true };
           if (m.type === "eng-cmd") {
             cmds.push(m);
+            if (dead && m.cmd === "toggle") {
+              dead = false;
+              return {}; // the offscreen player went away
+            }
             if (m.cmd === "load") engState = { ...engState, key: m.key };
             if (m.cmd === "select") engState = { ...engState, idx: m.i, want: !!m.autoplay };
             return { state: engState };
@@ -128,6 +133,14 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     assert.ok(!cmds.some((c) => c.cmd === "load" || c.cmd === "select"), "reopen adopts the running playback");
     w2.document.body.append(again);
     assert.ok(again.querySelectorAll(".sp-row")[1].classList.contains("sp-current"));
+    // paused for a while, the offscreen player is gone: play must come back at the same song and second, not song 1
+    cmds.length = 0;
+    dead = true;
+    again.querySelector(".sp-play").click();
+    await tick(30);
+    const sel = cmds.find((c) => c.cmd === "select");
+    assert.ok(sel && sel.i === 1 && sel.startMs === 9000 && !sel.autoplay, "rebuilt engine returns to song 2 at 0:09");
+    assert.ok(cmds.map((c) => c.cmd).lastIndexOf("toggle") > cmds.indexOf(sel), "the repeated toggle comes after the select");
     // engine gone (timed out) and the panel reopened on the same album: back to the saved song and second
     engState = null;
     cmds.length = 0;

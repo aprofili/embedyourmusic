@@ -305,6 +305,7 @@
     let scrubbing = false;
     let nextPct = 0;
     const paint = () => {
+      driver.last = S; // (where it was, in case the engine has to be rebuilt)
       const playing = S.want && S.seen && !S.paused;
       const idx = S.idx;
       play.textContent = playing ? "⏸" : "▶";
@@ -413,12 +414,14 @@
     embedBtn.title = driver.remote ? "Open on Spotify" : "Show Spotify's own player";
 
     // Already playing this release (the panel was closed and reopened): pick up where it is.
+    const loadCmd = { cmd: "load", key: info.key, rymId: payload.id || "", href: payload.href || "", title: payload.title || "", artist: payload.artist || "", tracks: tracks.map((t) => ({ id: t.id, ms: t.ms })) };
     const cur = await driver.cmd({ cmd: "get" });
     if (cur && cur.key === info.key && cur.idx >= 0) {
+      if (driver.setLoad) driver.setLoad(loadCmd); // (so a vanished engine can be rebuilt from this)
       S = cur;
       started = true;
     } else {
-      S = (await driver.cmd({ cmd: "load", key: info.key, rymId: payload.id || "", href: payload.href || "", title: payload.title || "", artist: payload.artist || "", tracks: tracks.map((t) => ({ id: t.id, ms: t.ms })) })) || S;
+      S = (await driver.cmd(loadCmd)) || S;
       // Start the first song's embed now (paused unless this was asked for) and wait until it answers, so the
       // card only appears once pressing play does something.
       // Same album as last time: back to the song (and second) it was at.
@@ -482,6 +485,7 @@
       };
       api.runtime.onMessage.addListener(onMsg);
       d.remote = true;
+      d.setLoad = (c) => (lastLoad = c);
       d.cmd = async (c) => {
         if (c.cmd === "load") lastLoad = c;
         if (engine) return engine.handle(c);
@@ -491,7 +495,12 @@
           // hand it the album again, and repeat the command.
           const e = await timed({ type: "eng-ensure" });
           if (e && e.ok) {
-            if (lastLoad && c.cmd !== "load") await timed({ type: "eng-cmd", ...lastLoad });
+            if (lastLoad && c.cmd !== "load") {
+              await timed({ type: "eng-cmd", ...lastLoad });
+              // ...and back to the song and second it was at (a bare toggle would start the album over)
+              const h = d.last;
+              if (h && h.idx >= 0 && h.key === lastLoad.key && c.cmd !== "select") await timed({ type: "eng-cmd", cmd: "select", i: h.idx, autoplay: false, startMs: h.pos });
+            }
             res = await timed({ type: "eng-cmd", ...c });
           }
         }
@@ -500,7 +509,11 @@
         // Still nothing: play from the panel itself (and make sure the offscreen player can't play alongside).
         send({ type: "eng-close" });
         const eng = local();
-        if (lastLoad && c.cmd !== "load") eng.handle(lastLoad);
+        if (lastLoad && c.cmd !== "load") {
+          eng.handle(lastLoad);
+          const h = d.last;
+          if (h && h.idx >= 0 && h.key === lastLoad.key && c.cmd !== "select") eng.handle({ cmd: "select", i: h.idx, autoplay: false, startMs: h.pos });
+        }
         return eng.handle(c);
       };
       return d;

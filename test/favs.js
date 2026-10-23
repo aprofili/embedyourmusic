@@ -81,6 +81,18 @@ const header = '<a class="header_profile_main" href="/~jkprilfools"></a>';
     ]);
   }
 
+  // On a release page the "Set listening" box is used (RYMPlayHistory.save), not the request
+  {
+    const dom = new JSDOM("<body><input id='listening_save_btn'></body>", { url: "https://rateyourmusic.com/release/album/a/b/", runScripts: "outside-only", virtualConsole: new VirtualConsole() });
+    const w = dom.window;
+    const calls = [];
+    w.RYMPlayHistory = { assoc_id: 0, save() { calls.push(["save", this.assoc_id]); } };
+    w.rym = { request: { post: (...a) => calls.push(["post", a[0]]) } };
+    w.eval(read("main-bridge.js"));
+    w.document.dispatchEvent(new w.CustomEvent("eym-main", { detail: JSON.stringify({ action: "listening", id: "16765" }) }));
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(calls)), [["save", 16765]]);
+  }
+
   // Listened: 4 different tracks, 20 s each, not paused
   {
     const { w } = page("<body></body>");

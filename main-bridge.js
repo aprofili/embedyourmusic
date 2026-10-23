@@ -35,6 +35,13 @@
 
   function listening(id) {
     try {
+      // On the release page: RYM's own "Set listening" box (Save listening = the whole album, nothing selected).
+      const ph = window.RYMPlayHistory;
+      if (ph && typeof ph.save === "function" && document.getElementById("listening_save_btn")) {
+        ph.assoc_id = Number(id);
+        ph.save();
+        return;
+      }
       // Same request as the "Set" box on your profile: AddPlayHistoryFromText with the [AlbumID] shortcut.
       window.rym.request.post("AddPlayHistoryFromText", { play_str: `[Album${id}]` }, null, "script");
     } catch (e) {

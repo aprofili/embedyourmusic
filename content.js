@@ -1205,7 +1205,15 @@
           return false;
         }
         setListening(msg.id);
-        setTimeout(() => sendResponse({ ok: true }), 2500); // the request needs the page alive for a moment
+        // The request needs the page alive for a moment; on a release page RYM's own box says "Listening saved."
+        (async () => {
+          for (let i = 0; i < 12; i++) {
+            await new Promise((r) => setTimeout(r, 250));
+            const ok = document.getElementById("listening_success");
+            if (i >= 3 && ok && ok.offsetParent !== null && ok.textContent.trim()) break;
+          }
+          sendResponse({ ok: true });
+        })();
         return true;
       }
       if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-artist")) {

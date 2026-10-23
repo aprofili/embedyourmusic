@@ -585,6 +585,8 @@ async function pageFor(msg) {
     }
     case "fetch-artist":
       return msg.path;
+    case "set-listening": // the album's own page when we know it: RYM's "Set listening" box lives there
+      return msg.href ? pathOf(msg.href) : "";
     case "page-record":
     case "check-review":
     case "save-review":
@@ -779,7 +781,7 @@ async function markListening(state) {
   if (!id) return tell(false, "Couldn't add to RYM play history: album id not found");
   const seen = ((await api.storage.local.get("sidebar:listened")) || {})["sidebar:listened"] || {};
   if (Date.now() - (seen[id] || 0) < 6 * 3600e3) return;
-  const res = await rymTask({ msg: { type: "set-listening", id } });
+  const res = await rymTask({ msg: { type: "set-listening", id, href } });
   if (!(res && res.ok)) return tell(false, `Couldn't add to RYM play history (${(res && res.error) || "no response"})`);
   seen[id] = Date.now();
   await api.storage.local.set({ "sidebar:listened": seen });
