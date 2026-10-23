@@ -104,6 +104,24 @@ function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, wind
     assert.strictEqual(rb.payload.id, "2");
     assert.strictEqual(g.stats().maxOpen, 1);
   }
+  // 7. Play history goes out once per album change: a, a -> once; a, b, a -> three times
+  {
+    const sets = [];
+    const g = load({ answer: async (id, msg) => (msg.type === "set-listening" ? (sets.push(msg.id), { ok: true }) : { ok: true }) });
+    const heard = (rymId) => g.ask({ type: "eng-state", event: "listened", state: { rymId, href: `/release/album/a/${rymId}/`, title: rymId } });
+    heard("1");
+    heard("1"); // both signals at once
+    await tick(2000);
+    heard("1"); // and again later
+    await tick(300);
+    assert.deepStrictEqual(sets, ["1"], "same album twice in a row: one send");
+    heard("2");
+    heard("2");
+    await tick(2000);
+    heard("1");
+    await tick(2000);
+    assert.deepStrictEqual(sets, ["1", "2", "1"], "sent again once another album was in between; never doubled");
+  }
   console.log("gateway tests passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

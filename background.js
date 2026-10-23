@@ -762,6 +762,7 @@ function setPlayingBadge(on) {
 
 // RYM play history ("Set listening"): the player reports "listened" once you have listened for a bit; this sends it,
 // whether the panel is open or not, and tells the panel how it went.
+const listeningBusy = new Set();
 async function markListening(state) {
   let id = state.rymId || "";
   const href = state.href || "";
@@ -779,12 +780,23 @@ async function markListening(state) {
     for (const port of sidePorts) port.postMessage({ type: "history", ok, text });
   };
   if (!id) return tell(false, "Couldn't add to RYM play history: album id not found");
-  const seen = ((await api.storage.local.get("sidebar:listened")) || {})["sidebar:listened"] || {};
-  if (Date.now() - (seen[id] || 0) < 6 * 3600e3) return;
-  const res = await rymTask({ msg: { type: "set-listening", id, href } });
-  if (!(res && res.ok)) return tell(false, `Couldn't add to RYM play history (${(res && res.error) || "no response"})`);
-  seen[id] = Date.now();
-  await api.storage.local.set({ "sidebar:listened": seen });
+  // Once per album change: nothing is sent if the album sent last time is this one (listening to a, b, a sends all
+  // three; a, a does not send twice). Claimed before the request so two "listened" signals can't both go through.
+  if (listeningBusy.has(id)) return;
+  const prev = ((await api.storage.local.get("sidebar:lastlistened")) || {})["sidebar:lastlistened"] || "";
+  if (prev === id) return;
+  listeningBusy.add(id);
+  let res;
+  try {
+    await api.storage.local.set({ "sidebar:lastlistened": id });
+    res = await rymTask({ msg: { type: "set-listening", id, href } });
+    if (!(res && res.ok)) {
+      await api.storage.local.set({ "sidebar:lastlistened": prev }); // didn't go: allow another try
+      return tell(false, `Couldn't add to RYM play history (${(res && res.error) || "no response"})`);
+    }
+  } finally {
+    listeningBusy.delete(id);
+  }
   const o = await api.storage.local.get("sidebar:rymhist");
   if (o && o["sidebar:rymhist"]) await api.storage.local.set({ "sidebar:rymhist": { ...o["sidebar:rymhist"], t: 0 } }); // re-read next time
   tell(true, `Added "${state.title || "this album"}" to your RYM play history`);
