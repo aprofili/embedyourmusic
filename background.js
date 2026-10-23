@@ -816,7 +816,7 @@ async function flushListening() {
 }
 
 // After a restart: whatever was left in the queue goes out once things are up.
-setTimeout(() => getListenQueue().then((q) => q.length && flushListening()).catch(() => {}), 8000);
+if (typeof setTimeout === "function") setTimeout(() => getListenQueue().then((q) => q.length && flushListening()).catch(() => {}), 8000);
 
 let listenChain = Promise.resolve();
 function markListening(state) {
