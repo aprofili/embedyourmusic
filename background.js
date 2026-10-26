@@ -974,6 +974,10 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     markListening(msg.state || {}); // the plain Spotify embed's track list (no custom player)
     return false;
   }
+  if (msg && msg.type === "media-key" && ["toggle", "next", "prev"].includes(msg.cmd)) {
+    mediaKey(msg.cmd);
+    return false;
+  }
   if (msg && msg.type === "eng-close") {
     // The panel took over playback: make sure the offscreen player can't keep playing alongside it.
     if (api.offscreen && api.offscreen.closeDocument) api.offscreen.closeDocument().catch(() => {});
@@ -1001,13 +1005,22 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 
 // Keyboard media keys -> the player (offscreen engine; in Firefox the open panel answers).
+// Two routes deliver the same key press: the extension shortcut (chrome.commands) and the OS media session the
+// offscreen document registers (volume overlay, headset buttons). Whichever arrives first wins; a repeat within
+// 600 ms is the same press arriving by the other route and is ignored.
+const mediaSeen = {};
+async function mediaKey(cmd) {
+  const now = Date.now();
+  if (now - (mediaSeen[cmd] || 0) < 600) return;
+  mediaSeen[cmd] = now;
+  try {
+    await ensureOffscreen();
+  } catch {}
+  api.runtime.sendMessage({ type: "eng-cmd", cmd }).catch(() => {});
+}
 if (api.commands && api.commands.onCommand) {
-  api.commands.onCommand.addListener(async (name) => {
+  api.commands.onCommand.addListener((name) => {
     const cmd = { "media-play-pause": "toggle", "media-next": "next", "media-prev": "prev" }[name];
-    if (!cmd) return;
-    try {
-      await ensureOffscreen();
-    } catch {}
-    api.runtime.sendMessage({ type: "eng-cmd", cmd }).catch(() => {});
+    if (cmd) mediaKey(cmd);
   });
 }
