@@ -16,6 +16,8 @@ const { side_panel: _sp, ...baseNoPanel } = baseNoKey;
 const firefox = {
   ...baseNoPanel,
   permissions: base.permissions.filter((p) => p !== "sidePanel" && p !== "offscreen"),
+  // (Firefox's media keys are already system-wide; it doesn't know the Chromium-only "global" flag)
+  commands: Object.fromEntries(Object.entries(base.commands || {}).map(([k, { global: _g, ...c }]) => [k, c])),
   sidebar_action: {
     default_panel: "sidepanel.html",
     default_title: "EmbedYourMusic player",

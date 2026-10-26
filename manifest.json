@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "EmbedYourMusic",
-  "version": "1.29.0",
+  "version": "1.29.1",
   "description": "Turns Spotify and Bandcamp links on rateyourmusic.com into inline embedded players.",
   "permissions": [
     "storage",
@@ -113,19 +113,22 @@
       "suggested_key": {
         "default": "MediaPlayPause"
       },
-      "description": "Play / pause the sidebar player"
+      "description": "Play / pause the sidebar player",
+      "global": true
     },
     "media-next": {
       "suggested_key": {
         "default": "MediaNextTrack"
       },
-      "description": "Next song"
+      "description": "Next song",
+      "global": true
     },
     "media-prev": {
       "suggested_key": {
         "default": "MediaPrevTrack"
       },
-      "description": "Previous song"
+      "description": "Previous song",
+      "global": true
     }
   }
 }
