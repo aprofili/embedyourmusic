@@ -491,7 +491,45 @@
       api.runtime.onMessage.addListener(onMsg);
       d.remote = true;
       d.setLoad = (c) => (lastLoad = c);
+      // After a long idle (hibernate, sleep) the offscreen document can still answer while its Spotify player is dead:
+      // play then does nothing. When a play command doesn't lead to actual playback, rebuild the offscreen player from
+      // the last album/song/second and try once more; if that fails too, play from the panel.
+      const stallWait = () => globalThis.__eymStallWait ?? 7000;
+      const playing = (s) => s && s.want && s.seen && !s.paused;
+      const moves = (c) => c.cmd === "toggle" || c.cmd === "next" || c.cmd === "prev" || (c.cmd === "select" && c.autoplay);
+      const confirm = async (s) => {
+        for (let waited = 0; waited < stallWait(); waited += 500) {
+          if (playing(s)) return true;
+          await new Promise((r) => setTimeout(r, 500));
+          const g = await timed({ type: "eng-cmd", cmd: "get" });
+          s = g && g.state;
+          if (!s) return false;
+        }
+        return playing(s);
+      };
       d.cmd = async (c) => {
+        const before = d.last;
+        const s = await run(c);
+        if (engine || !stallWait() || !moves(c) || !s || !s.want || playing(s) || !lastLoad || c.cmd === "load") return s;
+        if (await confirm(s)) return s;
+        send({ type: "eng-close" });
+        await new Promise((r) => setTimeout(r, 300));
+        const e = await timed({ type: "eng-ensure" });
+        if (!(e && e.ok)) return s;
+        await timed({ type: "eng-cmd", ...lastLoad });
+        const h = d.last || before;
+        const again = h && h.idx >= 0 && h.key === lastLoad.key && c.cmd !== "select" && c.cmd !== "next" && c.cmd !== "prev"
+          ? { cmd: "select", i: h.idx, autoplay: true, startMs: h.pos } : c;
+        const r = await timed({ type: "eng-cmd", ...again });
+        if (r && r.state && (await confirm(r.state))) return r.state;
+        // Still not playing: play from the panel itself.
+        send({ type: "eng-close" });
+        const eng = local();
+        eng.handle(lastLoad);
+        if (h && h.idx >= 0 && h.key === lastLoad.key) eng.handle({ cmd: "select", i: h.idx, autoplay: true, startMs: h.pos });
+        return eng.handle(again.cmd === "select" ? again : c);
+      };
+      const run = async (c) => {
         if (c.cmd === "load") lastLoad = c;
         if (engine) return engine.handle(c);
         let res = await timed({ type: "eng-cmd", ...c });
