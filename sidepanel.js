@@ -13,6 +13,7 @@
   const FAVS_KEY = "sidebar:favs35";
   const FAVS_TTL = 24 * 3600 * 1000;
   const ROW = 44; // px, see .item in sidepanel.css
+  const PLACEHOLDER_ART = /blank|spacer|placeholder|transparent|pixel|1x1|\.gif(\?|$)/i; // lazy-load stand-ins, never a cover
 
   const $ = (id) => document.getElementById(id);
   const selfWrites = {}; // key -> time this panel last wrote it (so its own writes don't trigger a refresh)
@@ -1170,9 +1171,14 @@
         const img = document.createElement("img");
         img.referrerPolicy = "no-referrer";
         img.loading = "lazy";
-        const cands = [artOk[item.href], item.artUrl, ...(item.artAlts || [])].filter((u, k, a) => u && a.indexOf(u) === k);
+        const cands = [artOk[item.href], item.artUrl, ...(item.artAlts || [])].filter((u, k, a) => u && !PLACEHOLDER_ART.test(u) && a.indexOf(u) === k);
         // Whatever cover finally loads is remembered for this album, so next time it shows straight away.
+        // (A 1px "image" is RYM's lazy-load placeholder: it loads fine but isn't a cover, so treat it as a failure.)
         img.addEventListener("load", () => {
+          if (img.naturalWidth <= 2 || img.naturalHeight <= 2) {
+            if (artOk[item.href] === img.src) delete artOk[item.href];
+            return img.dispatchEvent(new Event("error"));
+          }
           if (img.src && img.src !== item.artUrl) noteArt(item.href, img.src);
         });
         let tried = 0;

@@ -510,7 +510,7 @@
   };
   const imgUrl = (img) => {
     let s = img && (img.currentSrc || img.getAttribute("src") || "");
-    if (!s || s.startsWith("data:")) s = (img && img.getAttribute("data-src")) || fromPicture(img);
+    if (!s || s.startsWith("data:") || /blank|spacer|placeholder|transparent|pixel|1x1|\.gif(\?|$)/i.test(s)) s = (img && img.getAttribute("data-src")) || fromPicture(img);
     if (!s) return "";
     if (s.startsWith("//")) s = "https:" + s;
     return /\/i\/\d+\/w\//.test(s) ? s : s.replace(/\/i\/\d+\//, "/i/300/"); // "/w/" URLs carry a per-size hash: leave them alone
