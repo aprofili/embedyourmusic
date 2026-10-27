@@ -340,7 +340,7 @@
     try {
       res = await Promise.race([
         api.runtime.sendMessage({ type: "rate", tabId: current.tabId, id: current.payload.id, rating: value, href: current.payload.href }),
-        new Promise((r) => setTimeout(() => r({ error: "RYM didn't answer in time, try again" }), 25000)),
+        new Promise((r) => setTimeout(() => r({ error: "RYM didn't answer in time, try again" }), 50000)),
       ]);
     } catch {
       res = null;

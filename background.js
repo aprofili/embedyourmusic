@@ -1095,9 +1095,26 @@ function handleSidebar(msg, sender, sendResponse) {
     case "to-rym":
       rymTask({ tabId: msg.tabId, msg: msg.msg, seq: msg.seq || 0 }).then(sendResponse);
       return true;
-    case "rate": // from the panel: any RYM tab can carry it out (RYM's own rating request)
-      rymTask({ tabId: msg.tabId, msg: { type: "rate", id: msg.id, rating: msg.rating, href: msg.href } }).then((r) => sendResponse(r.error ? { ok: false, error: r.error } : r));
+    case "rate": {
+      // From the panel: your open tab for the album (or any RYM tab) carries it out. If that stalls or fails, open
+      // the album's own page in a background tab, rate there, and close it again.
+      const m = { type: "rate", id: msg.id, rating: msg.rating, href: msg.href };
+      (async () => {
+        const stall = globalThis.__eymRateStall ?? 12000;
+        const first = await Promise.race([rymTask({ tabId: msg.tabId, msg: m }), new Promise((r) => setTimeout(() => r({ error: "RYM didn't answer" }), stall))]);
+        if (first && !first.error) return first;
+        let page = "";
+        try {
+          page = await pageFor(m);
+        } catch {}
+        if (!page) return first;
+        status("The rating didn't go through; retrying from the album's own page…");
+        return inHelperTab(page, m, true, 0);
+      })()
+        .then((r) => sendResponse(!r || r.error ? { ok: false, error: (r && r.error) || "no response" } : r))
+        .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
       return true;
+    }
   }
   return false;
 }

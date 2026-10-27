@@ -1286,9 +1286,27 @@
       if (!msg || msg.type !== "rate") return false;
       const box = document.getElementById(`my_catalog_rating_l_${msg.id}`);
       if (box) {
-        rateOnPage(box, msg.id, Number(msg.rating));
-        sendResponse({ ok: true });
-        return false;
+        // Click, then check that RYM's widget actually shows the new rating (a click right after the page loads, before
+        // its own code is attached, is ignored); retry a couple of times, else report it so the background can retry.
+        const want = Number(msg.rating);
+        const shown = () => {
+          const s = document.getElementById(`rating_stars_l_${msg.id}`);
+          const m = s && /star-(\d+)m/.exec(s.className);
+          return m ? Number(m[1]) : null;
+        };
+        (async () => {
+          for (let i = 0; i < 3; i++) {
+            if (want > 0 && shown() === want) return sendResponse({ ok: true });
+            rateOnPage(box, msg.id, want);
+            if (want === 0) return sendResponse({ ok: true });
+            for (let w = 0; w < 8; w++) {
+              await new Promise((r) => setTimeout(r, 300));
+              if (shown() === want) return sendResponse({ ok: true });
+            }
+          }
+          sendResponse({ error: "RYM's page didn't apply the rating" });
+        })();
+        return true;
       }
       // No widget on this page: send RYM's own rating request (main-bridge.js) and keep the cache in step.
       const rating = Number(msg.rating);

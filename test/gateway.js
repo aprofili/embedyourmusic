@@ -5,7 +5,7 @@ const vm = require("vm");
 const assert = require("assert");
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, windowId: 1 }] }) {
+function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, windowId: 1 }], stall }) {
   const listeners = [];
   const created = [];
   const removed = [];
@@ -37,12 +37,28 @@ function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, wind
   };
   const ctx = { chrome, console, setTimeout, clearTimeout, setInterval, clearInterval, URL, Promise, fetch: async () => ({ ok: false }) };
   vm.createContext(ctx);
+  if (stall) ctx.__eymRateStall = stall;
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8"), ctx);
   const ask = (msg) => new Promise((res) => listeners.some((f) => f(msg, {}, res) === true) || res(undefined));
   return { ask, created, removed, updates, stats: () => ({ maxOpen }) };
 }
 
 (async () => {
+  // 0. Rating: your open album tab never answers -> the album's page is opened in a helper tab, rated there, closed
+  {
+    const href = "https://rateyourmusic.com/release/album/a/b/";
+    const g = load({
+      stall: 150,
+      tabs: [{ id: 5, url: href, status: "complete", active: false }],
+      answer: (id, msg) => (id === 5 ? new Promise(() => {}) : Promise.resolve({ ok: true })),
+    });
+    const r = await g.ask({ type: "rate", tabId: 5, id: "9", rating: 8, href });
+    assert.ok(r.ok, JSON.stringify(r));
+    assert.strictEqual(g.created.length, 1, "helper tab opened for the retry");
+    assert.ok(g.created[0].url.includes("/release/album/a/b/") && g.created[0].url.includes("eym-helper"));
+    await tick(50);
+    assert.strictEqual(g.removed.length, 1, "and closed again");
+  }
   // 1. A tab you have open on the page answers; nothing is opened.
   {
     const g = load({ tabs: [{ id: 5, url: "https://rateyourmusic.com/new-music/", status: "complete", active: false }], answer: async (id) => (id === 5 ? { items: [{ title: "A" }] } : undefined) });
