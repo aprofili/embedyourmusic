@@ -86,7 +86,8 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   assert.ok(remote["sidebar:reviews"]["/release/z/"]);
   assert.ok(!JSON.stringify(remote).includes("SECRET"));
   const n = calls.filter((c) => c.startsWith("PUT")).length;
-  await ask({ type: "backup-sync" });
+  const again = await ask({ type: "backup-sync" });
+  assert.strictEqual(again.restored, 0, "a second sync restores nothing (no reload loop)");
   assert.strictEqual(calls.filter((c) => c.startsWith("PUT")).length, n, "nothing changed, nothing uploaded");
 
   // session expired

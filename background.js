@@ -575,6 +575,9 @@ let backupTimer = null;
 let backupBusy = null;
 let backupWriting = false; // our own restore writes shouldn't trigger another upload
 
+// Same value regardless of object key order (so a merge that only reorders keys isn't a "change").
+const canon = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
+
 function mergeBackup(local, remote) {
   const out = {};
   const stamp = (e) => (e && (e.at || e.t)) || 0;
@@ -623,7 +626,7 @@ async function backupRequest(method, path, body, extra = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-async function backupSync() {
+async function backupSync(manual = false) {
   if (backupBusy) return backupBusy;
   backupBusy = (async () => {
     const acct = ((await api.storage.local.get(ACCOUNT_KEY)) || {})[ACCOUNT_KEY];
@@ -635,7 +638,7 @@ async function backupSync() {
       const local = (await api.storage.local.get(BACKUP_KEYS)) || {};
       const merged = mergeBackup(local, remote);
       const changed = {};
-      for (const k of BACKUP_KEYS) if (merged[k] != null && JSON.stringify(merged[k]) !== JSON.stringify(local[k])) changed[k] = merged[k];
+      for (const k of BACKUP_KEYS) if (merged[k] != null && canon(merged[k]) !== canon(local[k])) changed[k] = merged[k];
       if (Object.keys(changed).length) {
         backupWriting = true;
         try {
@@ -643,11 +646,13 @@ async function backupSync() {
         } finally {
           setTimeout(() => (backupWriting = false), 500);
         }
-        for (const port of sidePorts) {
-          try {
-            port.postMessage({ type: "backup-restored" });
-          } catch {}
-        }
+        // Only a login / "Sync now" reloads the panel to show the restored data; background syncs never do.
+        if (manual)
+          for (const port of sidePorts) {
+            try {
+              port.postMessage({ type: "backup-restored" });
+            } catch {}
+          }
       }
       const data = {};
       for (const k of BACKUP_KEYS) if (merged[k] != null) data[k] = merged[k];
@@ -655,7 +660,7 @@ async function backupSync() {
         delete data["sidebar:ratings"];
         delete data["sidebar:ids"];
       }
-      if (JSON.stringify(data) !== JSON.stringify(remote)) {
+      if (canon(data) !== canon(remote)) {
         const put = await backupRequest("PUT", "/api/eym/backup", { data });
         if (!put.ok) throw new Error((put.data && put.data.error) || `server answered ${put.status}`);
       }
@@ -690,7 +695,7 @@ async function backupLogin(msg) {
   if (!r.ok || !r.data || !r.data.token) return { error: (r.data && r.data.error) || `login failed (${r.status})` };
   if (!r.data.username) return { error: "this isn't a named account" };
   await api.storage.local.set({ [ACCOUNT_KEY]: { token: r.data.token, username: r.data.username } });
-  const sync = await backupSync();
+  const sync = await backupSync(true);
   return { ok: true, username: r.data.username, sync };
 }
 
@@ -1113,7 +1118,7 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && typeof msg.type === "string" && msg.type.startsWith("backup-")) {
     const job =
       msg.type === "backup-login" ? backupLogin(msg)
-      : msg.type === "backup-sync" ? backupSync()
+      : msg.type === "backup-sync" ? backupSync(true)
       : msg.type === "backup-logout" ? api.storage.local.remove(ACCOUNT_KEY).then(() => ({ ok: true }))
       : msg.type === "backup-status" ? backupStatus()
       : Promise.resolve({});
