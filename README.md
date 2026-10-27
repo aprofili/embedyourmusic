@@ -126,3 +126,7 @@ Playback keeps going with the panel closed on Chromium browsers: the Spotify emb
 
 
 RYM's own streaming icon rows are hidden on the page (the side panel plays everything).
+
+## Cloud backup
+
+At the bottom of the side panel, "Back up to your jkprilfools.com account" logs in with the site's account (email-code 2FA supported). From then on your play history, reviews, ratings, resume position and settings are uploaded shortly after they change, and merged back whenever you log in on a fresh install or another browser (history is combined, newer reviews win, this browser's settings win). Stored in your account on jkprilfools.com (`/api/eym/backup`); Spotify tokens and regenerable caches are not included.

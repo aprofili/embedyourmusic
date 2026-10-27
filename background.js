@@ -559,6 +559,154 @@ async function handleSpotify(msg) {
   }
 }
 
+// ---- Cloud backup: your history, reviews, ratings and settings, kept in your jkprilfools.com account ----
+// Log in once (the same account as the site); changes are uploaded a little after they happen and merged back on a new
+// install / another browser, so removing the extension (which erases its local storage) doesn't lose anything.
+const BACKUP_HOST = "https://jkprilfools.com";
+const ACCOUNT_KEY = "eym:account"; // { token, username, last, error } (kept out of the backup itself)
+const BACKUP_KEYS = [
+  "sidebar:played", "sidebar:last", "sidebar:reviews", "sidebar:resume", "sidebar:repeat", "sidebar:chartsel",
+  "sidebar:charts-saved", "sidebar:charts-seen", "sidebar:listenqueue", "sidebar:lastlistened", "sidebar:ratings",
+  "sidebar:ids", "sidebar:user",
+];
+const BACKUP_MAX_CHARS = 1_400_000;
+const PLAYED_KEEP = 100;
+let backupTimer = null;
+let backupBusy = null;
+let backupWriting = false; // our own restore writes shouldn't trigger another upload
+
+function mergeBackup(local, remote) {
+  const out = {};
+  const stamp = (e) => (e && (e.at || e.t)) || 0;
+  for (const k of BACKUP_KEYS) {
+    const a = local[k];
+    const b = remote[k];
+    let v;
+    if (b == null) v = a;
+    else if (a == null) v = b;
+    else if (k === "sidebar:played" && Array.isArray(a) && Array.isArray(b)) {
+      const by = new Map();
+      for (const e of [...a, ...b]) {
+        if (!e || !e.href) continue;
+        const o = by.get(e.href);
+        if (!o || stamp(e) > stamp(o)) by.set(e.href, { ...(o || {}), ...e, artUrl: e.artUrl || (o && o.artUrl) || "" });
+      }
+      v = [...by.values()].sort((x, y) => stamp(y) - stamp(x)).slice(0, PLAYED_KEEP);
+    } else if (k === "sidebar:listenqueue" && Array.isArray(a) && Array.isArray(b)) {
+      const seen = new Set();
+      v = [...a, ...b].filter((e) => e && !seen.has(e.id || e.href) && seen.add(e.id || e.href));
+    } else if (k === "sidebar:reviews" && a && typeof a === "object" && b && typeof b === "object") {
+      v = { ...b };
+      for (const [p, e] of Object.entries(a)) if (!v[p] || stamp(e) >= stamp(v[p])) v[p] = e;
+    } else if ((k === "sidebar:ratings" || k === "sidebar:ids") && typeof a === "object" && typeof b === "object" && !Array.isArray(a)) {
+      v = { ...b, ...a };
+    } else v = a; // everything else: this browser's value wins
+    out[k] = v;
+  }
+  return out;
+}
+
+async function backupRequest(method, path, body, extra = {}) {
+  const acct = ((await api.storage.local.get(ACCOUNT_KEY)) || {})[ACCOUNT_KEY];
+  const res = await fetch(BACKUP_HOST + path, {
+    method,
+    headers: { "content-type": "application/json", "x-eym-client": "1", ...(acct && acct.token ? { authorization: `Bearer ${acct.token}` } : {}), ...extra },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = {};
+  try {
+    data = await res.json();
+  } catch {}
+  if (res.status === 401 && acct && acct.token && path.startsWith("/api/eym")) {
+    await api.storage.local.set({ [ACCOUNT_KEY]: { username: acct.username, error: "Logged out, log in again" } });
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function backupSync() {
+  if (backupBusy) return backupBusy;
+  backupBusy = (async () => {
+    const acct = ((await api.storage.local.get(ACCOUNT_KEY)) || {})[ACCOUNT_KEY];
+    if (!acct || !acct.token) return { ok: false, error: "not logged in" };
+    try {
+      const got = await backupRequest("GET", "/api/eym/backup");
+      if (!got.ok) throw new Error(got.status === 401 ? "Logged out, log in again" : `server answered ${got.status}`);
+      const remote = (got.data && got.data.data) || {};
+      const local = (await api.storage.local.get(BACKUP_KEYS)) || {};
+      const merged = mergeBackup(local, remote);
+      const changed = {};
+      for (const k of BACKUP_KEYS) if (merged[k] != null && JSON.stringify(merged[k]) !== JSON.stringify(local[k])) changed[k] = merged[k];
+      if (Object.keys(changed).length) {
+        backupWriting = true;
+        try {
+          await api.storage.local.set(changed);
+        } finally {
+          setTimeout(() => (backupWriting = false), 500);
+        }
+        for (const port of sidePorts) {
+          try {
+            port.postMessage({ type: "backup-restored" });
+          } catch {}
+        }
+      }
+      const data = {};
+      for (const k of BACKUP_KEYS) if (merged[k] != null) data[k] = merged[k];
+      if (JSON.stringify(data).length > BACKUP_MAX_CHARS) {
+        delete data["sidebar:ratings"];
+        delete data["sidebar:ids"];
+      }
+      if (JSON.stringify(data) !== JSON.stringify(remote)) {
+        const put = await backupRequest("PUT", "/api/eym/backup", { data });
+        if (!put.ok) throw new Error((put.data && put.data.error) || `server answered ${put.status}`);
+      }
+      await api.storage.local.set({ [ACCOUNT_KEY]: { token: acct.token, username: acct.username, last: Date.now() } });
+      return { ok: true, restored: Object.keys(changed).length };
+    } catch (e) {
+      const cur = ((await api.storage.local.get(ACCOUNT_KEY)) || {})[ACCOUNT_KEY] || acct;
+      await api.storage.local.set({ [ACCOUNT_KEY]: { ...cur, error: String((e && e.message) || e) } });
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  })().finally(() => {
+    backupBusy = null;
+  });
+  return backupBusy;
+}
+
+function scheduleBackup(ms = 20000) {
+  if (typeof setTimeout !== "function") return;
+  clearTimeout(backupTimer);
+  backupTimer = setTimeout(() => backupSync().catch(() => {}), ms);
+}
+
+async function backupLogin(msg) {
+  const isCode = msg.code && msg.challenge;
+  const r = await backupRequest(
+    "POST",
+    isCode ? "/api/auth/2fa/verify" : "/api/auth/login",
+    isCode ? { code: String(msg.code).trim(), challenge: msg.challenge } : { username: String(msg.username || "").trim(), password: String(msg.password || "") },
+  ).catch(() => null);
+  if (!r) return { error: "couldn't reach jkprilfools.com" };
+  if (r.data && r.data.requires2fa && r.data.challenge) return { requires2fa: true, challenge: r.data.challenge };
+  if (!r.ok || !r.data || !r.data.token) return { error: (r.data && r.data.error) || `login failed (${r.status})` };
+  if (!r.data.username) return { error: "this isn't a named account" };
+  await api.storage.local.set({ [ACCOUNT_KEY]: { token: r.data.token, username: r.data.username } });
+  const sync = await backupSync();
+  return { ok: true, username: r.data.username, sync };
+}
+
+async function backupStatus() {
+  const acct = ((await api.storage.local.get(ACCOUNT_KEY)) || {})[ACCOUNT_KEY] || {};
+  return { loggedIn: !!acct.token, username: acct.username || "", last: acct.last || 0, error: acct.error || "" };
+}
+
+if (api.storage.onChanged) {
+  api.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || backupWriting) return;
+    if (BACKUP_KEYS.some((k) => k in changes)) scheduleBackup();
+  });
+}
+if (typeof setTimeout === "function") setTimeout(() => backupSync().catch(() => {}), 12000);
+
 // ---- Side panel player ----
 // The panel connects a port while it is open, which is how pages learn whether to play there.
 const sidePorts = new Set();
@@ -566,6 +714,7 @@ let pendingPlay = null; // an album clicked on a page while the panel was closed
 api.runtime.onConnect.addListener((port) => {
   if (port.name !== "sidepanel") return;
   sidePorts.add(port);
+  scheduleBackup(4000);
   getListenQueue().then((q) => q.length && flushListening()).catch(() => {});
   if (pendingPlay && Date.now() - pendingPlay.t < 120e3) {
     const p = pendingPlay;
@@ -959,6 +1108,16 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg && msg.type === "sp-filter") {
     spFilter(msg.items || []).then(sendResponse).catch(() => sendResponse({ items: msg.items || [], filtered: false }));
+    return true;
+  }
+  if (msg && typeof msg.type === "string" && msg.type.startsWith("backup-")) {
+    const job =
+      msg.type === "backup-login" ? backupLogin(msg)
+      : msg.type === "backup-sync" ? backupSync()
+      : msg.type === "backup-logout" ? api.storage.local.remove(ACCOUNT_KEY).then(() => ({ ok: true }))
+      : msg.type === "backup-status" ? backupStatus()
+      : Promise.resolve({});
+    job.then(sendResponse).catch((e) => sendResponse({ error: String((e && e.message) || e) }));
     return true;
   }
   if (msg && msg.type === "eng-ensure") {

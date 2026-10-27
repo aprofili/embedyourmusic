@@ -1225,3 +1225,11 @@ a.sp-artist {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+#backup { padding: 10px 12px 18px; font-size: 0.8em; color: var(--muted); }
+#backup .bk-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#backup .bk-text { flex: 1 1 140px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#backup .bk-form { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+#backup input { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; color: inherit; padding: 6px 8px; font: inherit; }
+#backup .bk-msg { margin-top: 6px; }
+#backup .bk-err { color: #ff8a8a; }

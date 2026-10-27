@@ -58,6 +58,7 @@
       if (msg.type === "play") render({ ...msg.payload, tabId: msg.tabId });
       else if (msg.type === "rating" && current && current.payload.id === msg.id) setRating(msg.rating);
       else if (msg.type === "task-status") taskStatus = { text: msg.text, t: Date.now() };
+      else if (msg.type === "backup-restored") setTimeout(() => location.reload(), 300); // data came back from your account
       else if (msg.type === "history") {
         toast(msg.text, !msg.ok);
         if (msg.ok) refreshOpenList("history");
@@ -1375,4 +1376,98 @@
     if (!current && last) render(last, true); // reopened by hand: show it, don't start it
     else if (!current) reveal();
   });
+
+  // ---- Cloud backup (jkprilfools.com account) ----
+  (function backupUi() {
+    const box = $("backup");
+    if (!box) return;
+    const ask = (m) => api.runtime.sendMessage(m).catch(() => ({ error: "no answer from the extension" }));
+    const ago = (t) => {
+      const s = Math.max(0, (Date.now() - t) / 1000);
+      return s < 90 ? "just now" : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`;
+    };
+    const el = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    };
+    let open = false;
+    let pending = null; // { challenge } while an email code is needed
+    let msg = "";
+    async function paint() {
+      const s = await ask({ type: "backup-status" });
+      box.textContent = "";
+      const row = el("div", "bk-row");
+      if (s && s.loggedIn) {
+        row.append(el("span", "bk-text", `Backed up to jkprilfools.com as ${s.username}${s.last ? ` · ${ago(s.last)}` : ""}`));
+        const sync = el("button", "more", "Sync now");
+        sync.type = "button";
+        sync.onclick = async () => {
+          sync.disabled = true;
+          msg = "Syncing…";
+          paint();
+          const r = await ask({ type: "backup-sync" });
+          msg = r && r.ok ? "" : `Couldn't sync: ${(r && r.error) || "unknown error"}`;
+          paint();
+        };
+        const out = el("button", "more", "Log out");
+        out.type = "button";
+        out.onclick = async () => {
+          await ask({ type: "backup-logout" });
+          paint();
+        };
+        row.append(sync, out);
+        box.append(row);
+        if (s.error || msg) box.append(el("div", "bk-msg bk-err", msg || s.error));
+        return;
+      }
+      const toggle = el("button", "more", open ? "Cancel" : "Back up to your jkprilfools.com account");
+      toggle.type = "button";
+      toggle.onclick = () => {
+        open = !open;
+        pending = null;
+        msg = "";
+        paint();
+      };
+      row.append(toggle);
+      box.append(row);
+      if (!open) return;
+      const form = el("form", "bk-form");
+      const user = el("input");
+      user.placeholder = "jkprilfools.com username";
+      user.autocomplete = "username";
+      const pass = el("input");
+      pass.type = "password";
+      pass.placeholder = "Password";
+      pass.autocomplete = "current-password";
+      const code = el("input");
+      code.placeholder = "Code emailed to you";
+      code.inputMode = "numeric";
+      const go = el("button", "more", pending ? "Verify" : "Log in");
+      go.type = "submit";
+      if (pending) form.append(code, go);
+      else form.append(user, pass, go);
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        go.disabled = true;
+        msg = "Logging in…";
+        const r = await ask(pending ? { type: "backup-login", code: code.value, challenge: pending.challenge } : { type: "backup-login", username: user.value, password: pass.value });
+        if (r && r.requires2fa) {
+          pending = { challenge: r.challenge };
+          msg = "Enter the code emailed to you";
+        } else if (r && r.ok) {
+          pending = null;
+          open = false;
+          msg = "";
+        } else {
+          msg = (r && r.error) || "Login failed";
+        }
+        paint();
+      };
+      box.append(form);
+      if (msg) box.append(el("div", "bk-msg", msg));
+    }
+    paint();
+  })();
 })();
