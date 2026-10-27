@@ -639,20 +639,19 @@ async function backupSync(manual = false) {
       const merged = mergeBackup(local, remote);
       const changed = {};
       for (const k of BACKUP_KEYS) if (merged[k] != null && canon(merged[k]) !== canon(local[k])) changed[k] = merged[k];
-      if (Object.keys(changed).length) {
+      // Restoring is manual only (login / "Sync now"); background syncs only upload (merged with what the cloud has).
+      if (manual && Object.keys(changed).length) {
         backupWriting = true;
         try {
           await api.storage.local.set(changed);
         } finally {
           setTimeout(() => (backupWriting = false), 500);
         }
-        // Only a login / "Sync now" reloads the panel to show the restored data; background syncs never do.
-        if (manual)
-          for (const port of sidePorts) {
-            try {
-              port.postMessage({ type: "backup-restored" });
-            } catch {}
-          }
+        for (const port of sidePorts) {
+          try {
+            port.postMessage({ type: "backup-restored" });
+          } catch {}
+        }
       }
       const data = {};
       for (const k of BACKUP_KEYS) if (merged[k] != null) data[k] = merged[k];
@@ -677,10 +676,15 @@ async function backupSync(manual = false) {
   return backupBusy;
 }
 
-function scheduleBackup(ms = 20000) {
+// Automatic uploads: at most once an hour, and only when something changed (or the last one is over an hour old).
+const BACKUP_EVERY = 3600e3;
+async function scheduleBackup() {
   if (typeof setTimeout !== "function") return;
+  const acct = ((await api.storage.local.get(ACCOUNT_KEY)) || {})[ACCOUNT_KEY];
+  if (!acct || !acct.token) return;
   clearTimeout(backupTimer);
-  backupTimer = setTimeout(() => backupSync().catch(() => {}), ms);
+  const wait = Math.max(30000, (acct.last || 0) + BACKUP_EVERY - Date.now());
+  backupTimer = setTimeout(() => backupSync(false).catch(() => {}), wait);
 }
 
 async function backupLogin(msg) {
@@ -710,7 +714,7 @@ if (api.storage.onChanged) {
     if (BACKUP_KEYS.some((k) => k in changes)) scheduleBackup();
   });
 }
-if (typeof setTimeout === "function") setTimeout(() => backupSync().catch(() => {}), 12000);
+if (typeof setTimeout === "function") setTimeout(() => scheduleBackup().catch(() => {}), 12000);
 
 // ---- Side panel player ----
 // The panel connects a port while it is open, which is how pages learn whether to play there.
@@ -719,7 +723,6 @@ let pendingPlay = null; // an album clicked on a page while the panel was closed
 api.runtime.onConnect.addListener((port) => {
   if (port.name !== "sidepanel") return;
   sidePorts.add(port);
-  scheduleBackup(4000);
   getListenQueue().then((q) => q.length && flushListening()).catch(() => {});
   if (pendingPlay && Date.now() - pendingPlay.t < 120e3) {
     const p = pendingPlay;

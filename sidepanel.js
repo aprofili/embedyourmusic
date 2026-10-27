@@ -1401,7 +1401,7 @@
       const row = el("div", "bk-row");
       if (s && s.loggedIn) {
         row.append(el("span", "bk-text", `Backed up to jkprilfools.com as ${s.username}${s.last ? ` · ${ago(s.last)}` : ""}`));
-        const sync = el("button", "more", "Sync now");
+        const sync = el("button", "more", "Restore & sync");
         sync.type = "button";
         sync.onclick = async () => {
           sync.disabled = true;

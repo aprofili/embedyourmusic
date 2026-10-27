@@ -13,6 +13,8 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   let remote = null; // the account's backup blob
   let twofa = false;
   let expired = false;
+  let onChanged;
+  const timers = [];
   const json = (o, status = 200) => ({ ok: status < 300, status, json: async () => o });
   const bg = {
     chrome: {
@@ -28,7 +30,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
           set: async (o) => Object.assign(store, JSON.parse(JSON.stringify(o))),
           remove: async (k) => delete store[k],
         },
-        onChanged: { addListener() {} },
+        onChanged: { addListener: (fn) => (onChanged = fn) },
       },
     },
     fetch: async (url, opts = {}) => {
@@ -52,7 +54,8 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
       }
       return json({}, 404);
     },
-    URL, Date, JSON, setTimeout, clearTimeout,
+    URL, Date, JSON, clearTimeout,
+    setTimeout: (fn, ms) => (timers.push({ fn, ms }), timers.length),
   };
   bg.globalThis = bg;
   vm.createContext(bg);
@@ -89,6 +92,23 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   const again = await ask({ type: "backup-sync" });
   assert.strictEqual(again.restored, 0, "a second sync restores nothing (no reload loop)");
   assert.strictEqual(calls.filter((c) => c.startsWith("PUT")).length, n, "nothing changed, nothing uploaded");
+
+  // automatic backups: at most hourly, upload only, never write local data
+  timers.filter((x) => x.ms <= 500).forEach((x) => x.fn()); // (the "our own write" guard timers)
+  timers.length = 0;
+  onChanged({ "sidebar:played": {} }, "local");
+  await tick(20);
+  const auto = timers.filter((x) => x.ms > 60000);
+  assert.ok(auto.length && auto[auto.length - 1].ms > 3500e3 && auto[auto.length - 1].ms <= 3600e3, "next upload is about an hour after the last");
+  remote["sidebar:resume"] = { idx: 3 }; // exists only in the cloud
+  store["sidebar:repeat"] = true; // exists only here
+  await auto[auto.length - 1].fn();
+  await tick(20);
+  assert.strictEqual(store["sidebar:resume"], undefined, "automatic sync doesn't restore");
+  assert.strictEqual(remote["sidebar:repeat"], true, "automatic sync uploads");
+  assert.ok(remote["sidebar:resume"], "and keeps what the cloud had");
+  r = await ask({ type: "backup-sync" });
+  assert.ok(store["sidebar:resume"], "manual sync restores");
 
   // session expired
   expired = true;
