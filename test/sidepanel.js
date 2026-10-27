@@ -57,7 +57,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
   d.querySelectorAll("#rating .star")[3].querySelector("button.r").click(); // 4 stars = 8
   await tick();
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(sent.find((m) => m.type === "rate"))), { type: "rate", tabId: 7, id: "123", rating: 8 });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(sent.find((m) => m.type === "rate"))), { type: "rate", tabId: 7, id: "123", rating: 8, href: "https://rateyourmusic.com/release/album/band/album/" });
   assert.strictEqual(d.querySelectorAll("#rating .star.full").length, 4);
   onMsg({ type: "rating", id: "123", rating: 3 });
   assert.strictEqual(d.getElementById("rating-note").textContent, "Your rating: 1.5");

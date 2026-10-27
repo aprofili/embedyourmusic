@@ -792,6 +792,8 @@ async function pageFor(msg) {
     case "fetch-artist":
     case "fetch-chart":
       return msg.path;
+    case "rate": // the album's own page when we know it (that tab already has the rating widget)
+      return msg.href ? pathOf(msg.href) : "";
     case "set-listening": // the album's own page when we know it: RYM's "Set listening" box lives there
       return msg.href ? pathOf(msg.href) : "";
     case "page-record":
@@ -810,7 +812,8 @@ async function pageFor(msg) {
 }
 
 async function liveTab(tabId, page) {
-  const tabs = (await api.tabs.query({ url: RYM_URLS })).filter((t) => !helperTabs.has(t.id) && t.status === "complete");
+  // (a tab on exactly this page is tried even while RYM's ads and trackers keep it "loading")
+  const tabs = (await api.tabs.query({ url: RYM_URLS })).filter((t) => !helperTabs.has(t.id) && (t.status === "complete" || (page && pathOf(t.url) === page)));
   const pool = page ? tabs.filter((t) => pathOf(t.url) === page) : tabs;
   return pool.find((t) => t.id === tabId) || pool.find((t) => t.active) || pool[0] || null;
 }
@@ -914,7 +917,8 @@ async function rymTask({ tabId = null, msg, seq = 0 }) {
       /* a tab from before the extension was reloaded: no one answers */
     }
   }
-  return inHelperTab(page, msg, false, seq);
+  // Things you just did (rating, review, "Set listening") don't wait behind page reads queued earlier.
+  return inHelperTab(page, msg, ["rate", "save-review", "set-listening"].includes(msg.type), seq);
 }
 
 // release-data.js could not read a release page by script (bot check): load it in a helper tab, whose content
@@ -1092,7 +1096,7 @@ function handleSidebar(msg, sender, sendResponse) {
       rymTask({ tabId: msg.tabId, msg: msg.msg, seq: msg.seq || 0 }).then(sendResponse);
       return true;
     case "rate": // from the panel: any RYM tab can carry it out (RYM's own rating request)
-      rymTask({ tabId: msg.tabId, msg: { type: "rate", id: msg.id, rating: msg.rating } }).then((r) => sendResponse(r.error ? { ok: false, error: r.error } : r));
+      rymTask({ tabId: msg.tabId, msg: { type: "rate", id: msg.id, rating: msg.rating, href: msg.href } }).then((r) => sendResponse(r.error ? { ok: false, error: r.error } : r));
       return true;
   }
   return false;

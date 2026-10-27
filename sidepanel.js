@@ -338,7 +338,10 @@
     $("rating-note").textContent = "Saving…";
     let res;
     try {
-      res = await api.runtime.sendMessage({ type: "rate", tabId: current.tabId, id: current.payload.id, rating: value });
+      res = await Promise.race([
+        api.runtime.sendMessage({ type: "rate", tabId: current.tabId, id: current.payload.id, rating: value, href: current.payload.href }),
+        new Promise((r) => setTimeout(() => r({ error: "RYM didn't answer in time, try again" }), 25000)),
+      ]);
     } catch {
       res = null;
     }
