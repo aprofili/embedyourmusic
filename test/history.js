@@ -33,6 +33,7 @@ const item = (id, href, artist, title, aid, img) => `<div class="play_history_it
   assert.deepStrictEqual(JSON.parse(JSON.stringify(r.items[0])), {
     id: "17158983", title: "Young Manhood", artist: "Zach Bryan",
     href: "https://rateyourmusic.com/release/ep/zach-bryan/yh/", artUrl: "https://cdn.sonemic.net/i/75/w/abc/15156381",
+    date: new Date(2026, 9, 20).getTime(),
   });
   const real = "/root/.claude/uploads/9f0b7094-47c7-58f0-bb8e-5a0c55e1425f/2878dd16-attachment.txt";
   if (!process.env.EYM_NO_REAL && fs.existsSync(real)) {

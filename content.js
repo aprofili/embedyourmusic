@@ -892,7 +892,15 @@
       seen.add(href);
       const artist = it.querySelector("a.artist");
       const m = /\[Album(\d+)\]/.exec(a.getAttribute("title") || "");
+      // The day it was played ("10/27/2026"; RYM gives no time of day), as local midnight in ms.
+      const dm = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec((it.querySelector(".play_history_item_date") || {}).textContent || "");
+      let date = 0;
+      if (dm) {
+        const [x, y, yr] = [Number(dm[1]), Number(dm[2]), Number(dm[3])];
+        date = new Date(yr, (x > 12 ? y : x) - 1, x > 12 ? x : y).getTime() || 0;
+      }
       out.push({
+        date,
         id: m ? m[1] : "",
         title: a.textContent.replace(/\s+/g, " ").trim(),
         artist: artist ? artist.textContent.replace(/\s+/g, " ").trim() : "",

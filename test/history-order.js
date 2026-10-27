@@ -1,4 +1,4 @@
-// History tab lists only plays from here (newest first), independent of RYM's own play history.
+// History tab: plays from here merged with RYM's play history, newest first, one entry per album.
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
@@ -14,7 +14,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   const now = Date.now();
   const h = (n) => `https://rateyourmusic.com/release/album/a/${n}/`;
   const store = {
-    "sidebar:rymhist": { t: now - 60e3, items: ["X", "Y", "Z"].map((n) => ({ title: n, artist: "a", href: h(n), artUrl: "" })) },
+    "sidebar:rymhist": { t: now - 60e3, items: ["X", "Y", "Z"].map((n) => ({ title: n, artist: "a", href: h(n), artUrl: "", date: n === "Y" ? now - 7200e3 : 0 })) },
     "sidebar:played": [
       { title: "Z", artist: "a", href: h("Z"), artUrl: "", at: now },
       { title: "Old", artist: "a", href: h("Old"), artUrl: "", at: now - 3600e3 },
@@ -37,7 +37,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   w.document.querySelector('.acc[data-kind="history"] .acc-head').click();
   await tick(20);
   const rows = [...w.document.querySelectorAll('.acc[data-kind="history"] .item')];
-  assert.deepStrictEqual(rows.map((r) => r.querySelector(".t").textContent), ["Z", "Old"], "only plays from here, not RYM's history");
+  assert.deepStrictEqual(rows.map((r) => r.querySelector(".t").textContent), ["Z", "Old", "Y", "X"], "plays from here and RYM's, newest first (dated ones by day); Z only once");
   // Ratings seen anywhere grey out list rows (by release path or id), and live when a page reports a new one
   w.document.querySelector('.acc[data-kind="recommended"] .acc-head').click();
   await tick(20);

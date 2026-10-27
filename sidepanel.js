@@ -1009,14 +1009,34 @@
       if (!items.length) return failed({ label: "your 3.5+ star albums", error: error || "none found", page: "https://rateyourmusic.com/" });
       return { items: shuffle(items) };
     },
-    // History: what you played here, newest first. Separate from your RYM play history (only borrows its covers).
+    // History: what you played here (even if too briefly to count on RYM) merged with your RYM play history, newest
+    // first, one entry per album (its most recent play wins).
     async history() {
-      const rec = await store.get("sidebar:rymhist");
-      const art = new Map(((rec && rec.items) || []).map((i) => [i.href, i.artUrl]));
-      const items = played.map((p) => (p.artUrl ? p : { ...p, artUrl: art.get(p.href) || "" }));
+      let rym = [];
+      try {
+        const r = await listData("history");
+        rym = (r && r.items) || [];
+      } catch {}
+      const items = mergeHistory(played, rym);
       return items.length ? { items } : { message: "Albums you listen to will show up here." };
     },
   };
+
+  // Local plays have an exact time (`at`); RYM's list has only the day (`date`) and is newest first, so within a day
+  // its order is kept and it sorts just after midnight, below anything played here that day.
+  function mergeHistory(local, rym) {
+    const by = new Map();
+    const take = (item, ts) => {
+      const k = pathKey(item.href) || item.href;
+      const o = by.get(k);
+      if (!o) return by.set(k, { ...item, ts });
+      const win = ts > o.ts ? { ...o, ...item } : { ...item, ...o };
+      by.set(k, { ...win, ts: Math.max(ts, o.ts), artUrl: win.artUrl || o.artUrl || item.artUrl || "", id: win.id || o.id || item.id || "" });
+    };
+    local.forEach((p) => take(p, p.at || 0));
+    rym.forEach((r, i) => take(r, r.date ? r.date + (rym.length - i) : -i));
+    return [...by.values()].sort((a, b) => b.ts - a.ts).slice(0, 300);
+  }
 
   // 🎲: play a random entry. In lists of new music, skip albums you've already rated: known from the
   // list itself or from ratings seen before, otherwise from loading the album (a few tries at most).
