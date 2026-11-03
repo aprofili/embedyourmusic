@@ -824,6 +824,7 @@ async function rymUser() {
 async function pageFor(msg) {
   switch (msg.type) {
     case "fetch-newmusic":
+    case "fetch-toplistening":
       return "/new-music/";
     case "read-reco":
     case "exclude": {

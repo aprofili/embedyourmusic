@@ -51,5 +51,20 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     const got = JSON.parse(JSON.stringify(w.__embedYourMusic.scrapeReleases(box, 10).map((i) => [i.title, i.artist])));
     assert.deepStrictEqual(got, [["First", "Alpha"], ["Second", "Beta"]]);
   }
+  // new-music page: the "Top listening" column is found by its heading and kept out of New Releases
+  {
+    const doc = new JSDOM(`<body><div class="main">
+      <div class="left"><h2>New Releases</h2><div class="r"><a href="/release/album/a/new-one/"><img src="x.jpg"></a><a class="album" href="/release/album/a/new-one/">New One</a><a class="artist" href="/artist/a">A</a></div></div>
+      <div class="right"><div class="hd"><span>Top listening</span><a href="#">Releases</a><a href="#">Songs</a></div>
+        <ul><li><a href="/release/album/p/skin/">You Made Me / Skin on Linen</a><a class="artist" href="/artist/p">PISS</a> 61 listeners</li>
+            <li><a href="/release/album/q/perfecth/">Perfecth</a><a class="artist" href="/artist/q">Queens</a></li>
+            <li><a href="/song/q/x/">a song</a></li></ul></div></div></body>`).window.document;
+    const top = JSON.parse(JSON.stringify(w.__embedYourMusic.scrapeTopListening(doc).map((i) => [i.title, i.artist])));
+    assert.deepStrictEqual(top, [["You Made Me / Skin on Linen", "PISS"], ["Perfecth", "Queens"]]);
+    const box = doc.querySelector(".right");
+    const nm = w.__embedYourMusic.scrapeReleases(doc, 10, "", box).map((i) => i.title);
+    assert.deepStrictEqual([...nm], ["New One"]);
+    assert.deepStrictEqual([...w.__embedYourMusic.scrapeTopListening(new JSDOM("<body><h2>New Releases</h2></body>").window.document)], []);
+  }
   console.log("lists tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });
