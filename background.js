@@ -233,11 +233,29 @@ async function spotifyAuth() {
   return got && got[SPOTIFY_AUTH_KEY] ? got[SPOTIFY_AUTH_KEY] : null;
 }
 
+// One refresh at a time: Spotify rotates the refresh token on every refresh, so two parallel refreshes (the panel asks
+// for tracks, art and the saved flag at once after an idle hour) would make the second one fail with the old token,
+// and the panel would fall back to Spotify's embed. Network blips are retried before giving up.
+let refreshJob = null;
+async function refreshAuth(auth) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await storeAuth(await spotifyToken({ grant_type: "refresh_token", refresh_token: auth.refresh }), auth);
+    } catch (e) {
+      // Someone else refreshed meanwhile (e.g. an earlier worker): use theirs.
+      const now = await spotifyAuth();
+      if (now && now.refresh !== auth.refresh && Date.now() < now.expires) return now;
+      if (attempt >= 2 || /\((400|401)\)/.test(String(e && e.message))) throw e;
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    }
+  }
+}
 async function spotifyAccessToken() {
   let auth = await spotifyAuth();
   if (!auth) throw new Error("not connected");
   if (Date.now() >= auth.expires) {
-    auth = await storeAuth(await spotifyToken({ grant_type: "refresh_token", refresh_token: auth.refresh }), auth);
+    if (!refreshJob) refreshJob = refreshAuth(auth).finally(() => (refreshJob = null));
+    auth = await refreshJob;
   }
   return auth.access;
 }
@@ -340,7 +358,31 @@ async function setSaved(id, save) {
   throw new Error(last && !last.ok ? `Spotify API ${last.status}` : "Spotify didn't keep the change");
 }
 
+// Track lists never change, so they are kept (sp:tracks, newest 300) and an album you played before shows its player
+// at once; only the ♥ flags are asked for again, and if that fails the last known flags are used.
+const TRACKS_KEY = "sp:tracks";
 async function spotifyTracks(type, id) {
+  const key = `${type}:${id}`;
+  const all = ((await api.storage.local.get(TRACKS_KEY).catch(() => ({}))) || {})[TRACKS_KEY] || {};
+  const hit = all[key];
+  if (hit && hit.tracks && hit.tracks.length) {
+    const flags = await savedFlags(hit.tracks.map((t) => t.id)).catch(() => null);
+    const tracks = hit.tracks.map((t, i) => ({ ...t, saved: flags ? !!flags[i] : !!t.saved }));
+    if (flags) {
+      all[key] = { t: Date.now(), tracks };
+      api.storage.local.set({ [TRACKS_KEY]: all }).catch(() => {});
+    }
+    return tracks;
+  }
+  const tracks = await fetchSpotifyTracks(type, id);
+  all[key] = { t: Date.now(), tracks };
+  const keys = Object.keys(all);
+  if (keys.length > 300) keys.sort((a, b) => all[a].t - all[b].t).slice(0, keys.length - 300).forEach((k) => delete all[k]);
+  await api.storage.local.set({ [TRACKS_KEY]: all }).catch(() => {});
+  return tracks;
+}
+
+async function fetchSpotifyTracks(type, id) {
   let items;
   if (type === "track") {
     items = [await spotifyJson(`/tracks/${id}`)];
@@ -358,7 +400,7 @@ async function spotifyTracks(type, id) {
     throw new Error("unsupported type");
   }
   const ids = items.map((t) => t.id);
-  const flags = await savedFlags(ids);
+  const flags = (await savedFlags(ids).catch(() => null)) || [];
   return items.map((t, i) => ({
     id: t.id,
     name: t.name,
@@ -813,7 +855,8 @@ async function pageFor(msg) {
 
 async function liveTab(tabId, page) {
   // (a tab on exactly this page is tried even while RYM's ads and trackers keep it "loading")
-  const tabs = (await api.tabs.query({ url: RYM_URLS })).filter((t) => !helperTabs.has(t.id) && (t.status === "complete" || (page && pathOf(t.url) === page)));
+  // Sleeping / discarded tabs (Edge puts idle tabs to sleep) never answer, so they don't count.
+  const tabs = (await api.tabs.query({ url: RYM_URLS })).filter((t) => !helperTabs.has(t.id) && !t.discarded && !t.frozen && (t.status === "complete" || (page && pathOf(t.url) === page)));
   const pool = page ? tabs.filter((t) => pathOf(t.url) === page) : tabs;
   return pool.find((t) => t.id === tabId) || pool.find((t) => t.active) || pool[0] || null;
 }
@@ -907,18 +950,79 @@ async function rymTask({ tabId = null, msg, seq = 0 }) {
   } catch (e) {
     return { error: String(e.message || e) };
   }
+  if (msg.type === "load-release") {
+    const hit = await cachedRelease(msg.item, page);
+    if (hit) return hit;
+  }
   const tab = await liveTab(tabId, page);
   if (tab) {
     status("Asking your open RYM tab");
-    try {
-      const res = await api.tabs.sendMessage(tab.id, msg);
-      if (res && !res.error && !res.pending) return { ...res, tabId: tab.id };
-    } catch {
-      /* a tab from before the extension was reloaded: no one answers */
+    // A tab that doesn't answer in time (asleep, stuck behind RYM's rate-limit pause, from before an extension
+    // reload) is given up on and a background helper tab does it instead.
+    const wait = globalThis.__eymTabWait ?? (["rate", "save-review", "set-listening"].includes(msg.type) ? 15000 : 8000);
+    // While that tab is itself waiting on a helper tab (its script request met the bot check), it is making progress.
+    let res = null;
+    let done = false;
+    const ask = api.tabs.sendMessage(tab.id, msg).then(
+      (r) => r,
+      () => null // a tab from before the extension was reloaded: no one answers
+    ).finally(() => (done = true));
+    const start = Date.now();
+    while (!done) {
+      await sleep(250);
+      const t = Date.now() - start;
+      if (t > 45000 || (t > wait && !helperJobs.size)) break;
+    }
+    if (done) res = await ask;
+    if (res && !res.error && !res.pending) return keepRelease(msg, { ...res, tabId: tab.id });
+    if (!done) status("Your RYM tab didn't answer; using a background tab instead");
+  }
+  if (seq && seq < latestSeq) return { error: "superseded by a newer request" };
+  // Things you just did (rating, review, "Set listening") don't wait behind page reads queued earlier.
+  return keepRelease(msg, await inHelperTab(page, msg, ["rate", "save-review", "set-listening"].includes(msg.type), seq));
+}
+
+// Albums you played before open without RYM: their streaming links are kept (rel:cache, newest 500, 30 days) and the
+// rating comes from the ratings the extension has seen. A RYM tab open on that very album is still asked (fresh rating).
+const REL_CACHE = "rel:cache";
+const REL_TTL = 30 * 24 * 3600e3;
+async function cachedRelease(item, page) {
+  const path = item && item.href ? pathOf(item.href) : "";
+  if (!path) return null;
+  try {
+    const tabs = await api.tabs.query({ url: RYM_URLS });
+    if (tabs.some((t) => !helperTabs.has(t.id) && !t.discarded && pathOf(t.url) === path)) return null;
+    const got = (await api.storage.local.get([REL_CACHE, "sidebar:ratings", "sidebar:ids"])) || {};
+    const hit = (got[REL_CACHE] || {})[path];
+    if (!hit || !hit.payload || !(hit.payload.entries || []).length || Date.now() - hit.t > REL_TTL) return null;
+    const p = { ...hit.payload, href: item.href };
+    p.title = item.title || p.title;
+    p.artist = item.artist || p.artist;
+    p.artUrl = item.artUrl || p.artUrl;
+    p.id = p.id || item.id || (got["sidebar:ids"] || {})[path] || "";
+    const ratings = got["sidebar:ratings"] || {};
+    const r = ratings[`p:${path}`] ?? (p.id ? ratings[`i:${p.id}`] : undefined);
+    p.rating = typeof r === "number" ? r : 0;
+    p.ratingKnown = typeof r === "number";
+    return { payload: p, cached: true };
+  } catch {
+    return null;
+  }
+}
+function keepRelease(msg, res) {
+  if (msg.type === "load-release" && res && res.payload && (res.payload.entries || []).length) {
+    const path = pathOf(res.payload.href || (msg.item && msg.item.href));
+    if (path) {
+      (async () => {
+        const all = ((await api.storage.local.get(REL_CACHE)) || {})[REL_CACHE] || {};
+        all[path] = { t: Date.now(), payload: res.payload };
+        const keys = Object.keys(all);
+        if (keys.length > 500) keys.sort((a, b) => all[a].t - all[b].t).slice(0, keys.length - 500).forEach((k) => delete all[k]);
+        await api.storage.local.set({ [REL_CACHE]: all });
+      })().catch(() => {});
     }
   }
-  // Things you just did (rating, review, "Set listening") don't wait behind page reads queued earlier.
-  return inHelperTab(page, msg, ["rate", "save-review", "set-listening"].includes(msg.type), seq);
+  return res;
 }
 
 // release-data.js could not read a release page by script (bot check): load it in a helper tab, whose content

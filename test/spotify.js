@@ -122,6 +122,20 @@ const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
   assert.strictEqual(store["sp:auth"].access, "A2");
   assert.strictEqual(store["sp:auth"].refresh, "R1", "refresh token kept");
 
+  // parallel requests with an expired token share one refresh (Spotify rotates refresh tokens)
+  store["sp:auth"].expires = 0;
+  const before = calls.filter((c) => c.includes("/api/token")).length;
+  await Promise.all([ask({ type: "spotify-album", id: "alb" }), ask({ type: "spotify-tracks", kind: "album", id: "alb" }), ask({ type: "spotify-art", kind: "album", id: "alb" })]);
+  assert.strictEqual(calls.filter((c) => c.includes("/api/token")).length - before, 1, "one refresh");
+
+  // track lists are cached: no album request the second time, flags still fresh
+  const nt = calls.filter((c) => c.includes("/albums/alb/tracks")).length;
+  saved.add("t1");
+  r = await ask({ type: "spotify-tracks", kind: "album", id: "alb" });
+  assert.strictEqual(calls.filter((c) => c.includes("/albums/alb/tracks")).length, nt, "served from cache");
+  assert.strictEqual(r.tracks[0].saved, true, "flags re-read");
+  saved.delete("t1");
+
   // newer /me/library endpoints used when /me/tracks is gone
   legacy = true;
   r = await ask({ type: "spotify-tracks", kind: "album", id: "alb" });
