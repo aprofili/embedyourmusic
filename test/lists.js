@@ -66,5 +66,20 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     assert.deepStrictEqual([...nm], ["New One"]);
     assert.deepStrictEqual([...w.__embedYourMusic.scrapeTopListening(new JSDOM("<body><h2>New Releases</h2></body>").window.document)], []);
   }
+  // collection page: every rated row with its rating (stars image alt) as 1-10
+  {
+    const dom2 = new JSDOM(`<body><table>
+      <tr><td><a href="/release/album/a/one/">One</a> <a class="artist" href="/artist/a">A</a></td><td><img alt="3.50 stars"></td></tr>
+      <tr><td><a href="/release/album/b/two/">Two</a> <a class="artist" href="/artist/b">B</a></td><td><img alt="5.00 stars"></td></tr>
+      <tr><td><a href="/release/album/c/three/">Three</a> <a class="artist" href="/artist/c">C</a></td><td>no rating</td></tr>
+      </table><a class="navlinknum">1</a><a class="navlinknum">4</a></body>`, { url: "https://rateyourmusic.com/collection/me/r0.5-5.0/", runScripts: "outside-only", virtualConsole: new VirtualConsole() });
+    const w2 = dom2.window;
+    w2.IntersectionObserver = class { observe() {} unobserve() {} };
+    w2.chrome = { runtime: { sendMessage: async () => ({}), onMessage: { addListener() {} } }, storage: { local: { get: async () => ({}), set: async () => {} } } };
+    w2.eval(read("content.js"));
+    const r = await w2.__embedYourMusic.fetchCollection(1);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.items.map((i) => [i.title, i.artist, i.rating]))), [["One", "A", 7], ["Two", "B", 10]]);
+    assert.strictEqual(r.pages, 4);
+  }
   console.log("lists tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });

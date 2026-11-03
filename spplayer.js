@@ -271,7 +271,9 @@
     // The vertical slider fills the gap on the right between Spotify's logo and the repeat toggle.
     const fitVol = () => {
       const top = embedBtn.offsetTop + embedBtn.offsetHeight + 8;
-      const h = repeatBtn.offsetTop - top - 6; // (offsets are relative to the card, which is positioned)
+      // (offsets are relative to the card, which is positioned). The review / rating-question boxes can open between the
+      // header and the controls, so the slider stays beside the header then.
+      const h = Math.min(repeatBtn.offsetTop - 6, head.offsetTop + head.offsetHeight + 12) - top;
       if (h > 20) {
         vol.style.top = `${top}px`;
         vol.style.height = `${h}px`;

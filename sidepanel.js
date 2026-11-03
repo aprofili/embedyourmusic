@@ -354,6 +354,151 @@
     }
   }
 
+  // ---- "Help me decide" (the ? next to the stars) ----
+  // Up to 10 questions: is this album better or worse than one you've rated? The first compares it with the middle of
+  // your ratings, each answer halves the range that still fits, the last few double-check its edges with other albums.
+  // Then the best-fitting rating is filled in (sent to RYM like a star click) and the review box opens.
+  // Albums come from sidebar:ratedlib (your collection pages, read slowly by the background) plus ratings seen anywhere.
+  const quizBox = $("rate-quiz");
+  let quiz = null;
+  function closeQuiz() {
+    quiz = null;
+    quizBox.hidden = true;
+    quizBox.textContent = "";
+  }
+  const titleCase = (s) => s.replace(/-/g, " ").replace(/(^|\s)(\p{Ll})/gu, (_m, a, b) => a + b.toUpperCase());
+  const quizEl = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const starsText = (r) => `${"★".repeat(Math.floor(r / 2))}${r % 2 ? "½" : ""} (${r / 2})`;
+  async function quizPool(skipPath) {
+    const lib = (await store.get("sidebar:ratedlib")) || {};
+    const pool = new Map(); // level -> [{ path, title, artist, named }]
+    const add = (path, r, title, artist, named) => {
+      if (!(r >= 1 && r <= 10) || path === skipPath) return;
+      if (!pool.has(r)) pool.set(r, []);
+      pool.get(r).push({ path, title, artist, named });
+    };
+    for (const [path, v] of Object.entries(lib)) if (Array.isArray(v)) add(path, v[0], v[1], v[2], true);
+    for (const [k, r] of Object.entries(ratings)) {
+      if (!k.startsWith("p:") || lib[k.slice(2)]) continue;
+      const m = /^\/release\/[^/]+\/([^/]+)\/([^/]+)\/?$/.exec(k.slice(2));
+      if (m) add(k.slice(2), r, titleCase(decodeURIComponent(m[2])), titleCase(decodeURIComponent(m[1])), false);
+    }
+    return pool;
+  }
+  async function startQuiz() {
+    if (!current) return;
+    if (quiz) return closeQuiz();
+    const who = current;
+    let skip = "";
+    try {
+      skip = new URL(who.payload.href).pathname;
+    } catch {}
+    quizBox.hidden = false;
+    quizBox.textContent = "Getting your ratings…";
+    const st = (await api.runtime.sendMessage({ type: "ratings-sync" }).catch(() => null)) || {};
+    const pool = await quizPool(skip);
+    if (current !== who) return;
+    const total = [...pool.values()].reduce((n, l) => n + l.length, 0);
+    if (total < 5 || pool.size < 3) {
+      quizBox.textContent = "";
+      quizBox.append(quizEl("div", "", st.running || st.next ? `Reading your ratings from your RYM collection${st.pages ? ` (page ${Math.max(1, (st.next || 1) - 1)} of ${st.pages})` : ""}, slowly so RYM doesn't mind. Try again in a minute.` : `Not enough rated albums to compare with yet${st.error ? ` (${st.error})` : ""}.`));
+      const row = quizEl("div", "rq-btns");
+      const again = quizEl("button", "more", "Try again");
+      again.type = "button";
+      again.onclick = () => {
+        closeQuiz();
+        startQuiz();
+      };
+      const cancel = quizEl("button", "more", "Close");
+      cancel.type = "button";
+      cancel.onclick = closeQuiz;
+      row.append(again, cancel);
+      quizBox.append(row);
+      return;
+    }
+    quiz = { who, pool, ans: [], used: new Set(), log: [] };
+    askNext();
+  }
+  function askNext() {
+    const q = quiz;
+    if (!q || current !== q.who) return closeQuiz();
+    const H = globalThis.__eymRateHelp;
+    const left = (l) => (q.pool.get(l) || []).filter((x) => !q.used.has(x.path));
+    if (H.done(q.ans)) return finishQuiz();
+    const level = H.nextLevel(q.ans, (l) => left(l).length > 0);
+    if (!level) return finishQuiz();
+    const cands = left(level);
+    const named = cands.filter((x) => x.named);
+    const item = (named.length ? named : cands)[Math.floor(Math.random() * (named.length || cands.length))];
+    q.used.add(item.path);
+    quizBox.textContent = "";
+    quizBox.hidden = false;
+    quizBox.append(quizEl("div", "rq-head", `Is ${q.who.payload.title || "this album"} better or worse than…`));
+    const card = quizEl("a", "rq-album");
+    card.href = `https://rateyourmusic.com${item.path}`;
+    card.target = "_blank";
+    card.rel = "noopener";
+    const img = quizEl("img", "rq-art");
+    img.hidden = true;
+    img.referrerPolicy = "no-referrer";
+    img.onload = () => (img.hidden = false);
+    const text = quizEl("div", "rq-text");
+    text.append(quizEl("div", "rq-title", item.title), quizEl("div", "rq-artist", item.artist));
+    card.append(img, text);
+    quizBox.append(card);
+    api.runtime
+      .sendMessage({ type: "cover-art", item: { title: item.title, artist: item.artist, href: `https://rateyourmusic.com${item.path}` } })
+      .then((r) => r && r.url && quiz === q && (img.src = r.url))
+      .catch(() => {});
+    const row = quizEl("div", "rq-btns");
+    const answer = (label, cmp, cls = "more") => {
+      const b = quizEl("button", cls, label);
+      b.type = "button";
+      b.onclick = () => {
+        if (quiz !== q) return;
+        if (cmp !== null) {
+          q.ans.push({ r: level, cmp });
+          q.log.push({ item, r: level, cmp });
+        }
+        askNext();
+      };
+      return b;
+    };
+    row.append(answer("Better", 1, "more rq-yes"), answer("About the same", 0), answer("Worse", -1, "more rq-yes"), answer("Don't know it", null, "more rq-skip"));
+    quizBox.append(row);
+    const foot = quizEl("div", "rq-foot", `Question ${q.ans.length + 1} of up to ${H.MAX_Q}`);
+    const stop = quizEl("button", "rq-link", q.ans.length ? "Decide now" : "Cancel");
+    stop.type = "button";
+    stop.onclick = () => (q.ans.length ? finishQuiz() : closeQuiz());
+    foot.append(stop);
+    quizBox.append(foot);
+  }
+  async function finishQuiz() {
+    const q = quiz;
+    if (!q) return;
+    quiz = null;
+    if (!q.ans.length) return closeQuiz();
+    const x = globalThis.__eymRateHelp.estimate(q.ans);
+    quizBox.textContent = "";
+    quizBox.append(quizEl("div", "rq-head", `Your answers point to ${starsText(x)}`));
+    const list = quizEl("div", "rq-log");
+    for (const e of q.log) list.append(quizEl("div", "", `${e.cmp > 0 ? "better than" : e.cmp < 0 ? "worse than" : "about the same as"} ${e.item.title} (${starsText(e.r)})`));
+    quizBox.append(list);
+    const close = quizEl("button", "rq-link", "Close");
+    close.type = "button";
+    close.onclick = closeQuiz;
+    quizBox.append(close);
+    if (current !== q.who) return;
+    await rate(x); // fills the stars in and saves it on RYM, like a star click
+    if (current === q.who && reviewBox.hidden && !(reviews[reviewKey()] || {}).reviewed) openReview(true);
+  }
+  $("rate-help").addEventListener("click", startQuiz);
+
   // Stay blank until the first view is built, then fade in (no flash of the unloaded state).
   // ---- Keeping your place while a new album loads ----
   // The player area keeps its height while it is swapped, then eases to the new height; the row you clicked stays
@@ -421,6 +566,7 @@
   const rateHome = rateBox.parentNode;
   const restoreRate = () => {
     if (rateBox.parentNode !== rateHome) rateHome.append(rateBox);
+    if (quizBox.parentNode !== rateHome) rateHome.append(quizBox);
     if (reviewBox.parentNode !== rateHome) rateHome.append(reviewBox);
   };
   {
@@ -488,6 +634,7 @@
     const my = ++token;
     closeReview(); // (keeps what was typed for that album)
     current = { payload, tabId: payload.tabId == null ? null : payload.tabId, counted: false };
+    closeQuiz();
     $("empty").hidden = true;
     $("now").hidden = false;
     setRating(payload.rating || 0, payload.ratingKnown !== false);
@@ -573,6 +720,7 @@
                 node.rateSlot.append(rateBox);
                 const bar = node.querySelector(".sp-barrow");
                 if (bar) node.insertBefore(reviewBox, bar); // the review box opens inside the card, under the title and stars
+                if (bar) node.insertBefore(quizBox, reviewBox);
               } else plain();
               reveal();
             })

@@ -861,6 +861,11 @@ async function pageFor(msg) {
     case "check-review":
     case "save-review":
       return pathOf(msg.href);
+    case "fetch-collection": {
+      const user = await rymUser();
+      if (!user) throw new Error("sign in to rateyourmusic.com in this browser first");
+      return `/collection/${user}/r0.5-5.0/${msg.page > 1 ? `${msg.page}/` : ""}`;
+    }
     case "fetch-history":
     case "fetch-favorites": {
       const user = await rymUser();
@@ -1265,6 +1270,11 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     spFilter(msg.items || []).then(sendResponse).catch(() => sendResponse({ items: msg.items || [], filtered: false }));
     return true;
   }
+  if (msg && msg.type === "ratings-sync") {
+    syncRatedLibrary();
+    getRatedSync().then((st) => sendResponse(st));
+    return true;
+  }
   if (msg && typeof msg.type === "string" && msg.type.startsWith("follow-")) {
     followMessage(msg).then(sendResponse).catch((e) => sendResponse({ error: String((e && e.message) || e) }));
     return true;
@@ -1533,4 +1543,69 @@ async function followMessage(msg) {
 // A job that was running when the worker stopped carries on.
 getFollowJob()
   .then((j) => j && j.running && followLoop())
+  .catch(() => {});
+
+
+// ---- Your ratings library (for the panel's "help me decide" rating questions) ----
+// sidebar:ratedlib = { "<release path>": [rating 1-10, title, artist] }, read from your collection pages (all ratings,
+// newest first). First time: every page, one every 20-35 s (a long collection takes a while; what is read so far is
+// usable at once). After that, once a week, newest pages until one has nothing new. Stops on RYM's IP-block page.
+const RATED_LIB = "sidebar:ratedlib";
+const RATED_SYNC = "sidebar:ratedsync"; // { t (last full pass), next (page to read), pages, running, error }
+const RATED_GAP = globalThis.__eymRatedGap ?? 20000;
+const getRatedSync = async () => ((await api.storage.local.get(RATED_SYNC)) || {})[RATED_SYNC] || { t: 0, next: 1, pages: 0 };
+let ratedRun = null;
+function syncRatedLibrary() {
+  if (ratedRun) return ratedRun;
+  ratedRun = (async () => {
+    let st = await getRatedSync();
+    const fresh = st.t && Date.now() - st.t < 7 * 24 * 3600e3;
+    if (fresh && !st.next) return;
+    let page = st.next || 1;
+    const save = async (patch) => {
+      st = { ...st, ...patch };
+      await api.storage.local.set({ [RATED_SYNC]: st });
+    };
+    await save({ running: true, error: "", next: page });
+    try {
+      for (;;) {
+        const r = await rymTask({ msg: { type: "fetch-collection", page } });
+        if (!r || r.error) {
+          await save({ running: false, error: (r && r.blocked) ? "RYM blocked this IP; try again later" : (r && r.error) || "no answer from RYM" });
+          return;
+        }
+        const lib = ((await api.storage.local.get(RATED_LIB)) || {})[RATED_LIB] || {};
+        let added = 0;
+        for (const it of r.items || []) {
+          let path;
+          try {
+            path = new URL(it.href).pathname;
+          } catch {
+            continue;
+          }
+          const old = lib[path];
+          if (!old || old[0] !== it.rating) added++;
+          lib[path] = [it.rating, it.title || "", it.artist || ""];
+        }
+        await api.storage.local.set({ [RATED_LIB]: lib });
+        const pages = Math.max(r.pages || 1, page);
+        // A weekly refresh stops at the first page with nothing new (newest first); the first pass reads them all.
+        const done = page >= pages || (st.t && !added);
+        if (done) {
+          await save({ running: false, t: Date.now(), next: 0, pages });
+          return;
+        }
+        page++;
+        await save({ next: page, pages });
+        await sleep(RATED_GAP + Math.random() * RATED_GAP * 0.75);
+      }
+    } catch (e) {
+      await save({ running: false, error: String((e && e.message) || e) });
+    }
+  })().finally(() => (ratedRun = null));
+  return ratedRun;
+}
+// An unfinished first pass carries on when the worker starts again.
+getRatedSync()
+  .then((st) => st.next && st.running && syncRatedLibrary())
   .catch(() => {});
