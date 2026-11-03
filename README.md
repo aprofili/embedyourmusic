@@ -128,7 +128,7 @@ Playback keeps going with the panel closed on Chromium browsers: the Spotify emb
 RYM's own streaming icon rows are hidden on the page (the side panel plays everything).
 
 ### Volume
-The Spotify card has a volume slider above the track list (double-click resets it). 50% is the default; 100% is Spotify's embed at full volume, so there is room both ways. `spvolume.js` / `spvolume-main.js` run inside Spotify's embed frame (wherever it plays: offscreen document or panel) and scale its audio elements; Spotify's own volume setting is kept and multiplied.
+The Spotify card has a vertical volume slider on the right, between Spotify's logo and the repeat toggle (hover shows the %, double-click resets it). 50% is the default; 100% is Spotify's embed at full volume, so there is room both ways. `spvolume.js` / `spvolume-main.js` run inside Spotify's embed frame (wherever it plays: offscreen document or panel) and scale its audio elements; Spotify's own volume setting is kept and multiplied.
 
 ## Import your Spotify follows to RYM (one time)
 At the bottom of the side panel: "Follow the artists you follow on Spotify on RYM too". It needs one more Spotify permission (`user-follow-read`), so the first time it asks you to connect Spotify again.
@@ -137,7 +137,7 @@ At the bottom of the side panel: "Follow the artists you follow on Spotify on RY
 2. **Review**: only sure matches are ticked. Rows that need you come first, with a dropdown of RYM's results to pick from.
 3. **Follow N on RYM** opens each ticked artist's page in a background tab, presses RYM's Follow button, waits until it says Following, and closes the tab. Artists you already follow are skipped.
 
-It is slow on purpose (a few hundred artists take an hour or more), runs with the panel closed, survives the browser stopping the background worker, and pauses itself if RYM stops answering several times in a row (Resume carries on). The search results and Follow button are found by link shape and button text, not RYM's class names.
+It is very slow on purpose: 45-75 s between RYM page loads (about 60 an hour), because loading pages faster got the IP blocked by RYM's firewall; a few hundred artists take most of a day. It runs with the panel closed, survives the browser stopping the background worker, and pauses itself if RYM stops answering several times in a row (Resume carries on). If a page comes back as RYM's IP-block page ("your IP address has been automatically blocked"), the import stops at once and never restarts by itself: only pressing Resume / Follow / Retry in the panel starts it again (wait until rateyourmusic.com loads normally first). This only concerns the import; the rest of the extension is unaffected. The search results and Follow button are found by link shape and button text, not RYM's class names.
 
 ## Cloud backup
 

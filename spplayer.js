@@ -138,8 +138,6 @@
   // "sidebar:volume"; spvolume.js inside Spotify's embed applies it, wherever the embed plays. Double-click: back to 50.
   function volumeControl() {
     const box = el("label", "sp-vol");
-    box.title = "Volume (double-click: back to 50%)";
-    const icon = el("span", "sp-vol-icon", "🔊");
     const range = el("input", "sp-vol-range");
     range.type = "range";
     range.min = "0";
@@ -150,8 +148,7 @@
     const show = (v) => {
       range.value = String(v);
       pct.textContent = `${v}%`;
-      icon.textContent = v == 0 ? "🔇" : v < 35 ? "🔈" : v < 70 ? "🔉" : "🔊";
-      range.style.setProperty("--vol", `${v}%`);
+      box.title = `Volume ${v}% (double-click: back to 50%)`;
     };
     api.storage.local.get("sidebar:volume").then((o) => typeof (o && o["sidebar:volume"]) === "number" && show(o["sidebar:volume"]), () => {});
     let t = null;
@@ -165,7 +162,9 @@
     api.storage.onChanged.addListener((changes, area) => {
       if (area === "local" && changes["sidebar:volume"] && typeof changes["sidebar:volume"].newValue === "number" && document.activeElement !== range) show(changes["sidebar:volume"].newValue);
     });
-    box.append(icon, range, pct);
+    range.setAttribute("aria-label", "Volume");
+    range.setAttribute("orient", "vertical"); // (older Firefox)
+    box.append(range, pct);
     return box;
   }
 
@@ -245,7 +244,8 @@
     play.title = "Play / pause";
     const count = el("span", "sp-count");
     const listHead = el("div", "sp-listhead");
-    listHead.append(volumeControl(), count);
+    listHead.append(count);
+    const vol = volumeControl();
     // Spotify's logo (top right of the card) shows / hides Spotify's own player, for when ours doesn't respond.
     const embedBtn = el("button", "sp-embed-toggle");
     embedBtn.type = "button";
@@ -267,7 +267,18 @@
     const msg = el("div", "sp-msg");
     msg.hidden = true;
     const list = el("div", "sp-list");
-    root.append(head, barRow, msg, listHead, list, embedBtn);
+    root.append(head, barRow, msg, listHead, list, embedBtn, vol);
+    // The vertical slider fills the gap on the right between Spotify's logo and the repeat toggle.
+    const fitVol = () => {
+      const top = embedBtn.offsetTop + embedBtn.offsetHeight + 8;
+      const h = repeatBtn.offsetTop - top - 6; // (offsets are relative to the card, which is positioned)
+      if (h > 20) {
+        vol.style.top = `${top}px`;
+        vol.style.height = `${h}px`;
+      }
+    };
+    if (globalThis.ResizeObserver) new ResizeObserver(fitVol).observe(root);
+    requestAnimationFrame(fitVol);
 
     // ---- track list ----
     const rows = tracks.map((t, i) => {

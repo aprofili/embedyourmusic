@@ -1249,8 +1249,8 @@ a.sp-artist {
 .fl-pick { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 4px; color: inherit; font: inherit; padding: 1px 2px; color-scheme: light dark; }
 .fl-st { flex: none; font-size: 0.9em; opacity: 0.8; }
 
-.sp-listhead { align-items: center; }
-.sp-vol { display: flex; align-items: center; gap: 6px; margin-right: auto; padding-left: 8px; font-size: 0.8em; color: var(--muted); cursor: pointer; }
-.sp-vol-icon { width: 1.3em; text-align: center; }
-.sp-vol-range { width: 110px; accent-color: var(--sp-h, var(--accent)); cursor: pointer; }
-.sp-vol-pct { min-width: 2.8em; font-variant-numeric: tabular-nums; }
+/* Volume: vertical, on the right between Spotify's logo and the repeat toggle (top / height set by spplayer.js) */
+.sp > .sp-vol { position: absolute; right: 14px; top: 40px; height: 64px; width: 22px; display: flex; justify-content: center; cursor: pointer; }
+.sp-vol-range { writing-mode: vertical-lr; direction: rtl; width: 16px; height: 100%; margin: 0; padding: 0; accent-color: var(--sp-h, var(--accent)); cursor: pointer; }
+.sp-vol-pct { position: absolute; right: 100%; top: 50%; transform: translateY(-50%); margin-right: 4px; padding: 1px 5px; border-radius: 4px; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 0.7em; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+.sp-vol:hover .sp-vol-pct, .sp-vol:focus-within .sp-vol-pct { opacity: 1; }
