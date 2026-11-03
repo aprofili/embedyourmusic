@@ -665,6 +665,11 @@
 
   // Side panel asked for a release by URL: its streaming links, id and your rating.
   let latestSeq = 0; // the panel numbers its album requests; older ones are dropped when a newer one arrives
+  function pickArtist(listed, page) {
+    const flat = (x) => String(x || "").toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
+    if (!listed) return page || "";
+    return page && flat(page) === flat(listed) ? page : listed;
+  }
   async function loadRelease(item) {
     const rel = globalThis.__eymRelease;
     if (!rel || !rel.getByHref) throw new Error("not ready");
@@ -701,7 +706,9 @@
     return {
       id,
       title: item.title || (rec && rec.title) || "",
-      artist: item.artist || (rec && rec.artist) || "",
+      // The release page's spelling wins over a list's that only differs in case / punctuation (a guess from the
+      // address: "bon iver"); a list's fuller credit ("A & B", the page names only A) is kept.
+      artist: pickArtist(item.artist, rec && rec.artist),
       artUrl: item.artUrl || (rec && rec.art) || "",
       href: item.href,
       rating: rec && rec.ratingKnown ? rec.rating : 0,
@@ -1010,11 +1017,15 @@
     if (own && /^\/release\//.test(location.pathname)) return own.textContent.replace(/\s+/g, " ").trim();
     const m = /^\/release\/[^/]+\/([^/]+)\//.exec(path);
     if (!m) return "";
+    let name;
     try {
-      return decodeURIComponent(m[1]).replace(/-/g, " ");
+      name = decodeURIComponent(m[1]).replace(/-/g, " ");
     } catch {
-      return m[1].replace(/-/g, " ");
+      name = m[1].replace(/-/g, " ");
     }
+    // Slugs are lowercase; title case is the better guess ("bon-iver" -> "Bon Iver"). The release page's own
+    // spelling replaces it once the album is loaded (loadRelease).
+    return name.replace(/(^|\s)(\p{Ll})/gu, (_m, a, b) => a + b.toUpperCase());
   }
 
   function describeCover(a) {
