@@ -1420,6 +1420,125 @@
     else if (!current) reveal();
   });
 
+  // ---- One-time import: Spotify follows -> RYM follows (the work runs in the background; see background.js) ----
+  (function followsUi() {
+    const box = $("follows");
+    if (!box) return;
+    const ask = (m) => api.runtime.sendMessage(m).catch(() => ({ error: "no answer from the extension" }));
+    const el = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    };
+    const btn = (text, fn) => {
+      const b = el("button", "more", text);
+      b.type = "button";
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          await fn();
+        } finally {
+          b.disabled = false;
+          paint();
+        }
+      };
+      return b;
+    };
+    let listOpen = false;
+    let msg = "";
+    const RYM = "https://rateyourmusic.com";
+    const LABEL = { matched: "", ambiguous: "check: several with this name", fuzzy: "check: similar name", none: "not found on RYM", error: "RYM didn't answer", pending: "…" };
+    async function paint() {
+      const s = (await ask({ type: "follow-status" })) || {};
+      const job = s.job;
+      box.textContent = "";
+      const row = el("div", "bk-row");
+      box.append(row);
+      if (!job) {
+        const st = await ask({ type: "spotify-status" });
+        row.append(el("span", "bk-text", "Follow the artists you follow on Spotify on RYM too (one-time import)"));
+        if (!st || !st.connected || !s.scopeOk) {
+          row.append(btn(st && st.connected ? "Allow reading follows" : "Connect Spotify", async () => {
+            const r = await ask({ type: "spotify-connect" });
+            msg = r && r.ok ? "" : `Couldn't connect: ${(r && r.error) || "unknown error"}`;
+          }));
+        } else {
+          row.append(btn("Start", async () => {
+            msg = "Reading your Spotify follows…";
+            const r = await ask({ type: "follow-start" });
+            msg = r && r.ok ? "" : r && r.error === "reconnect" ? "Spotify needs permission to read your follows: press Allow." : `Couldn't start: ${(r && r.error) || "unknown error"}`;
+          }));
+        }
+        if (msg) box.append(el("div", "bk-msg bk-err", msg));
+        return;
+      }
+      const it = job.items;
+      const n = (f) => it.filter(f).length;
+      const ticked = n((x) => x.checked && x.rym);
+      let text;
+      if (job.phase === "matching") text = `Finding your ${it.length} Spotify artists on RYM: ${n((x) => x.status !== "pending")} / ${it.length} · ${n((x) => x.status === "matched")} found`;
+      else if (job.phase === "review") text = `${n((x) => x.status === "matched")} of ${it.length} found on RYM · ${n((x) => ["ambiguous", "fuzzy"].includes(x.status))} to check · ${n((x) => x.status === "none")} not found${n((x) => x.status === "error") ? ` · ${n((x) => x.status === "error")} errors` : ""}. Tick who to follow, then press Follow.`;
+      else if (job.phase === "following") text = `Following on RYM: ${n((x) => x.checked && x.rym && x.done)} / ${ticked}`;
+      else text = `Done: ${n((x) => x.done === "followed")} followed, ${n((x) => x.done === "already")} already followed${n((x) => x.done === "failed") ? `, ${n((x) => x.done === "failed")} failed` : ""}.`;
+      row.append(el("span", "bk-text fl-text", text));
+      const busy = job.phase === "matching" || job.phase === "following";
+      if (busy) row.append(job.running ? btn("Stop", () => ask({ type: "follow-stop" })) : btn("Resume", () => ask({ type: "follow-resume" })));
+      if (job.phase === "review" || job.phase === "done") {
+        if (ticked && n((x) => x.checked && x.rym && x.done !== "followed" && x.done !== "already")) row.append(btn(`Follow ${n((x) => x.checked && x.rym && !x.done)} on RYM`, () => ask({ type: "follow-go" })));
+        if (n((x) => x.status === "error")) row.append(btn("Retry errors", () => ask({ type: "follow-retry" })));
+        row.append(btn(job.phase === "done" ? "Clear" : "Cancel", () => ask({ type: "follow-clear" })));
+      }
+      if (job.note) box.append(el("div", "bk-msg bk-err", job.note));
+      const det = el("details", "fl-list");
+      det.open = listOpen;
+      det.ontoggle = () => (listOpen = det.open);
+      det.append(el("summary", "", `Artists (${it.length})`));
+      // Ones that need you first, then the sure matches.
+      const rank = (x) => ({ ambiguous: 0, fuzzy: 1, error: 2, none: 3, matched: 4, pending: 5 }[x.status] ?? 6);
+      const order = it.map((x, i) => i).sort((a, b) => rank(it[a]) - rank(it[b]) || it[a].sp.name.localeCompare(it[b].sp.name));
+      for (const i of order) {
+        const x = it[i];
+        const r = el("div", "fl-row");
+        const cb = el("input");
+        cb.type = "checkbox";
+        cb.checked = !!x.checked;
+        cb.disabled = !x.rym || !!x.done || busy;
+        cb.onchange = () => ask({ type: "follow-set", i, checked: cb.checked });
+        r.append(cb, el("span", "fl-sp", x.sp.name), el("span", "fl-arrow", "→"));
+        const choices = (x.cands || []).slice();
+        if (x.rym && !choices.some((c) => c.path === x.rym.path)) choices.unshift(x.rym);
+        if (x.status !== "matched" && choices.length && !x.done && !busy) {
+          const sel = el("select", "fl-pick");
+          sel.append(new Option("(none)", ""));
+          for (const c of choices) sel.append(new Option(`${c.name} (${c.path.replace("/artist/", "")})`, c.path, false, !!(x.rym && x.rym.path === c.path)));
+          sel.onchange = () => {
+            const c = choices.find((y) => y.path === sel.value);
+            ask({ type: "follow-set", i, rym: c || null, checked: !!c });
+          };
+          r.append(sel);
+        } else if (x.rym) {
+          const a = el("a", "fl-rym", x.rym.name);
+          a.href = RYM + x.rym.path;
+          a.target = "_blank";
+          a.rel = "noopener";
+          r.append(a);
+        } else r.append(el("span", "fl-rym", "—"));
+        const st = x.done ? { followed: "followed ✓", already: "already followed", failed: `failed: ${x.error || ""}` }[x.done] : LABEL[x.status] || "";
+        if (st) r.append(el("span", `fl-st${x.done === "failed" || x.status === "error" ? " bk-err" : ""}`, st));
+        det.append(r);
+      }
+      box.append(det);
+    }
+    let timer = null;
+    api.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !(changes["follow:job"] || changes["sp:auth"])) return;
+      clearTimeout(timer);
+      timer = setTimeout(paint, 250);
+    });
+    paint();
+  })();
+
   // ---- Cloud backup (jkprilfools.com account) ----
   (function backupUi() {
     const box = $("backup");

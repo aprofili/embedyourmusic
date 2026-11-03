@@ -202,7 +202,7 @@ async function resolveBandcamp(url) {
 
 // ---- Spotify: per-track library saves (OAuth PKCE, no client secret) ----
 const SPOTIFY_CLIENT_ID = "c66c2741c3284f4eae7341cc156ca0e8";
-const SPOTIFY_SCOPES = "user-library-read user-library-modify";
+const SPOTIFY_SCOPES = "user-library-read user-library-modify user-follow-read";
 const SPOTIFY_AUTH_KEY = "sp:auth";
 
 const b64url = (buf) =>
@@ -223,6 +223,7 @@ async function storeAuth(tok, previous) {
     access: tok.access_token,
     refresh: tok.refresh_token || (previous && previous.refresh),
     expires: Date.now() + (tok.expires_in - 60) * 1000,
+    scope: tok.scope || (previous && previous.scope) || "",
   };
   await api.storage.local.set({ [SPOTIFY_AUTH_KEY]: auth });
   return auth;
@@ -609,7 +610,7 @@ const ACCOUNT_KEY = "eym:account"; // { token, username, last, error } (kept out
 const BACKUP_KEYS = [
   "sidebar:played", "sidebar:last", "sidebar:reviews", "sidebar:resume", "sidebar:repeat", "sidebar:chartsel",
   "sidebar:charts-saved", "sidebar:charts-seen", "sidebar:listenqueue", "sidebar:lastlistened", "sidebar:ratings",
-  "sidebar:ids", "sidebar:user",
+  "sidebar:ids", "sidebar:user", "sidebar:volume",
 ];
 const BACKUP_MAX_CHARS = 1_400_000;
 const PLAYED_KEEP = 100;
@@ -834,7 +835,10 @@ async function pageFor(msg) {
     }
     case "fetch-artist":
     case "fetch-chart":
+    case "artist-follow":
       return msg.path;
+    case "artist-search":
+      return `/search?searchterm=${encodeURIComponent(msg.query || "")}&searchtype=a`;
     case "rate": // the album's own page when we know it (that tab already has the rating widget)
       return msg.href ? pathOf(msg.href) : "";
     case "set-listening": // the album's own page when we know it: RYM's "Set listening" box lives there
@@ -1245,6 +1249,10 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     spFilter(msg.items || []).then(sendResponse).catch(() => sendResponse({ items: msg.items || [], filtered: false }));
     return true;
   }
+  if (msg && typeof msg.type === "string" && msg.type.startsWith("follow-")) {
+    followMessage(msg).then(sendResponse).catch((e) => sendResponse({ error: String((e && e.message) || e) }));
+    return true;
+  }
   if (msg && typeof msg.type === "string" && msg.type.startsWith("backup-")) {
     const job =
       msg.type === "backup-login" ? backupLogin(msg)
@@ -1318,3 +1326,184 @@ if (api.commands && api.commands.onCommand) {
     if (cmd) mediaKey(cmd);
   });
 }
+
+
+// ---- One-time import: the artists you follow on Spotify -> follows on RYM ----
+// 1. Your followed artists come from Spotify (needs the user-follow-read scope: connect Spotify again once).
+// 2. Matching: each name is searched on RYM (a helper tab on the search page, like any other RYM read). One result
+//    with the same name is a match; several are told apart by comparing album titles (Spotify's vs. the RYM artist
+//    page); a near-miss or a tie is left for you to decide.
+// 3. You review the list in the panel (only sure matches are ticked), then the ticked artists are followed one at a
+//    time: the artist page opens in a helper tab, its Follow button is pressed and checked, the tab closes.
+// The job lives in storage (follow:job), so it survives the worker being stopped and carries on where it was.
+const FOLLOW_KEY = "follow:job";
+const FOLLOW_GAP = globalThis.__eymFollowGap ?? 1500;
+let followLock = Promise.resolve();
+const getFollowJob = async () => ((await api.storage.local.get(FOLLOW_KEY)) || {})[FOLLOW_KEY] || null;
+// Every change to the job goes through here, one at a time (the panel's ticks and the worker's progress don't clash).
+function editFollowJob(fn) {
+  const run = followLock.then(async () => {
+    const job = await getFollowJob();
+    const next = await fn(job);
+    if (next !== undefined) await api.storage.local.set({ [FOLLOW_KEY]: next });
+    return next === undefined ? job : next;
+  });
+  followLock = run.catch(() => {});
+  return run;
+}
+
+async function spotifyFollowedArtists() {
+  const out = [];
+  let after = "";
+  for (let i = 0; i < 100; i++) {
+    const res = await spotifyFetch("GET", "/me/following", { type: "artist", limit: "50", ...(after ? { after } : {}) });
+    if (res.status === 401 || res.status === 403) throw new Error("reconnect");
+    if (!res.ok) throw new Error(`Spotify API ${res.status}`);
+    const page = ((await res.json()) || {}).artists || {};
+    for (const a of page.items || []) out.push({ id: a.id, name: a.name, followers: (a.followers && a.followers.total) || 0 });
+    after = page.cursors && page.cursors.after;
+    if (!after || !page.next) break;
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function spotifyAlbumTitles(id) {
+  try {
+    const j = await spotifyJson(`/artists/${id}/albums`, { include_groups: "album,single", limit: "50" });
+    return (j.items || []).map((a) => a.name);
+  } catch {
+    return [];
+  }
+}
+
+// How many of the Spotify artist's titles are on the RYM artist page.
+async function albumOverlap(spTitles, path) {
+  const r = await rymTask({ msg: { type: "fetch-artist", path, name: "", skip: "" } });
+  const rym = ((r && r.items) || []).map((i) => nameVariants(i.title));
+  let n = 0;
+  for (const t of spTitles) if (rym.some((v) => bestSim(nameVariants(t), v) >= 0.85)) n++;
+  return n;
+}
+
+// -> { status: "matched" | "ambiguous" | "fuzzy" | "none" | "error", rym: {name, path} | null, cands: [...], error }
+async function matchArtist(sp) {
+  const r = await rymTask({ msg: { type: "artist-search", query: sp.name } });
+  if (!r || r.error) return { status: "error", error: (r && r.error) || "no answer from RYM", rym: null, cands: [] };
+  const cands = (r.results || []).slice(0, 8);
+  const want = nameVariants(sp.name);
+  const scored = cands.map((c) => ({ ...c, sim: bestSim(want, nameVariants(c.name)) }));
+  const exact = scored.filter((c) => c.sim >= 0.999);
+  const keep = cands.slice(0, 5).map((c) => ({ name: c.name, path: c.path }));
+  if (exact.length === 1) return { status: "matched", rym: { name: exact[0].name, path: exact[0].path }, cands: keep };
+  const pool = exact.length ? exact.slice(0, 3) : scored.filter((c) => c.sim >= 0.85).sort((a, b) => b.sim - a.sim).slice(0, 1);
+  if (!pool.length) return { status: "none", rym: null, cands: keep };
+  const titles = await spotifyAlbumTitles(sp.id);
+  let best = null;
+  let bestN = 0;
+  let tie = false;
+  for (const c of pool) {
+    await sleep(FOLLOW_GAP);
+    const n = titles.length ? await albumOverlap(titles, c.path) : 0;
+    if (n > bestN) [best, bestN, tie] = [c, n, false];
+    else if (n && n === bestN) tie = true;
+  }
+  if (best && !tie) return { status: exact.length ? "matched" : "fuzzy-ok", rym: { name: best.name, path: best.path }, cands: keep };
+  return { status: exact.length ? "ambiguous" : "fuzzy", rym: { name: pool[0].name, path: pool[0].path }, cands: keep };
+}
+
+let followRun = null;
+function followLoop() {
+  if (followRun) return followRun;
+  followRun = (async () => {
+    let fails = 0;
+    for (;;) {
+      const job = await getFollowJob();
+      if (!job || !job.running) return;
+      const i = job.phase === "matching" ? job.items.findIndex((x) => x.status === "pending") : job.items.findIndex((x) => x.checked && x.rym && !x.done);
+      if (i < 0) {
+        await editFollowJob((j) => (j ? { ...j, running: false, phase: j.phase === "matching" ? "review" : "done", note: "" } : j));
+        return;
+      }
+      const item = job.items[i];
+      let patch;
+      if (job.phase === "matching") {
+        const m = await matchArtist(item.sp).catch((e) => ({ status: "error", error: String((e && e.message) || e), rym: null, cands: [] }));
+        const sure = m.status === "matched" || m.status === "fuzzy-ok";
+        patch = { status: m.status === "fuzzy-ok" ? "matched" : m.status, rym: m.rym, cands: m.cands, error: m.error || "", checked: sure };
+        fails = m.status === "error" ? fails + 1 : 0;
+      } else {
+        const r = await rymTask({ msg: { type: "artist-follow", path: item.rym.path } }).catch((e) => ({ error: String(e.message || e) }));
+        patch = r && r.ok ? { done: r.already ? "already" : "followed", error: "" } : { done: "", error: (r && r.error) || "no answer from RYM", tries: (item.tries || 0) + 1 };
+        if (!(r && r.ok) && patch.tries >= 2) patch.done = "failed";
+        fails = r && r.ok ? 0 : fails + 1;
+      }
+      await editFollowJob((j) => {
+        if (!j || !j.items[i] || j.items[i].sp.id !== item.sp.id) return undefined;
+        const items = j.items.slice();
+        items[i] = { ...items[i], ...patch };
+        // RYM stopped answering (down, bot check, logged out): pause instead of hammering it.
+        const stop = fails >= 4;
+        return { ...j, items, running: stop ? false : j.running, note: stop ? "Paused: RYM didn't answer several times in a row. Press Resume to carry on." : "" };
+      });
+      await sleep(FOLLOW_GAP);
+    }
+  })().finally(() => (followRun = null));
+  return followRun;
+}
+
+async function followMessage(msg) {
+  switch (msg.type) {
+    case "follow-status":
+      return { job: await getFollowJob(), scopeOk: /user-follow-read/.test(((await spotifyAuth()) || {}).scope || "") };
+    case "follow-start": {
+      if (!(await spotifyAuth())) return { error: "Connect Spotify first" };
+      let artists;
+      try {
+        artists = await spotifyFollowedArtists();
+      } catch (e) {
+        return { error: /reconnect/.test(String(e.message)) ? "reconnect" : String(e.message || e) };
+      }
+      if (!artists.length) return { error: "You don't follow any artists on Spotify" };
+      const job = { t: Date.now(), phase: "matching", running: true, items: artists.map((sp) => ({ sp, status: "pending", rym: null, cands: [], checked: false, done: "" })) };
+      await editFollowJob(() => job);
+      followLoop();
+      return { ok: true, count: artists.length };
+    }
+    case "follow-stop":
+      await editFollowJob((j) => (j ? { ...j, running: false } : j));
+      return { ok: true };
+    case "follow-resume":
+      await editFollowJob((j) => (j ? { ...j, running: true, note: "" } : j));
+      followLoop();
+      return { ok: true };
+    case "follow-go": // start following the ticked artists
+      await editFollowJob((j) => (j ? { ...j, phase: "following", running: true, note: "", items: j.items.map((x) => (x.done === "failed" ? { ...x, done: "", tries: 0 } : x)) } : j));
+      followLoop();
+      return { ok: true };
+    case "follow-retry": // match again the ones RYM didn't answer for
+      await editFollowJob((j) => (j ? { ...j, phase: "matching", running: true, note: "", items: j.items.map((x) => (x.status === "error" ? { ...x, status: "pending" } : x)) } : j));
+      followLoop();
+      return { ok: true };
+    case "follow-set": // your tick / your pick of the RYM artist for one row
+      await editFollowJob((j) => {
+        if (!j || !j.items[msg.i]) return undefined;
+        const items = j.items.slice();
+        const it = { ...items[msg.i] };
+        if (typeof msg.checked === "boolean") it.checked = msg.checked;
+        if (msg.rym !== undefined) it.rym = msg.rym && msg.rym.path ? { name: msg.rym.name || msg.rym.path, path: msg.rym.path } : null;
+        if (!it.rym) it.checked = false;
+        items[msg.i] = it;
+        return { ...j, items };
+      });
+      return { ok: true };
+    case "follow-clear":
+      await editFollowJob(() => null);
+      return { ok: true };
+  }
+  return { error: "unknown" };
+}
+
+// A job that was running when the worker stopped carries on.
+getFollowJob()
+  .then((j) => j && j.running && followLoop())
+  .catch(() => {});
