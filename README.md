@@ -127,6 +127,11 @@ Playback keeps going with the panel closed on Chromium browsers: the Spotify emb
 
 RYM's own streaming icon rows are hidden on the page (the side panel plays everything).
 
+### Help me decide (rating)
+The **?** next to the stars asks up to 10 questions: is this album better, about the same as, or worse than an album you've already rated? (Don't know it skips to another.) The first compares it with the middle of your ratings; each answer halves the range of ratings that still fits; once that range is narrow, a few more albums near its edges double-check it. It stops early once one rating fits every answer with evidence on both sides. The best-fitting rating is then filled in and saved on RYM like a star click, and the review box opens for a comment. Logic in `ratehelp.js`.
+
+The albums come from `sidebar:ratedlib` (`{ path: [rating 1-10, title, artist] }`), read from your collection pages (`/collection/<you>/r0.5-5.0/`, newest first) by the background: the first time every page, one every 20-35 s (what's read so far is usable right away); then weekly, newest pages until one has nothing new. Ratings the extension has seen elsewhere are used too (named from the address).
+
 ### Volume
 The Spotify card has a vertical volume slider on the right, between Spotify's logo and the repeat toggle (hover shows the %, double-click resets it). 50% is the default; 100% is Spotify's embed at full volume, so there is room both ways. `spvolume.js` / `spvolume-main.js` run inside Spotify's embed frame (wherever it plays: offscreen document or panel) and scale its audio elements; Spotify's own volume setting is kept and multiplied.
 

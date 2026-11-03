@@ -1028,6 +1028,25 @@
     return { items, pages };
   }
 
+  // Every rated release on a page of your collection (all ratings, newest first): title, artist and your rating (1-10),
+  // read from each row's stars image ("3.50 stars"). For the side panel's "help me decide" rating questions.
+  async function fetchCollection(page = 1) {
+    const user = whoami();
+    if (!user && !onPage(/^\/collection\//)) throw new Error("not signed in");
+    const doc = await docFor(/^\/collection\/[^/]+\/r0\.5-5\.0/, `/collection/${user}/r0.5-5.0${page > 1 ? `/${page}` : ""}`);
+    const items = [];
+    for (const it of scrapeReleases(doc, 500)) {
+      const path = new URL(it.href).pathname;
+      const a = [...doc.querySelectorAll("a[href]")].find((x) => x.getAttribute("href") === path);
+      const row = a && (a.closest("tr") || a.closest("li"));
+      const img = row && row.querySelector('img[alt$="stars"], img[alt$="star"]');
+      const m = img && /([\d.]+) stars?/.exec(img.getAttribute("alt"));
+      const r = m ? Math.round(Number(m[1]) * 2) : 0;
+      if (r >= 1 && r <= 10) items.push({ href: it.href, title: it.title, artist: it.artist, rating: r });
+    }
+    const nums = [...doc.querySelectorAll(".navlinknum, .navlinkcurrent")].map((n) => Number(n.textContent)).filter(Boolean);
+    return { items, pages: Math.max(1, ...nums) };
+  }
 
   // ---- Any album cover, anywhere on the site, opens in the side panel while it is open ----
   // The extension (side panel); the iOS userscript has none. (__eymNoPanel: tests of the in-page players.)
@@ -1378,8 +1397,8 @@
         })();
         return true;
       }
-      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-toplistening" || msg.type === "fetch-artist" || msg.type === "fetch-chart")) {
-        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-chart" ? fetchChart(msg.path) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-newmusic" ? fetchNewMusic() : msg.type === "fetch-toplistening" ? fetchTopListening() : fetchFavorites(msg.page))
+      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-collection" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-toplistening" || msg.type === "fetch-artist" || msg.type === "fetch-chart")) {
+        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-chart" ? fetchChart(msg.path) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-collection" ? fetchCollection(msg.page) : msg.type === "fetch-newmusic" ? fetchNewMusic() : msg.type === "fetch-toplistening" ? fetchTopListening() : fetchFavorites(msg.page))
           .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : r))
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
@@ -2052,5 +2071,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, openPanel, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, scrapeTopListening, scrapeArtistResults, followState, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, openPanel, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, fetchCollection, scrapeTopListening, scrapeArtistResults, followState, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
 })();

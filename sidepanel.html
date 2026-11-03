@@ -15,9 +15,11 @@
       <div id="body"></div>
       <div id="rate-box">
         <div id="rating" role="group" aria-label="Your rating"></div>
+        <button type="button" id="rate-help" title="Help me decide: compare it with albums you've rated">?</button>
         <div id="rating-note"></div>
         <button type="button" id="review-btn" class="more" hidden></button>
       </div>
+      <div id="rate-quiz" hidden></div>
       <div id="review-box" hidden>
         <textarea id="review-text" rows="5" placeholder="Write your review…" aria-label="Your review"></textarea>
         <div class="review-row">
@@ -45,6 +47,7 @@
   <script src="content.js"></script>
   <script src="spengine.js"></script>
   <script src="spplayer.js"></script>
+  <script src="ratehelp.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
