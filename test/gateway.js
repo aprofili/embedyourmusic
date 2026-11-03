@@ -180,7 +180,7 @@ function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, wind
   // 11. An album loaded once opens from the cache next time, with no RYM tab or helper tab
   {
     const href = "https://rateyourmusic.com/release/album/a/c/";
-    const g = load({ answer: async () => ({ payload: { id: "7", href, title: "C", entries: [{ service: "spotify", href: "https://open.spotify.com/album/x" }] } }) });
+    const g = load({ answer: async () => ({ payload: { id: "7", href, title: "C", artist: "C", entries: [{ service: "spotify", href: "https://open.spotify.com/album/x" }] } }) });
     let r = await g.ask({ type: "to-rym", msg: { type: "load-release", item: { href } } });
     assert.strictEqual(r.payload.title, "C");
     assert.strictEqual(g.created.length, 1);
@@ -189,6 +189,8 @@ function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, wind
     r = await g.ask({ type: "to-rym", msg: { type: "load-release", item: { href } } });
     assert.ok(r.cached && r.payload.entries.length === 1, JSON.stringify(r));
     assert.strictEqual(r.payload.rating, 8, "rating from what the extension has seen");
+    r = await g.ask({ type: "to-rym", msg: { type: "load-release", item: { href, artist: "c" } } });
+    assert.strictEqual(r.payload.artist, "C", "the page's spelling beats a lowercase guess");
     assert.strictEqual(g.created.length, 1, "no new helper tab");
   }
   console.log("gateway tests passed");

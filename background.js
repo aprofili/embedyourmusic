@@ -998,7 +998,8 @@ async function cachedRelease(item, page) {
     if (!hit || !hit.payload || !(hit.payload.entries || []).length || Date.now() - hit.t > REL_TTL) return null;
     const p = { ...hit.payload, href: item.href };
     p.title = item.title || p.title;
-    p.artist = item.artist || p.artist;
+    const flat = (x) => String(x || "").toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
+    if (item.artist && flat(item.artist) !== flat(p.artist)) p.artist = item.artist; // (same name: the page's spelling)
     p.artUrl = item.artUrl || p.artUrl;
     p.id = p.id || item.id || (got["sidebar:ids"] || {})[path] || "";
     const ratings = got["sidebar:ratings"] || {};
