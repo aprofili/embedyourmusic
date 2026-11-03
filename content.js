@@ -922,6 +922,48 @@
     return { items: items.map((i) => ({ ...i, artist: nm || i.artist || name || "" })), name: nm, t: Date.now() };
   }
 
+  // Artist search results: links to /artist/<slug> outside the site header, deduped, in page order.
+  function scrapeArtistResults(doc) {
+    const out = [];
+    const seen = new Set();
+    for (const a of doc.querySelectorAll('a[href*="/artist/"]')) {
+      const path = pathOf(a).replace(/\/$/, "");
+      if (!/^\/artist\/[^/]+$/.test(path) || seen.has(path)) continue;
+      if (a.closest("header, nav, footer, #page_header, .header, .page_header, #rym-header")) continue;
+      const name = a.textContent.replace(/\s+/g, " ").trim();
+      if (!/[\p{L}\p{N}]/u.test(name)) continue;
+      seen.add(path);
+      out.push({ name, path });
+      if (out.length >= 15) break;
+    }
+    return out;
+  }
+
+  // Artist page: press RYM's own Follow button and wait until it says Following. Found by its text, so a markup
+  // change doesn't break it; a page that already says Following is left alone.
+  function followState(doc) {
+    const nodes = [...doc.querySelectorAll('button, a, input[type="button"], input[type="submit"], [role="button"]')];
+    const text = (n) => (n.value || n.textContent || "").replace(/\s+/g, " ").trim();
+    if (nodes.some((n) => /^(following|unfollow)$/i.test(text(n)))) return { state: "following" };
+    const btn = nodes.find((n) => /^\+?\s*follow$/i.test(text(n)));
+    return btn ? { state: "follow", btn } : { state: "" };
+  }
+  async function followThisArtist() {
+    if (!/^\/artist\/[^/]+\/?$/.test(location.pathname)) return { error: "not an artist page" };
+    let st = followState(document);
+    if (st.state === "following") return { ok: true, already: !document.documentElement.dataset.eymFollowed };
+    if (!st.state) return document.readyState === "complete" && !whoami() ? { error: "sign in to rateyourmusic.com first" } : { pending: true };
+    if (!document.documentElement.dataset.eymFollowed) {
+      document.documentElement.dataset.eymFollowed = "1";
+      st.btn.click();
+    }
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      if (followState(document).state === "following") return { ok: true };
+    }
+    return { error: "RYM didn't confirm the follow" };
+  }
+
   // Your RYM play history (what "Set listening" records): newest first, one entry per release.
   function scrapeHistory(doc) {
     const out = [];
@@ -1293,6 +1335,20 @@
           }
           sendResponse({ error: "RYM didn't confirm the review was saved (check the album page)" });
         })();
+        return true;
+      }
+      if (msg && msg.type === "artist-search") {
+        // RYM's search page (artists): the artist links in the results, in RYM's order.
+        if (!/^\/search/.test(location.pathname)) {
+          sendResponse({ error: "not a search page" });
+          return false;
+        }
+        const results = scrapeArtistResults(document);
+        sendResponse(results.length || document.readyState === "complete" ? { results } : { pending: true });
+        return false;
+      }
+      if (msg && msg.type === "artist-follow") {
+        followThisArtist().then(sendResponse, (e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
       }
       if (msg && msg.type === "whoami") {
@@ -1990,5 +2046,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, openPanel, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, scrapeTopListening, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, openPanel, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, scrapeTopListening, scrapeArtistResults, followState, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
 })();

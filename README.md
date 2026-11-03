@@ -127,6 +127,18 @@ Playback keeps going with the panel closed on Chromium browsers: the Spotify emb
 
 RYM's own streaming icon rows are hidden on the page (the side panel plays everything).
 
+### Volume
+The Spotify card has a volume slider above the track list (double-click resets it). 50% is the default; 100% is Spotify's embed at full volume, so there is room both ways. `spvolume.js` / `spvolume-main.js` run inside Spotify's embed frame (wherever it plays: offscreen document or panel) and scale its audio elements; Spotify's own volume setting is kept and multiplied.
+
+## Import your Spotify follows to RYM (one time)
+At the bottom of the side panel: "Follow the artists you follow on Spotify on RYM too". It needs one more Spotify permission (`user-follow-read`), so the first time it asks you to connect Spotify again.
+
+1. **Start** reads your followed artists from Spotify and looks each one up on RYM's artist search (in background helper tabs, one at a time, ~1.5 s apart). One result with the same name is a match. Several with the same name are told apart by comparing the artist's Spotify album titles with each RYM artist page. A similar-but-not-equal name, a tie, or nothing found is left for you.
+2. **Review**: only sure matches are ticked. Rows that need you come first, with a dropdown of RYM's results to pick from.
+3. **Follow N on RYM** opens each ticked artist's page in a background tab, presses RYM's Follow button, waits until it says Following, and closes the tab. Artists you already follow are skipped.
+
+It is slow on purpose (a few hundred artists take an hour or more), runs with the panel closed, survives the browser stopping the background worker, and pauses itself if RYM stops answering several times in a row (Resume carries on). The search results and Follow button are found by link shape and button text, not RYM's class names.
+
 ## Cloud backup
 
 At the bottom of the side panel, "Back up to your jkprilfools.com account" logs in with the site's account (email-code 2FA supported). From then on your play history, reviews, ratings, resume position and settings are uploaded automatically (at most once an hour, when something changed). Restoring is manual only: logging in or pressing "Restore & sync" merges the saved copy into this browser (history is combined, newer reviews win, this browser's settings win). Stored in your account on jkprilfools.com (`/api/eym/backup`); Spotify tokens and regenerable caches are not included.

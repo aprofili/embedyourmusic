@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "EmbedYourMusic",
-  "version": "1.34.1",
+  "version": "1.35.0",
   "description": "Turns Spotify and Bandcamp links on rateyourmusic.com into inline embedded players.",
   "permissions": [
     "storage",
@@ -74,6 +74,27 @@
       ],
       "world": "MAIN",
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://open.spotify.com/embed/*"
+      ],
+      "js": [
+        "spvolume-main.js"
+      ],
+      "world": "MAIN",
+      "all_frames": true,
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://open.spotify.com/embed/*"
+      ],
+      "js": [
+        "spvolume.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_start"
     }
   ],
   "declarative_net_request": {

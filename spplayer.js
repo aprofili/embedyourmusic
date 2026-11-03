@@ -134,6 +134,41 @@
     root.classList.add("sp-tinted");
   }
 
+  // Volume (0-100, 50 = default; 100 is the embed at full volume, so there is room both ways). Stored in
+  // "sidebar:volume"; spvolume.js inside Spotify's embed applies it, wherever the embed plays. Double-click: back to 50.
+  function volumeControl() {
+    const box = el("label", "sp-vol");
+    box.title = "Volume (double-click: back to 50%)";
+    const icon = el("span", "sp-vol-icon", "🔊");
+    const range = el("input", "sp-vol-range");
+    range.type = "range";
+    range.min = "0";
+    range.max = "100";
+    range.step = "1";
+    range.value = "50";
+    const pct = el("span", "sp-vol-pct", "50%");
+    const show = (v) => {
+      range.value = String(v);
+      pct.textContent = `${v}%`;
+      icon.textContent = v == 0 ? "🔇" : v < 35 ? "🔈" : v < 70 ? "🔉" : "🔊";
+      range.style.setProperty("--vol", `${v}%`);
+    };
+    api.storage.local.get("sidebar:volume").then((o) => typeof (o && o["sidebar:volume"]) === "number" && show(o["sidebar:volume"]), () => {});
+    let t = null;
+    const save = (v) => {
+      show(v);
+      clearTimeout(t);
+      t = setTimeout(() => api.storage.local.set({ "sidebar:volume": v }).catch(() => {}), 60);
+    };
+    range.addEventListener("input", () => save(Number(range.value)));
+    range.addEventListener("dblclick", () => save(50));
+    api.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && changes["sidebar:volume"] && typeof changes["sidebar:volume"].newValue === "number" && document.activeElement !== range) show(changes["sidebar:volume"].newValue);
+    });
+    box.append(icon, range, pct);
+    return box;
+  }
+
   async function build(info, payload, opts = {}) {
     const [, kind, firstId] = (info.key || "").split(":");
     if (kind !== "album" && kind !== "track") return null;
@@ -210,7 +245,7 @@
     play.title = "Play / pause";
     const count = el("span", "sp-count");
     const listHead = el("div", "sp-listhead");
-    listHead.append(count);
+    listHead.append(volumeControl(), count);
     // Spotify's logo (top right of the card) shows / hides Spotify's own player, for when ours doesn't respond.
     const embedBtn = el("button", "sp-embed-toggle");
     embedBtn.type = "button";

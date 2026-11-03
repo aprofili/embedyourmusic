@@ -29,7 +29,7 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
       connect: () => ({ onMessage: { addListener() {} }, onDisconnect: { addListener() {} }, postMessage() {} }),
       sendMessage: async (m) => (asked.push(m), m.type === "cover-art" ? { url: "https://i.scdn.co/image/real" } : {}),
     },
-    storage: { local: { get: async (k) => ({ [k]: store[k] }), set: async (o) => Object.assign(store, o) }, onChanged: { addListener: (f) => (w.__changed = f) } },
+    storage: { local: { get: async (k) => ({ [k]: store[k] }), set: async (o) => Object.assign(store, o) }, onChanged: { addListener: (f) => { const prev = w.__changed; w.__changed = (...a) => { if (prev) prev(...a); f(...a); }; } } },
   };
   w.eval(read("content.js"));
   w.eval(read("sidepanel.js"));

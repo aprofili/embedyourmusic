@@ -1233,3 +1233,24 @@ a.sp-artist {
 #backup input { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; color: inherit; padding: 6px 8px; font: inherit; }
 #backup .bk-msg { margin-top: 6px; }
 #backup .bk-err { color: #ff8a8a; }
+
+#follows { padding: 10px 12px 0; font-size: 0.8em; color: var(--muted); }
+#follows .bk-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#follows .bk-text { flex: 1 1 160px; min-width: 0; }
+#follows .bk-msg { margin-top: 6px; }
+#follows .bk-err { color: #ff8a8a; }
+.fl-list { margin-top: 8px; }
+.fl-list summary { cursor: pointer; }
+.fl-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; min-width: 0; }
+.fl-row input[type="checkbox"] { flex: none; margin: 0; }
+.fl-sp { flex: 0 1 40%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text, inherit); }
+.fl-arrow { flex: none; opacity: 0.5; }
+.fl-rym, .fl-pick { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-pick { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 4px; color: inherit; font: inherit; padding: 1px 2px; color-scheme: light dark; }
+.fl-st { flex: none; font-size: 0.9em; opacity: 0.8; }
+
+.sp-listhead { align-items: center; }
+.sp-vol { display: flex; align-items: center; gap: 6px; margin-right: auto; padding-left: 8px; font-size: 0.8em; color: var(--muted); cursor: pointer; }
+.sp-vol-icon { width: 1.3em; text-align: center; }
+.sp-vol-range { width: 110px; accent-color: var(--sp-h, var(--accent)); cursor: pointer; }
+.sp-vol-pct { min-width: 2.8em; font-variant-numeric: tabular-nums; }
