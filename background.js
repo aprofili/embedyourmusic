@@ -1484,6 +1484,19 @@ function followLoop() {
   return followRun;
 }
 
+// Errors, and "not found" not yet re-checked, go back in the queue.
+function requeue(items) {
+  let n = 0;
+  const out = items.map((x) => {
+    if (x.status === "error" || (x.status === "none" && !x.rechecked)) {
+      n++;
+      return { ...x, status: "pending", rechecked: x.status === "none" ? true : x.rechecked, error: "" };
+    }
+    return x;
+  });
+  return { items: out, n };
+}
+
 async function followMessage(msg) {
   switch (msg.type) {
     case "follow-status":
@@ -1508,7 +1521,9 @@ async function followMessage(msg) {
       return { ok: true };
     case "follow-resume":
       await clearRymBlocked(); // (you pressed it: that is the go-ahead after an IP block)
-      await editFollowJob((j) => (j ? { ...j, running: true, note: "" } : j));
+      // "Not found" and "no answer" may only mean RYM was blocking (its block page has no search results): each of
+      // those is searched once more. (A second "not found" sticks.)
+      await editFollowJob((j) => (j ? { ...j, running: true, note: "", phase: requeue(j.items).n ? "matching" : j.phase, items: requeue(j.items).items } : j));
       followLoop();
       return { ok: true };
     case "follow-go": // start following the ticked artists
@@ -1518,7 +1533,7 @@ async function followMessage(msg) {
       return { ok: true };
     case "follow-retry": // match again the ones RYM didn't answer for
       await clearRymBlocked(); // (you pressed it: that is the go-ahead after an IP block)
-      await editFollowJob((j) => (j ? { ...j, phase: "matching", running: true, note: "", items: j.items.map((x) => (x.status === "error" ? { ...x, status: "pending" } : x)) } : j));
+      await editFollowJob((j) => (j ? { ...j, phase: "matching", running: true, note: "", items: requeue(j.items).items } : j));
       followLoop();
       return { ok: true };
     case "follow-set": // your tick / your pick of the RYM artist for one row
