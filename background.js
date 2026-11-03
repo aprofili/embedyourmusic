@@ -795,6 +795,20 @@ if (api.sidePanel && api.sidePanel.setPanelBehavior) {
   api.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 }
 
+// ---- RYM IP block (Spotify-follows import only) ----
+// If a page the import loads comes back as RYM's firewall page ("your IP address has been automatically blocked"),
+// the import stops and stays stopped (storage "rym:block") until you press Resume / Follow / Retry in the panel.
+const RYM_BLOCK = "rym:block";
+const BLOCK_MSG = "RYM blocked this IP";
+async function isRymBlocked() {
+  return !!(((await api.storage.local.get(RYM_BLOCK).catch(() => ({}))) || {})[RYM_BLOCK]);
+}
+async function setRymBlocked(url) {
+  await api.storage.local.set({ [RYM_BLOCK]: { t: Date.now(), url: url || "" } }).catch(() => {});
+  await editFollowJob((j) => (j ? { ...j, running: false, note: "Stopped: RYM showed its IP-block page. Wait until rateyourmusic.com loads normally in your browser again, then press Resume." } : undefined)).catch(() => {});
+}
+const clearRymBlocked = () => api.storage.local.remove(RYM_BLOCK).catch(() => {});
+
 // ---- RYM gateway ----
 // Everything the panel needs from rateyourmusic.com is a task: a message for a RYM page's content script, plus
 // the page it must run on (lists) or none (anything that only needs RYM's cookies / code: rating, listening, ...).
@@ -918,6 +932,7 @@ function inHelperTab(page, msg, now = false, seq = 0) {
         } catch {
           continue; // page (or its extension code) not there yet
         }
+        if (res && res.blocked) return { error: BLOCK_MSG, blocked: true };
         if (res && !res.error && !res.pending) return { ...res, via: "helper" };
         if (res && res.error) {
           last = res;
@@ -979,6 +994,7 @@ async function rymTask({ tabId = null, msg, seq = 0 }) {
       if (t > 45000 || (t > wait && !helperJobs.size)) break;
     }
     if (done) res = await ask;
+    if (res && res.blocked) return { error: BLOCK_MSG, blocked: true };
     if (res && !res.error && !res.pending) return keepRelease(msg, { ...res, tabId: tab.id });
     if (!done) status("Your RYM tab didn't answer; using a background tab instead");
   }
@@ -1337,7 +1353,9 @@ if (api.commands && api.commands.onCommand) {
 //    time: the artist page opens in a helper tab, its Follow button is pressed and checked, the tab closes.
 // The job lives in storage (follow:job), so it survives the worker being stopped and carries on where it was.
 const FOLLOW_KEY = "follow:job";
-const FOLLOW_GAP = globalThis.__eymFollowGap ?? 1500;
+// Slow on purpose: RYM's firewall blocks an IP that loads pages too fast. 45-75 s between page loads (~60 an hour).
+const FOLLOW_GAP = globalThis.__eymFollowGap ?? 45000;
+const followPause = () => sleep(FOLLOW_GAP + Math.random() * FOLLOW_GAP * (2 / 3));
 let followLock = Promise.resolve();
 const getFollowJob = async () => ((await api.storage.local.get(FOLLOW_KEY)) || {})[FOLLOW_KEY] || null;
 // Every change to the job goes through here, one at a time (the panel's ticks and the worker's progress don't clash).
@@ -1379,6 +1397,7 @@ async function spotifyAlbumTitles(id) {
 // How many of the Spotify artist's titles are on the RYM artist page.
 async function albumOverlap(spTitles, path) {
   const r = await rymTask({ msg: { type: "fetch-artist", path, name: "", skip: "" } });
+  if (r && r.blocked) throw Object.assign(new Error(BLOCK_MSG), { blocked: true });
   const rym = ((r && r.items) || []).map((i) => nameVariants(i.title));
   let n = 0;
   for (const t of spTitles) if (rym.some((v) => bestSim(nameVariants(t), v) >= 0.85)) n++;
@@ -1388,6 +1407,7 @@ async function albumOverlap(spTitles, path) {
 // -> { status: "matched" | "ambiguous" | "fuzzy" | "none" | "error", rym: {name, path} | null, cands: [...], error }
 async function matchArtist(sp) {
   const r = await rymTask({ msg: { type: "artist-search", query: sp.name } });
+  if (r && r.blocked) return { status: "error", blocked: true, error: BLOCK_MSG, rym: null, cands: [] };
   if (!r || r.error) return { status: "error", error: (r && r.error) || "no answer from RYM", rym: null, cands: [] };
   const cands = (r.results || []).slice(0, 8);
   const want = nameVariants(sp.name);
@@ -1402,7 +1422,7 @@ async function matchArtist(sp) {
   let bestN = 0;
   let tie = false;
   for (const c of pool) {
-    await sleep(FOLLOW_GAP);
+    await followPause();
     const n = titles.length ? await albumOverlap(titles, c.path) : 0;
     if (n > bestN) [best, bestN, tie] = [c, n, false];
     else if (n && n === bestN) tie = true;
@@ -1419,6 +1439,7 @@ function followLoop() {
     for (;;) {
       const job = await getFollowJob();
       if (!job || !job.running) return;
+      if (await isRymBlocked()) return setRymBlocked();
       const i = job.phase === "matching" ? job.items.findIndex((x) => x.status === "pending") : job.items.findIndex((x) => x.checked && x.rym && !x.done);
       if (i < 0) {
         await editFollowJob((j) => (j ? { ...j, running: false, phase: j.phase === "matching" ? "review" : "done", note: "" } : j));
@@ -1427,12 +1448,14 @@ function followLoop() {
       const item = job.items[i];
       let patch;
       if (job.phase === "matching") {
-        const m = await matchArtist(item.sp).catch((e) => ({ status: "error", error: String((e && e.message) || e), rym: null, cands: [] }));
+        const m = await matchArtist(item.sp).catch((e) => ({ status: "error", blocked: !!(e && e.blocked), error: String((e && e.message) || e), rym: null, cands: [] }));
+        if (m.blocked) return setRymBlocked(); // (this artist stays pending for Resume)
         const sure = m.status === "matched" || m.status === "fuzzy-ok";
         patch = { status: m.status === "fuzzy-ok" ? "matched" : m.status, rym: m.rym, cands: m.cands, error: m.error || "", checked: sure };
         fails = m.status === "error" ? fails + 1 : 0;
       } else {
         const r = await rymTask({ msg: { type: "artist-follow", path: item.rym.path } }).catch((e) => ({ error: String(e.message || e) }));
+        if (r && r.blocked) return setRymBlocked();
         patch = r && r.ok ? { done: r.already ? "already" : "followed", error: "" } : { done: "", error: (r && r.error) || "no answer from RYM", tries: (item.tries || 0) + 1 };
         if (!(r && r.ok) && patch.tries >= 2) patch.done = "failed";
         fails = r && r.ok ? 0 : fails + 1;
@@ -1445,7 +1468,7 @@ function followLoop() {
         const stop = fails >= 4;
         return { ...j, items, running: stop ? false : j.running, note: stop ? "Paused: RYM didn't answer several times in a row. Press Resume to carry on." : "" };
       });
-      await sleep(FOLLOW_GAP);
+      await followPause();
     }
   })().finally(() => (followRun = null));
   return followRun;
@@ -1454,7 +1477,7 @@ function followLoop() {
 async function followMessage(msg) {
   switch (msg.type) {
     case "follow-status":
-      return { job: await getFollowJob(), scopeOk: /user-follow-read/.test(((await spotifyAuth()) || {}).scope || "") };
+      return { blocked: await isRymBlocked(), job: await getFollowJob(), scopeOk: /user-follow-read/.test(((await spotifyAuth()) || {}).scope || "") };
     case "follow-start": {
       if (!(await spotifyAuth())) return { error: "Connect Spotify first" };
       let artists;
@@ -1464,6 +1487,7 @@ async function followMessage(msg) {
         return { error: /reconnect/.test(String(e.message)) ? "reconnect" : String(e.message || e) };
       }
       if (!artists.length) return { error: "You don't follow any artists on Spotify" };
+      await clearRymBlocked();
       const job = { t: Date.now(), phase: "matching", running: true, items: artists.map((sp) => ({ sp, status: "pending", rym: null, cands: [], checked: false, done: "" })) };
       await editFollowJob(() => job);
       followLoop();
@@ -1473,14 +1497,17 @@ async function followMessage(msg) {
       await editFollowJob((j) => (j ? { ...j, running: false } : j));
       return { ok: true };
     case "follow-resume":
+      await clearRymBlocked(); // (you pressed it: that is the go-ahead after an IP block)
       await editFollowJob((j) => (j ? { ...j, running: true, note: "" } : j));
       followLoop();
       return { ok: true };
     case "follow-go": // start following the ticked artists
+      await clearRymBlocked(); // (you pressed it: that is the go-ahead after an IP block)
       await editFollowJob((j) => (j ? { ...j, phase: "following", running: true, note: "", items: j.items.map((x) => (x.done === "failed" ? { ...x, done: "", tries: 0 } : x)) } : j));
       followLoop();
       return { ok: true };
     case "follow-retry": // match again the ones RYM didn't answer for
+      await clearRymBlocked(); // (you pressed it: that is the go-ahead after an IP block)
       await editFollowJob((j) => (j ? { ...j, phase: "matching", running: true, note: "", items: j.items.map((x) => (x.status === "error" ? { ...x, status: "pending" } : x)) } : j));
       followLoop();
       return { ok: true };

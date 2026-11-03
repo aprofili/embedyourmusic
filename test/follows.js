@@ -112,6 +112,39 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     assert.ok(!job.items.find((x) => x.sp.name === "Sigur Rós").done, "unticked: left alone");
     assert.ok(created.every((t) => t.url.endsWith("#eym-helper")), "all work in helper tabs");
 
+    // RYM's IP-block page during the import: it stops, stays stopped, and only a button press restarts it
+    await ask({ type: "follow-clear" });
+    const prevAnswer = answer;
+    const origSend = chrome.tabs.sendMessage;
+    chrome.tabs.sendMessage = async (id, msg) => {
+      const url = created.find((t) => t.id === id).url;
+      if (msg.type === "artist-search" && /Bon%20Iver/.test(url)) return { error: "RYM blocked this IP", blocked: true };
+      return origSend(id, msg);
+    };
+    await ask({ type: "follow-start" });
+    for (let k = 0; k < 200; k++) {
+      await tick(25);
+      if (store["rym:block"]) break;
+    }
+    await tick(50);
+    job = store["follow:job"];
+    assert.ok(store["rym:block"], "block noted");
+    assert.strictEqual(job.running, false, "stopped");
+    assert.ok(/IP-block/.test(job.note));
+    assert.strictEqual(job.items.find((x) => x.sp.name === "Bon Iver").status, "pending", "kept for later");
+    const before = created.length;
+    await tick(200);
+    assert.strictEqual(created.length, before, "no further pages loaded");
+    chrome.tabs.sendMessage = origSend;
+    await ask({ type: "follow-resume" });
+    assert.ok(!store["rym:block"], "Resume clears it");
+    for (let k = 0; k < 400; k++) {
+      await tick(25);
+      if (store["follow:job"].phase === "review") break;
+    }
+    assert.strictEqual(store["follow:job"].phase, "review");
+    void prevAnswer;
+
     // missing scope -> asks to reconnect
     store["sp:auth"].scope = "user-library-read";
     assert.ok(!(await ask({ type: "follow-status" })).scopeOk);

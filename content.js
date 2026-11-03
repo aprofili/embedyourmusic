@@ -1247,6 +1247,12 @@
 
   if (typeof location !== "undefined" && /^https?:$/.test(location.protocol) && api.runtime.onMessage) {
     api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      // RYM's firewall page ("your IP address has been automatically blocked") instead of the page the Spotify-follows
+      // import asked for: say so, so the import stops (background.js) instead of carrying on.
+      if (msg && ["artist-search", "artist-follow", "fetch-artist"].includes(msg.type) && document.body && /has been automatically blocked from this site|your IP address \(?[\d.:a-f]*\)? has been (automatically )?blocked/i.test(document.body.textContent || "")) {
+        sendResponse({ error: "RYM blocked this IP", blocked: true });
+        return false;
+      }
       if (msg && msg.type === "load-similar") {
         loadSimilar(msg.id)
           .then((items) => sendResponse({ items }))
