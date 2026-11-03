@@ -5,7 +5,7 @@ const vm = require("vm");
 const assert = require("assert");
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, windowId: 1 }], stall }) {
+function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, windowId: 1 }], stall, tabWait }) {
   const listeners = [];
   const created = [];
   const removed = [];
@@ -15,7 +15,7 @@ function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, wind
   const store = { "sidebar:user": user };
   const chrome = {
     runtime: { onMessage: { addListener: (f) => listeners.push(f) }, onConnect: { addListener() {} }, getURL: (p) => p, id: "x" },
-    storage: { local: { get: async (k) => ({ [k]: store[k] }), set: async (o) => Object.assign(store, o) }, onChanged: { addListener() {}, removeListener() {} } },
+    storage: { local: { get: async (k) => (Array.isArray(k) ? Object.fromEntries(k.map((x) => [x, store[x]])) : { [k]: store[k] }), set: async (o) => Object.assign(store, o) }, onChanged: { addListener() {}, removeListener() {} } },
     tabs: {
       query: async (q) => (q && q.active ? activeNow(q) : tabs),
       create: async ({ url }) => {
@@ -38,9 +38,10 @@ function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, wind
   const ctx = { chrome, console, setTimeout, clearTimeout, setInterval, clearInterval, URL, Promise, fetch: async () => ({ ok: false }) };
   vm.createContext(ctx);
   if (stall) ctx.__eymRateStall = stall;
+  if (tabWait) ctx.__eymTabWait = tabWait;
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8"), ctx);
   const ask = (msg) => new Promise((res) => listeners.some((f) => f(msg, {}, res) === true) || res(undefined));
-  return { ask, created, removed, updates, stats: () => ({ maxOpen }) };
+  return { ask, created, removed, updates, store, stats: () => ({ maxOpen }) };
 }
 
 (async () => {
@@ -154,6 +155,41 @@ function load({ tabs = [], answer, user = "me", activeNow = () => [{ id: 1, wind
     heard("3");
     await tick(2000);
     assert.strictEqual(opened(), "1123", "queue was emptied");
+  }
+  // 9. An open RYM tab that never answers (asleep) is given up on: a helper tab does it instead
+  {
+    const g = load({
+      tabWait: 200,
+      tabs: [{ id: 5, url: "https://rateyourmusic.com/new-music/", status: "complete", active: true }],
+      answer: (id) => (id === 5 ? new Promise(() => {}) : Promise.resolve({ items: [{ title: "N" }] })),
+    });
+    const r = await g.ask({ type: "to-rym", msg: { type: "fetch-newmusic" } });
+    assert.strictEqual(r.items[0].title, "N");
+    assert.strictEqual(g.created.length, 1, "helper tab used");
+  }
+  // 10. Discarded / frozen tabs aren't asked at all
+  {
+    const asked = [];
+    const g = load({
+      tabs: [{ id: 5, url: "https://rateyourmusic.com/new-music/", status: "complete", discarded: true }],
+      answer: async (id) => (asked.push(id), { items: [{ title: "N" }] }),
+    });
+    await g.ask({ type: "to-rym", msg: { type: "fetch-newmusic" } });
+    assert.ok(!asked.includes(5));
+  }
+  // 11. An album loaded once opens from the cache next time, with no RYM tab or helper tab
+  {
+    const href = "https://rateyourmusic.com/release/album/a/c/";
+    const g = load({ answer: async () => ({ payload: { id: "7", href, title: "C", entries: [{ service: "spotify", href: "https://open.spotify.com/album/x" }] } }) });
+    let r = await g.ask({ type: "to-rym", msg: { type: "load-release", item: { href } } });
+    assert.strictEqual(r.payload.title, "C");
+    assert.strictEqual(g.created.length, 1);
+    await tick(20);
+    g.store["sidebar:ratings"] = { "p:/release/album/a/c/": 8 };
+    r = await g.ask({ type: "to-rym", msg: { type: "load-release", item: { href } } });
+    assert.ok(r.cached && r.payload.entries.length === 1, JSON.stringify(r));
+    assert.strictEqual(r.payload.rating, 8, "rating from what the extension has seen");
+    assert.strictEqual(g.created.length, 1, "no new helper tab");
   }
   console.log("gateway tests passed");
   process.exit(0);

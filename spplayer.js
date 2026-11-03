@@ -143,7 +143,14 @@
     const newer = kind === "album" ? await send({ type: "spotify-newer", id: firstId }).catch(() => null) : null;
     const id = (newer && newer.id) || firstId;
     const engKey = newer && newer.id ? `spotify:album:${id}` : info.key;
-    const res = await send({ type: "spotify-tracks", kind, id });
+    // A hiccup (the background waking up, a token refresh, a network blip) shouldn't drop you to Spotify's embed.
+    let res = {};
+    for (let i = 0; i < 4; i++) {
+      if (i) await new Promise((r) => setTimeout(r, (globalThis.__eymSpRetryMs ?? 700) * i));
+      res = await send({ type: "spotify-tracks", kind, id });
+      if (!res.error && res.tracks && res.tracks.length) break;
+      if (/not connected|unsupported/.test(String(res.error || ""))) break;
+    }
     if (res.error || !res.tracks || !res.tracks.length) return null;
     const tracks = res.tracks;
 
