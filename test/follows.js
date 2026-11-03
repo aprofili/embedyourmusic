@@ -145,6 +145,21 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
     assert.strictEqual(store["follow:job"].phase, "review");
     void prevAnswer;
 
+    // "not found" during a block gets one more search on Resume / Retry; a second "not found" sticks
+    {
+      const j = store["follow:job"];
+      const k = j.items.findIndex((x) => x.sp.name === "Nobody Knows");
+      assert.strictEqual(j.items[k].status, "none");
+      search["Nobody Knows"] = [{ name: "Nobody Knows", path: "/artist/nk" }];
+      await ask({ type: "follow-retry" });
+      for (let t = 0; t < 200; t++) {
+        await tick(25);
+        if (store["follow:job"].phase === "review") break;
+      }
+      assert.strictEqual(store["follow:job"].items[k].status, "matched", "re-searched");
+      assert.strictEqual(store["follow:job"].items[k].rym.path, "/artist/nk");
+    }
+
     // missing scope -> asks to reconnect
     store["sp:auth"].scope = "user-library-read";
     assert.ok(!(await ask({ type: "follow-status" })).scopeOk);

@@ -1634,7 +1634,7 @@
       if (busy) row.append(job.running ? btn("Stop", () => ask({ type: "follow-stop" })) : btn("Resume", () => ask({ type: "follow-resume" })));
       if (job.phase === "review" || job.phase === "done") {
         if (ticked && n((x) => x.checked && x.rym && x.done !== "followed" && x.done !== "already")) row.append(btn(`Follow ${n((x) => x.checked && x.rym && !x.done)} on RYM`, () => ask({ type: "follow-go" })));
-        if (n((x) => x.status === "error")) row.append(btn("Retry errors", () => ask({ type: "follow-retry" })));
+        if (n((x) => x.status === "error" || (x.status === "none" && !x.rechecked))) row.append(btn("Retry not found / errors", () => ask({ type: "follow-retry" })));
         row.append(btn(job.phase === "done" ? "Clear" : "Cancel", () => ask({ type: "follow-clear" })));
       }
       if (job.note) box.append(el("div", "bk-msg bk-err", job.note));
