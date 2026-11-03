@@ -742,6 +742,7 @@
       case "challenge":
         return user ? `${base}/recommendations/${user}/release/` : `${base}/recommendations/`;
       case "newmusic":
+      case "toplistening":
         return `${base}/new-music/`;
       case "charts":
         return `${base}${chartSel}`;
@@ -828,6 +829,21 @@
     if (path === chartSel) refreshOpenList("charts");
   }
 
+  // A list from a RYM page, minus videos and anything Spotify doesn't have (answers cached a week by the background);
+  // the filtered list is kept until the raw one changes.
+  async function spotifyOnly(kind, none) {
+    const d = await listData(kind);
+    if (!d.items) return failed(d);
+    const key = LISTS[kind].key;
+    const raw = await store.get(key);
+    const done = await store.get(`${key}-f`);
+    if (done && raw && done.src === raw.t && healthy(done.items)) return { items: done.items };
+    const f = (await api.runtime.sendMessage({ type: "sp-filter", items: d.items }).catch(() => null)) || { items: d.items, filtered: false };
+    const items = f.items.filter((i) => !isVideo(i));
+    if (f.filtered && raw) store.set(`${key}-f`, { t: Date.now(), src: raw.t, items });
+    return items.length ? { items } : { message: none };
+  }
+
   // ---- List data: one loader for every list read from a RYM page ----
   // Visiting the page saves the list too. Missing or broken: read it now (the background uses a RYM tab you have open
   // on that page, else a helper tab it closes again). Older than its ttl: show it and refresh behind the scenes.
@@ -836,6 +852,8 @@
     recommended: { key: "sidebar:lists", ttl: 12 * H, msg: { type: "read-reco" }, label: "your recommendations page", page: "https://rateyourmusic.com/recommendations/", get: (v) => v && v.recommended },
     challenge: { key: "sidebar:lists", ttl: 12 * H, msg: { type: "read-reco" }, label: "your recommendations page", page: "https://rateyourmusic.com/recommendations/", get: (v) => v && v.challenge },
     newmusic: { key: "sidebar:newmusic", ttl: 6 * H, msg: { type: "fetch-newmusic" }, label: "RYM's new-music page", page: "https://rateyourmusic.com/new-music/", get: (v) => v },
+    // What RYM users are playing right now: changes through the day, so it is re-read twice a day.
+    toplistening: { key: "sidebar:toplistening", ttl: 12 * H, msg: { type: "fetch-toplistening" }, label: "RYM's Top listening (new-music page)", page: "https://rateyourmusic.com/new-music/", get: (v) => v },
     history: { key: "sidebar:rymhist", ttl: 0.5 * H, msg: { type: "fetch-history" }, label: "your RYM play history", page: "https://rateyourmusic.com/", get: (v) => v },
   };
   const toStore = (kind, res) => {
@@ -972,17 +990,12 @@
     },
     // /new-music/ (saved when you visit it, else fetched through a RYM tab), minus videos, minus anything Spotify
     // doesn't have (checked fuzzily by the background; answers are cached for a week). Re-checked every 6 hours.
-    async newmusic() {
-      const d = await listData("newmusic");
-      if (!d.items) return failed(d);
-      // Only what Spotify has (answers cached a week by the background); the filtered list is kept until the raw one changes.
-      const raw = await store.get("sidebar:newmusic");
-      const done = await store.get("sidebar:newmusic-f");
-      if (done && raw && done.src === raw.t && healthy(done.items)) return { items: done.items };
-      const f = (await api.runtime.sendMessage({ type: "sp-filter", items: d.items }).catch(() => null)) || { items: d.items, filtered: false };
-      const items = f.items.filter((i) => !isVideo(i));
-      if (f.filtered && raw) store.set("sidebar:newmusic-f", { t: Date.now(), src: raw.t, items });
-      return items.length ? { items } : { message: "Nothing from the new-music page is on Spotify right now." };
+    newmusic() {
+      return spotifyOnly("newmusic", "Nothing from the new-music page is on Spotify right now.");
+    },
+    // "Top listening" on /new-music/ (Releases tab): saved when you visit the page, re-read twice a day.
+    toplistening() {
+      return spotifyOnly("toplistening", "Nothing in RYM's Top listening is on Spotify right now.");
     },
     // Pages of your collection filtered to 3.5-5 stars. First open: page 1. After that at most one more
     // random page per day (so the pick widens slowly without hammering RYM).
@@ -1356,6 +1369,7 @@
         dimRows();
       }
       if (theirs("sidebar:newmusic")) refreshOpenList("newmusic");
+      if (theirs("sidebar:toplistening")) refreshOpenList("toplistening");
       if (theirs("sidebar:rymhist")) refreshOpenList("history");
       if (theirs("sidebar:favs35")) refreshOpenList("favorites");
     });

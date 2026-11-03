@@ -533,10 +533,11 @@
     walk(a);
     return t.replace(/\s+/g, " ").trim();
   }
-  function scrapeReleases(root, limit = 60, skipPath = "") {
+  function scrapeReleases(root, limit = 60, skipPath = "", skipNode = null) {
     const out = [];
     const seen = new Set();
     for (const a of root.querySelectorAll("a[href]")) {
+      if (skipNode && skipNode.contains(a)) continue;
       let path;
       try {
         path = new URL(a.getAttribute("href"), "https://rateyourmusic.com").pathname;
@@ -787,8 +788,42 @@
 
   async function fetchNewMusic() {
     const doc = await docFor(/^\/new-music\//, "/new-music/");
-    const items = scrapeReleases(doc, 150);
+    const items = scrapeReleases(doc, 150, "", topListeningBox(doc));
     if (!items.length) throw new Error("no releases found on the new-music page");
+    return { items, t: Date.now() };
+  }
+
+  // The new-music page's "Top listening" column (Releases tab: what RYM users are playing right now). Found by its
+  // heading rather than RYM's class names: the smallest block around the heading that holds release links, as long as
+  // it doesn't also hold the "New Releases" list.
+  function topListeningBox(doc) {
+    const heads = [...doc.querySelectorAll("h1, h2, h3, h4, h5, div, span, a, button")].filter((n) => /^\s*top listening\s*$/i.test(n.textContent || ""));
+    const head = heads.find((n) => ![...n.children].some((c) => /top listening/i.test(c.textContent || ""))) || heads[0];
+    if (!head) return null;
+    const rel = (n) => [...n.querySelectorAll("a[href]")].filter((a) => /^\/release\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathOf(a))).length;
+    for (let n = head.parentElement; n && n !== doc.body; n = n.parentElement) {
+      if (/new releases/i.test(n.textContent || "")) return null;
+      if (rel(n) >= 1) return n;
+    }
+    return null;
+  }
+  function scrapeTopListening(doc) {
+    const box = topListeningBox(doc);
+    // Songs tab (if RYM renders it hidden alongside) links to /song/, which scrapeReleases ignores anyway.
+    return box ? scrapeReleases(box, 50) : [];
+  }
+  async function fetchTopListening() {
+    if (onPage(/^\/new-music\//)) {
+      // The column may fill in after the page loads.
+      for (let i = 0; i < 20; i++) {
+        const items = scrapeTopListening(document);
+        if (items.length) return { items, t: Date.now() };
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      throw new Error("no Top listening releases on the new-music page");
+    }
+    const items = scrapeTopListening(await docFor(/^\/new-music\//, "/new-music/"));
+    if (!items.length) throw new Error("no Top listening releases on the new-music page");
     return { items, t: Date.now() };
   }
 
@@ -1270,8 +1305,8 @@
         })();
         return true;
       }
-      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-artist" || msg.type === "fetch-chart")) {
-        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-chart" ? fetchChart(msg.path) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-newmusic" ? fetchNewMusic() : fetchFavorites(msg.page))
+      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-toplistening" || msg.type === "fetch-artist" || msg.type === "fetch-chart")) {
+        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-chart" ? fetchChart(msg.path) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-newmusic" ? fetchNewMusic() : msg.type === "fetch-toplistening" ? fetchTopListening() : fetchFavorites(msg.page))
           .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : r))
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
@@ -1846,10 +1881,17 @@
   // Visiting /new-music/ saves its list for the panel (no request needed).
   function publishNewMusic() {
     if (typeof location === "undefined" || !/^\/new-music\//.test(location.pathname) || document.documentElement.dataset.eymNew) return;
-    const items = scrapeReleases(document, 150);
+    const items = scrapeReleases(document, 150, "", topListeningBox(document));
     if (!items.length) return;
     document.documentElement.dataset.eymNew = "1";
     saveSidebarData("sidebar:newmusic", { items, t: Date.now() });
+  }
+  function publishTopListening() {
+    if (typeof location === "undefined" || !/^\/new-music\//.test(location.pathname) || document.documentElement.dataset.eymTop) return;
+    const items = scrapeTopListening(document);
+    if (!items.length) return; // (run() comes back as the page fills in)
+    document.documentElement.dataset.eymTop = "1";
+    saveSidebarData("sidebar:toplistening", { items, t: Date.now() });
   }
 
   // Your own play history / 3.5+ star collection pages: save them for the panel too (no request needed).
@@ -1904,6 +1946,7 @@
   function run() {
     rememberUser();
     publishNewMusic();
+    publishTopListening();
     publishMyPages();
     recordThisRelease();
     publishReview();
@@ -1936,5 +1979,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, openPanel, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, openPanel, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, scrapeTopListening, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
 })();
