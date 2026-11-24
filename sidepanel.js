@@ -1399,7 +1399,7 @@
       lbl.append(mk("span", "t", name), mk("span", "a", count));
       const die = mk("button", "dice");
       die.type = "button";
-      die.innerHTML = dieFace("playlist");
+      die.innerHTML = dieFace(`playlist:${name}`);
       die.title = "Play a random album from this playlist";
       head.append(img, lbl, die);
       const sub = mk("div", "acc pl-sub");
