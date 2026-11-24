@@ -898,6 +898,8 @@
         return user ? `${base}/play-history/${user}/` : null;
       case "favorites":
         return user ? `${base}/collection/${user}/r3.5-5.0/` : null;
+      case "playlists":
+        return "https://open.spotify.com/collection/playlists";
       case "similar":
         return href || null;
       case "artist": {
@@ -1204,11 +1206,11 @@
 
   // 🎲: play a random entry. In lists of new music, skip albums you've already rated: known from the
   // list itself or from ratings seen before, otherwise from loading the album (a few tries at most).
-  async function dice(kind, acc) {
+  async function dice(kind, acc, preset) {
     const my = ++token;
     let result;
     try {
-      result = await SOURCES[kind]();
+      result = preset || (await SOURCES[kind]());
     } catch (e) {
       result = { message: String((e && e.message) || e) };
     }
@@ -1247,7 +1249,7 @@
         noteRating(item.href, p.rating, true, p.id);
         continue;
       }
-      render({ ...p, tabId: res.tabId });
+      render({ ...withSpotify(item, p), tabId: res.tabId });
       return;
     }
     $("body").textContent = skipRated ? "Everything in this list is already rated." : "Nothing to play.";
@@ -1294,7 +1296,7 @@
     taskStatus = { text: "", t: 0 };
     const res = await loadReleaseWithStatus(item, my, "Loading…");
     if (my !== token) return;
-    if (res && res.payload) render({ ...res.payload, tabId: res.tabId });
+    if (res && res.payload) render({ ...withSpotify(item, res.payload), tabId: res.tabId });
     else {
       $("body").textContent = `Couldn't load that album (${(res && res.error) || "no response"}).`;
       loading(false);
@@ -1302,7 +1304,143 @@
     }
   }
 
+  // ---- Playlists: your saved Spotify playlists (plus the built-in "Essential albums") ----
+  // Each playlist opens into its albums (one row per album). They are for completion: albums you've rated or reviewed
+  // are faded and never picked by the dice. A playlist album has no RYM address, so one is guessed from its names
+  // (the album is then loaded like any other; if RYM has no such page the Spotify album itself is played).
+  const flatName = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "").replace(/[^\p{L}\p{N}]+/gu, "");
+  const baseTitle = (s) => flatName(String(s || "").replace(/\(.*?\)|\[.*?\]/g, " ").replace(/\s[-–—:]\s.*$/, " ").replace(/\b(deluxe|expanded|remaster(ed)?|anniversary|edition|bonus|super|legacy)\b/gi, " "));
+  const firstArtist = (s) => String(s || "").split(/,|&| feat\.? | and /i)[0];
+  const doneKey = (artist, title) => `${flatName(firstArtist(artist).replace(/^the /i, ""))}|${baseTitle(title)}`;
+  const slugOf = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "").replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const guessHref = (artist, title) => `https://rateyourmusic.com/release/album/${slugOf(firstArtist(artist))}/${slugOf(String(title).replace(/\s*[\[(].*?[\])]\s*/g, " "))}/`;
+  // Everything you've rated or reviewed, as artist|title keys: the collection, ratings seen anywhere, reviews.
+  async function doneIndex() {
+    const done = new Set();
+    const lib = (await store.get("sidebar:ratedlib")) || {};
+    for (const v of Object.values(lib)) if (Array.isArray(v) && v[0] > 0) done.add(doneKey(v[2], v[1]));
+    const fromPath = (k) => {
+      const m = /^\/release\/[^/]+\/([^/]+)\/([^/]+)\/?$/.exec(k);
+      if (m) done.add(`${flatName(decodeURIComponent(m[1]).replace(/^the-/, ""))}|${baseTitle(decodeURIComponent(m[2]).replace(/-/g, " "))}`);
+    };
+    for (const [k, r] of Object.entries(ratings)) if (k.startsWith("p:") && r > 0) fromPath(k.slice(2));
+    for (const [k, r] of Object.entries(reviews)) if (r && r.reviewed) fromPath(k);
+    return done;
+  }
+  const plItem = (done, x) => ({
+    title: x.title,
+    artist: x.artist,
+    href: guessHref(x.artist, x.title),
+    artUrl: x.artUrl || "",
+    spotify: x.spotifyId ? `https://open.spotify.com/album/${x.spotifyId}` : "",
+    rated: done.has(doneKey(x.artist, x.title)),
+  });
+  // The playlist's own Spotify album comes first, so that's what plays even when RYM lists other editions.
+  function withSpotify(item, payload) {
+    if (!item || !item.spotify || !payload) return payload;
+    const entries = (payload.entries || []).filter((e) => e.href !== item.spotify);
+    return { ...payload, entries: [{ service: "spotify", href: item.spotify }, ...entries] };
+  }
+  const essentialItems = (done) => (globalThis.EYM_ESSENTIAL || []).map(([artist, title]) => plItem(done, { artist, title }));
+  const plCache = new Map(); // playlist id -> albums (kept while the panel is open)
+  SOURCES.playlists = async () => {
+    const done = await doneIndex();
+    const sp = (await api.runtime.sendMessage({ type: "spotify-playlists" }).catch(() => null)) || {};
+    const st = await api.runtime.sendMessage({ type: "spotify-status" }).catch(() => null);
+    return { items: essentialItems(done), done, playlists: sp.playlists || [], scopeOk: !!sp.scopeOk, connected: !!(st && st.connected), error: sp.error };
+  };
+  function fillPlaylists(acc, result) {
+    const body = acc.querySelector(".acc-body");
+    body.textContent = "";
+    if (!result.items) {
+      const p = document.createElement("p");
+      p.className = "hint";
+      p.textContent = result.message || "Couldn't read your playlists.";
+      body.append(p);
+      return;
+    }
+    const mk = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    };
+    const addPlaylist = (name, image, count, load) => {
+      const wrap = mk("div", "pl");
+      const head = mk("div", "pl-head");
+      const img = mk("img");
+      img.referrerPolicy = "no-referrer";
+      img.loading = "lazy";
+      if (image) img.src = image;
+      else img.classList.add("noart");
+      const lbl = mk("span", "lbl");
+      lbl.append(mk("span", "t", name), mk("span", "a", count));
+      const die = mk("button", "dice");
+      die.type = "button";
+      die.innerHTML = dieFace("playlist");
+      die.title = "Play a random album from this playlist";
+      head.append(img, lbl, die);
+      const sub = mk("div", "acc pl-sub");
+      sub.dataset.kind = "playlist";
+      sub.hidden = true;
+      sub.append(mk("div", "acc-body"));
+      wrap.append(head, sub);
+      const albums = async () => {
+        const r = await load();
+        return r;
+      };
+      head.addEventListener("click", async (e) => {
+        if (e.target.closest(".dice")) return;
+        if (!sub.hidden) {
+          sub.hidden = true;
+          wrap.classList.remove("open");
+          return;
+        }
+        sub.hidden = false;
+        wrap.classList.add("open");
+        sub.querySelector(".acc-body").textContent = "Loading…";
+        fillList(sub, "playlist", await albums());
+      });
+      die.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        dice("playlist", acc, await albums());
+      });
+      body.append(wrap);
+    };
+    const doneSet = result.done || new Set();
+    const left = result.items.filter((i) => !i.rated).length;
+    addPlaylist("Essential albums", "", `${result.items.length} albums · ${left} to go`, async () => ({ items: result.items }));
+    for (const p of result.playlists) {
+      addPlaylist(p.name, p.image, `${p.total} tracks${p.owner ? " · " + p.owner : ""}`, async () => {
+        let list = plCache.get(p.id);
+        if (!list) {
+          const r = await api.runtime.sendMessage({ type: "spotify-playlist-items", id: p.id }).catch(() => null);
+          if (!r || !r.items) return { message: `Couldn't read that playlist (${(r && r.error) || "no response"}).` };
+          list = r.items;
+          plCache.set(p.id, list);
+        }
+        const d = (await doneIndex()) || doneSet;
+        const items = list.map((x) => plItem(d, x));
+        return items.length ? { items } : { message: "No albums in this playlist." };
+      });
+    }
+    if (!result.connected || !result.scopeOk) {
+      const row = mk("div", "retry-row");
+      row.append(mk("p", "hint", result.connected ? "Spotify needs permission to read your playlists." : "Connect Spotify to see your playlists."));
+      const b = mk("button", "more", result.connected ? "Allow reading playlists" : "Connect Spotify");
+      b.type = "button";
+      b.addEventListener("click", async () => {
+        const r = await api.runtime.sendMessage({ type: "spotify-connect" }).catch(() => null);
+        if (r && r.ok) openList(acc);
+        else b.textContent = `Couldn't connect: ${(r && r.error) || "cancelled"}`;
+      });
+      row.append(b);
+      body.append(row);
+    }
+  }
+
   function fillList(acc, kind, result) {
+    if (kind === "playlists") return fillPlaylists(acc, result);
     const body = acc.querySelector(".acc-body");
     body.textContent = "";
     if (kind === "charts") body.append(chartPicker(acc));

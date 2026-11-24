@@ -202,7 +202,7 @@ async function resolveBandcamp(url) {
 
 // ---- Spotify: per-track library saves (OAuth PKCE, no client secret) ----
 const SPOTIFY_CLIENT_ID = "c66c2741c3284f4eae7341cc156ca0e8";
-const SPOTIFY_SCOPES = "user-library-read user-library-modify user-follow-read";
+const SPOTIFY_SCOPES = "user-library-read user-library-modify user-follow-read playlist-read-private playlist-read-collaborative";
 const SPOTIFY_AUTH_KEY = "sp:auth";
 
 const b64url = (buf) =>
@@ -571,6 +571,58 @@ async function newerEdition(id) {
   return found ? { id: found.id, name: found.name } : {};
 }
 
+
+// ---- Playlists: your saved Spotify playlists, and a playlist's albums (one entry per album, in playlist order) ----
+async function spotifyPages(path, query, limit) {
+  const out = [];
+  let res = await spotifyFetch("GET", path, { ...query, limit: String(limit), offset: "0" });
+  for (let n = 0; n < 40; n++) {
+    if (!res || !res.ok) {
+      if (!out.length) throw new Error(`Spotify API ${res ? res.status : "no response"}`);
+      break;
+    }
+    const page = await res.json();
+    out.push(...(page.items || []));
+    if (!page.next) break;
+    res = await fetch(page.next, { headers: { Authorization: `Bearer ${await spotifyAccessToken()}` } });
+  }
+  return out;
+}
+async function spotifyPlaylists() {
+  const auth = await spotifyAuth();
+  const scopeOk = !!(auth && /playlist-read-private/.test(auth.scope || ""));
+  if (!scopeOk) return { scopeOk: false, playlists: [] };
+  const list = await spotifyPages("/me/playlists", {}, 50);
+  const playlists = list
+    .filter((p) => p && p.id)
+    .map((p) => {
+      const imgs = p.images || [];
+      return { id: p.id, name: p.name || "Untitled", image: (imgs[imgs.length > 1 ? 1 : 0] || {}).url || "", total: (p.tracks || p.items || {}).total || 0, owner: (p.owner || {}).display_name || "" };
+    });
+  return { scopeOk: true, playlists };
+}
+async function spotifyPlaylistAlbums(id) {
+  let raw;
+  try {
+    raw = await spotifyPages(`/playlists/${id}/tracks`, {}, 100);
+  } catch (e) {
+    if (!/ (400|403|404|410)$/.test(String(e && e.message))) throw e;
+    raw = await spotifyPages(`/playlists/${id}/items`, {}, 100);
+  }
+  const seen = new Set();
+  const items = [];
+  for (const it of raw) {
+    const t = it && (it.track || it.item);
+    const a = t && t.album;
+    if (!a || !a.id || t.is_local || seen.has(a.id)) continue;
+    if (a.album_type === "single" && (a.total_tracks || 2) < 2) continue; // a lone single isn't an album
+    seen.add(a.id);
+    const imgs = a.images || [];
+    items.push({ spotifyId: a.id, title: a.name, artist: (a.artists || []).map((x) => x.name).join(", "), artUrl: (imgs[imgs.length > 1 ? 1 : 0] || {}).url || "" });
+  }
+  return items;
+}
+
 async function handleSpotify(msg) {
   try {
     switch (msg.type) {
@@ -581,6 +633,10 @@ async function handleSpotify(msg) {
         return { ok: true };
       case "spotify-tracks":
         return { tracks: await spotifyTracks(msg.kind, msg.id) };
+      case "spotify-playlists":
+        return await spotifyPlaylists();
+      case "spotify-playlist-items":
+        return { items: await spotifyPlaylistAlbums(msg.id) };
       case "spotify-newer":
         return await newerEdition(msg.id).catch(() => ({}));
       case "spotify-save":
