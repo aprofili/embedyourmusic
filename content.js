@@ -818,13 +818,13 @@
     return { lists: out };
   }
   // One list's albums (all its pages, up to 10), in list order.
-  async function fetchRymList(path) {
+  async function fetchRymList(path, maxPages = 10) {
     if (!/^\/list\/[^/]+\/[^/]+\/?$/.test(path || "")) throw new Error("not a list page");
     const base = path.replace(/\/?$/, "/");
     const items = [];
     const seen = new Set();
     let pages = 1;
-    for (let p = 1; p <= Math.min(pages, 10); p++) {
+    for (let p = 1; p <= Math.min(pages, maxPages); p++) {
       if (p > 1) await new Promise((r) => setTimeout(r, 500));
       const doc = await docFor(new RegExp("^" + escRe(base) + (p > 1 ? p + "/" : "") + "?$"), p > 1 ? `${base}${p}/` : base);
       for (const it of scrapeReleases(doc, 500)) {
@@ -1445,7 +1445,7 @@
         return true;
       }
       if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-collection" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-toplistening" || msg.type === "fetch-artist" || msg.type === "fetch-chart" || msg.type === "fetch-rymlists" || msg.type === "fetch-rymlist")) {
-        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-rymlists" ? fetchRymLists() : msg.type === "fetch-rymlist" ? fetchRymList(msg.path) : msg.type === "fetch-chart" ? fetchChart(msg.path) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-collection" ? fetchCollection(msg.page) : msg.type === "fetch-newmusic" ? fetchNewMusic() : msg.type === "fetch-toplistening" ? fetchTopListening() : fetchFavorites(msg.page))
+        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-rymlists" ? fetchRymLists() : msg.type === "fetch-rymlist" ? fetchRymList(msg.path, msg.maxPages || 10) : msg.type === "fetch-chart" ? fetchChart(msg.path) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-collection" ? fetchCollection(msg.page) : msg.type === "fetch-newmusic" ? fetchNewMusic() : msg.type === "fetch-toplistening" ? fetchTopListening() : fetchFavorites(msg.page))
           .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : r))
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;

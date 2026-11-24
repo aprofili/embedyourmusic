@@ -899,7 +899,7 @@
       case "favorites":
         return user ? `${base}/collection/${user}/r3.5-5.0/` : null;
       case "playlists":
-        return "https://open.spotify.com/collection/playlists";
+        return user ? `${base}/list/${user}/` : `${base}/lists/`;
       case "similar":
         return href || null;
       case "artist": {
@@ -1366,14 +1366,35 @@
       if (text != null) n.textContent = text;
       return n;
     };
-    const addPlaylist = (name, image, count, load) => {
+    // Playlist cover: its own image, else the first album's cover (RYM's, then Spotify's if RYM's won't load here).
+    const setCover = (img, cover, first) => {
+      let stage = 0;
+      const spotify = (it) => {
+        if (!it || !it.title) return img.classList.add("noart");
+        api.runtime
+          .sendMessage({ type: "cover-art", item: { href: it.href, title: it.title, artist: it.artist } })
+          .then((r) => (r && r.url ? ((img.src = r.url), img.classList.remove("noart")) : img.classList.add("noart")))
+          .catch(() => img.classList.add("noart"));
+      };
+      img.addEventListener("error", async () => {
+        if (stage++) return img.classList.add("noart");
+        spotify(await first());
+      });
+      img.addEventListener("load", () => {
+        if (img.naturalWidth <= 2) img.dispatchEvent(new Event("error"));
+        else img.classList.remove("noart");
+      });
+      if (cover) img.src = cover;
+      else first().then((it) => (it && it.artUrl ? ((stage = 0), (img.src = it.artUrl)) : spotify(it)));
+    };
+    const addPlaylist = (name, image, count, load, firstItem) => {
       const wrap = mk("div", "pl");
       const head = mk("div", "pl-head");
       const img = mk("img");
       img.referrerPolicy = "no-referrer";
       img.loading = "lazy";
-      if (image) img.src = image;
-      else img.classList.add("noart");
+      img.classList.add("noart");
+      setCover(img, image, firstItem || (async () => null));
       const lbl = mk("span", "lbl");
       lbl.append(mk("span", "t", name), mk("span", "a", count));
       const die = mk("button", "dice");
@@ -1410,7 +1431,7 @@
     };
     const doneSet = result.done || new Set();
     const left = result.items.filter((i) => !i.rated).length;
-    addPlaylist("Essential albums", "", `${result.items.length} albums · ${left} to go`, async () => ({ items: result.items }));
+    addPlaylist("Essential albums", "", `${result.items.length} albums · ${left} to go`, async () => ({ items: result.items }), async () => result.items[0]);
     for (const l of result.rymLists || []) {
       addPlaylist(l.name, "", `RYM list · ${l.owner}${l.fav ? " · favorited" : ""}`, async () => {
         let list = plCache.get(l.path);
@@ -1422,6 +1443,12 @@
         }
         const d = await doneIndex();
         return { items: list.map((x) => ({ ...x, rated: x.rated || d.has(doneKey(x.artist, x.title)) })) };
+      }, async () => {
+        const hit = plCache.get(l.path) || plCache.get(`first:${l.path}`);
+        if (hit) return hit[0];
+        const r = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-rymlist", path: l.path, maxPages: 1 } }).catch(() => null);
+        if (r && r.items) plCache.set(`first:${l.path}`, r.items);
+        return r && r.items && r.items[0];
       });
     }
     for (const p of result.playlists) {
@@ -1644,7 +1671,8 @@
       const url = await pageUrl(acc.dataset.kind);
       if (url) window.open(url, "_blank", "noopener");
     });
-    bar.append(die, go);
+    if (acc.dataset.kind === "playlists") bar.append(go); // each playlist has its own dice
+    else bar.append(die, go);
     head.addEventListener("click", () => {
       if (acc.classList.contains("open")) closeList(acc);
       else openList(acc);
