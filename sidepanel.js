@@ -1347,7 +1347,8 @@
     const done = await doneIndex();
     const sp = (await api.runtime.sendMessage({ type: "spotify-playlists" }).catch(() => null)) || {};
     const st = await api.runtime.sendMessage({ type: "spotify-status" }).catch(() => null);
-    return { items: essentialItems(done), done, playlists: sp.playlists || [], scopeOk: !!sp.scopeOk, connected: !!(st && st.connected), error: sp.error };
+    const rl = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-rymlists" } }).catch(() => null);
+    return { items: essentialItems(done), done, rymLists: (rl && rl.lists) || [], rymError: rl && rl.error, playlists: sp.playlists || [], scopeOk: !!sp.scopeOk, connected: !!(st && st.connected), error: sp.error };
   };
   function fillPlaylists(acc, result) {
     const body = acc.querySelector(".acc-body");
@@ -1410,6 +1411,19 @@
     const doneSet = result.done || new Set();
     const left = result.items.filter((i) => !i.rated).length;
     addPlaylist("Essential albums", "", `${result.items.length} albums · ${left} to go`, async () => ({ items: result.items }));
+    for (const l of result.rymLists || []) {
+      addPlaylist(l.name, "", `RYM list · ${l.owner}${l.fav ? " · favorited" : ""}`, async () => {
+        let list = plCache.get(l.path);
+        if (!list) {
+          const r = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-rymlist", path: l.path } }).catch(() => null);
+          if (!r || !r.items) return { message: `Couldn't read that list (${(r && r.error) || "no response"}).` };
+          list = r.items;
+          plCache.set(l.path, list);
+        }
+        const d = await doneIndex();
+        return { items: list.map((x) => ({ ...x, rated: x.rated || d.has(doneKey(x.artist, x.title)) })) };
+      });
+    }
     for (const p of result.playlists) {
       addPlaylist(p.name, p.image, `${p.total} tracks${p.owner ? " · " + p.owner : ""}`, async () => {
         let list = plCache.get(p.id);
@@ -1424,7 +1438,7 @@
         return items.length ? { items } : { message: "No albums in this playlist." };
       });
     }
-    if (!result.connected || !result.scopeOk) {
+    if (result.connected && !result.scopeOk) {
       const row = mk("div", "retry-row");
       row.append(mk("p", "hint", result.connected ? "Spotify needs permission to read your playlists." : "Connect Spotify to see your playlists."));
       const b = mk("button", "more", result.connected ? "Allow reading playlists" : "Connect Spotify");

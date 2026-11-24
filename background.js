@@ -903,6 +903,12 @@ async function pageFor(msg) {
       if (!user) throw new Error("sign in to rateyourmusic.com in this browser first");
       return `/recommendations/${user}/release/`;
     }
+    case "fetch-rymlists": {
+      const user = await rymUser();
+      if (!user) throw new Error("sign in to rateyourmusic.com in this browser first");
+      return `/list/${user}/`;
+    }
+    case "fetch-rymlist":
     case "fetch-artist":
     case "fetch-chart":
     case "artist-follow":

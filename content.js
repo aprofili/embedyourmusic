@@ -793,6 +793,53 @@
     return new DOMParser().parseFromString(await res.text(), "text/html");
   }
 
+  // Your RYM lists: the ones you made (/list/<you>/) and the ones you favorited (/favorite/by?user_req=<you>).
+  // -> { lists: [{ path, name, owner, fav }] }
+  async function fetchRymLists() {
+    const user = whoami();
+    if (!user) throw new Error("not signed in");
+    const read = async (url) => {
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return new DOMParser().parseFromString(await res.text(), "text/html");
+    };
+    const out = [];
+    const take = (doc, fav) => {
+      for (const a of doc.querySelectorAll("a[href]")) {
+        const m = /^\/list\/([^/]+)\/([^/]+)\/?$/.exec(pathOf(a));
+        const name = (a.textContent || "").trim();
+        if (!m || !name || out.some((x) => x.path === `/list/${m[1]}/${m[2]}/`)) continue;
+        out.push({ path: `/list/${m[1]}/${m[2]}/`, name, owner: decodeURIComponent(m[1]), fav });
+      }
+    };
+    take(await read(`/list/${encodeURIComponent(user)}/`), false);
+    await new Promise((r) => setTimeout(r, 400));
+    take(await read(`/favorite/by?user_req=${encodeURIComponent(user)}`), true);
+    return { lists: out };
+  }
+  // One list's albums (all its pages, up to 10), in list order.
+  async function fetchRymList(path) {
+    if (!/^\/list\/[^/]+\/[^/]+\/?$/.test(path || "")) throw new Error("not a list page");
+    const base = path.replace(/\/?$/, "/");
+    const items = [];
+    const seen = new Set();
+    let pages = 1;
+    for (let p = 1; p <= Math.min(pages, 10); p++) {
+      if (p > 1) await new Promise((r) => setTimeout(r, 500));
+      const doc = await docFor(new RegExp("^" + escRe(base) + (p > 1 ? p + "/" : "") + "?$"), p > 1 ? `${base}${p}/` : base);
+      for (const it of scrapeReleases(doc, 500)) {
+        const k = new URL(it.href).pathname;
+        if (!/^\/release\/album\//.test(k) || seen.has(k)) continue;
+        seen.add(k);
+        items.push(it);
+      }
+      const nums = [...doc.querySelectorAll(".navlinknum, .navlinkcurrent")].map((n) => Number(n.textContent)).filter(Boolean);
+      pages = Math.max(pages, ...nums);
+    }
+    if (!items.length) throw new Error("no albums found on that list");
+    return { items, pages, t: Date.now() };
+  }
+
   async function fetchNewMusic() {
     const doc = await docFor(/^\/new-music\//, "/new-music/");
     const items = scrapeReleases(doc, 150, "", topListeningBox(doc));
@@ -1397,8 +1444,8 @@
         })();
         return true;
       }
-      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-collection" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-toplistening" || msg.type === "fetch-artist" || msg.type === "fetch-chart")) {
-        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-chart" ? fetchChart(msg.path) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-collection" ? fetchCollection(msg.page) : msg.type === "fetch-newmusic" ? fetchNewMusic() : msg.type === "fetch-toplistening" ? fetchTopListening() : fetchFavorites(msg.page))
+      if (msg && (msg.type === "load-release" || msg.type === "fetch-favorites" || msg.type === "fetch-collection" || msg.type === "fetch-history" || msg.type === "fetch-newmusic" || msg.type === "fetch-toplistening" || msg.type === "fetch-artist" || msg.type === "fetch-chart" || msg.type === "fetch-rymlists" || msg.type === "fetch-rymlist")) {
+        (msg.type === "load-release" ? loadRelease(msg.item) : msg.type === "fetch-rymlists" ? fetchRymLists() : msg.type === "fetch-rymlist" ? fetchRymList(msg.path) : msg.type === "fetch-chart" ? fetchChart(msg.path) : msg.type === "fetch-artist" ? fetchArtist(msg.path, msg.name, msg.skip) : msg.type === "fetch-history" ? fetchHistory() : msg.type === "fetch-collection" ? fetchCollection(msg.page) : msg.type === "fetch-newmusic" ? fetchNewMusic() : msg.type === "fetch-toplistening" ? fetchTopListening() : fetchFavorites(msg.page))
           .then((r) => sendResponse(msg.type === "load-release" ? { payload: r } : r))
           .catch((e) => sendResponse({ error: String((e && e.message) || e) }));
         return true;
@@ -2071,5 +2118,5 @@
     }, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, openPanel, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, fetchCollection, scrapeTopListening, scrapeArtistResults, followState, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
+  globalThis.__embedYourMusic = { classify, classifyAny, makeFrame, resolveBandcamp, trackList, sidebarOpen, sidebarPlay, openPanel, parseLinks, scrapeReleases, scrapeHistory, saveSidebarData, fetchCollection, fetchRymLists, fetchRymList, scrapeTopListening, scrapeArtistResults, followState, rememberId, isVideoPath, matchTrack, ORDER, LABELS, addCollapseToggles, buildHero, tidyHeader, buildTabs, run };
 })();

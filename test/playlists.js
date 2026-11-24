@@ -59,6 +59,31 @@ const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
   r = await ask({ type: "spotify-playlists" });
   assert.strictEqual(r.scopeOk, false, "old connection needs to reconnect");
 
+  // RYM lists (content script): own + favorited lists, and a list's albums across its pages
+  {
+    const { JSDOM, VirtualConsole } = require("jsdom");
+    const pages = {
+      "/list/me/": `<a href="/list/me/mine/">Mine</a><a href="/list/me/">Lists</a>`,
+      "/favorite/by?user_req=me": `<a href="/list/bob/faved/">Faved</a><a href="/list/me/mine/">Mine</a>`,
+      "/list/bob/faved/": `<a class="album" href="/release/album/a/one/">One</a><a class="artist" href="/artist/a">A</a><a href="/list/bob/faved/2/">2</a><a class="navlinknum">2</a>`,
+      "/list/bob/faved/2/": `<a class="album" href="/release/album/b/two/">Two</a><a class="artist" href="/artist/b">B</a><a class="album" href="/release/album/a/one/">One</a><a class="artist" href="/artist/a">A</a><a class="navlinknum">2</a>`,
+    };
+    const dom = new JSDOM(`<body><a class="header_profile_main" href="/~me">me</a></body>`, { url: "https://rateyourmusic.com/", runScripts: "outside-only", virtualConsole: new VirtualConsole() });
+    const w = dom.window;
+    w.IntersectionObserver = class { observe() {} unobserve() {} };
+    w.chrome = { runtime: { sendMessage: async () => ({}), onMessage: { addListener() {} } }, storage: { local: { get: async () => ({}), set: async () => {} } } };
+    w.fetch = async (u) => (pages[u] ? { ok: true, status: 200, text: async () => `<body>${pages[u]}</body>` } : { ok: false, status: 404, text: async () => "" });
+    w.eval(read("content.js"));
+    const lists = JSON.parse(JSON.stringify((await w.__embedYourMusic.fetchRymLists()).lists));
+    assert.deepStrictEqual(lists, [
+      { path: "/list/me/mine/", name: "Mine", owner: "me", fav: false },
+      { path: "/list/bob/faved/", name: "Faved", owner: "bob", fav: true },
+    ]);
+    const l = await w.__embedYourMusic.fetchRymList("/list/bob/faved/");
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(l.items.map((i) => i.title))), ["One", "Two"], "pages merged, deduped");
+    await assert.rejects(() => w.__embedYourMusic.fetchRymList("/charts/x/"));
+  }
+
   const g = {};
   vm.runInNewContext(read("essential.js"), { globalThis: g });
   const ess = g.EYM_ESSENTIAL;
