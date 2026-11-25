@@ -1283,3 +1283,4 @@ a.sp-artist {
 .pl-sub { border: 0; padding: 0 0 8px 12px; }
 .pl-head .dice { position: static; transform: none; flex: none; }
 .pl-head img.noart { visibility: visible; background: #2a2a2a; }
+.sp-year { color: var(--muted); font-size: 0.85em; opacity: 0.8; margin-top: 1px; }

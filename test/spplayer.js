@@ -41,13 +41,14 @@ const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
   await tick();
   const d = w.document;
   onMsg({ type: "play", tabId: 7, payload: {
-    id: "1", title: "Album", artist: "Band", artUrl: "", href: "https://rateyourmusic.com/release/album/band/album/", rating: 4,
+    id: "1", title: "Album", artist: "Band", artUrl: "", href: "https://rateyourmusic.com/release/album/band/album/", year: 1971, rating: 4,
     entries: [{ service: "spotify", href: "https://open.spotify.com/album/49JPEgPvEaFp89xqzeQvF7" }],
   } });
   await tick(20);
   const sp = d.querySelector(".sp");
   assert.ok(sp, "custom player rendered");
   assert.strictEqual(d.querySelectorAll(".sp-row").length, 3);
+  assert.strictEqual(d.querySelector(".sp-meta .sp-year").textContent, "1971", "RYM release year under the artist");
   // rating sits under the head, above the list
   assert.ok(d.querySelector(".sp-rate #rate-box"), "rating moved under the art");
   assert.ok(d.querySelector(".sp-head .sp-meta .sp-rate #rate-box"), "rating beside the art");

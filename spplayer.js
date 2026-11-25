@@ -231,6 +231,7 @@
       if (m) artistHref = `https://rateyourmusic.com/artist/${m[1]}`;
     } catch {}
     meta.append(link("sp-title", payload.title || "Untitled", payload.href || ""), link("sp-artist", payload.artist || "", artistHref));
+    if (payload.year) meta.append(el("div", "sp-year", String(payload.year)));
     if (newer && newer.id) meta.append(el("div", "sp-edition", `Playing: ${newer.name}`));
     const now = el("div", "sp-now", ""); // (kept for the painter; hidden: the track list already shows the song)
     now.hidden = true;

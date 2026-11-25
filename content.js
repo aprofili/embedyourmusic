@@ -711,6 +711,7 @@
       artist: pickArtist(item.artist, rec && rec.artist),
       artUrl: item.artUrl || (rec && rec.art) || "",
       href: item.href,
+      year: (rec && rec.year) || Number(item.year) || 0, // RYM's release year: the original, not the edition that plays
       rating: rec && rec.ratingKnown ? rec.rating : 0,
       ratingKnown: !!(rec && rec.ratingKnown),
       entries: entries.map((e) => ({ service: e.service, href: e.href })),
