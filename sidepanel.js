@@ -46,6 +46,7 @@
       if (kind === "history" || kind === "favorites") continue;
       row.classList.toggle("rated", isRated({ href: row.dataset.href, id: row.dataset.id, rated: row.dataset.rated === "1" }));
     }
+    if (typeof refreshPlaylists === "function") refreshPlaylists();
   }
 
   // ---- Connection to the background worker ----
@@ -1317,22 +1318,38 @@
   // Everything you've rated or reviewed, as artist|title keys: the collection, ratings seen anywhere, reviews.
   async function doneIndex() {
     const done = new Set();
-    const lib = (await store.get("sidebar:ratedlib")) || {};
-    for (const v of Object.values(lib)) if (Array.isArray(v) && v[0] > 0) done.add(doneKey(v[2], v[1]));
-    const fromPath = (k) => {
-      const m = /^\/release\/[^/]+\/([^/]+)\/([^/]+)\/?$/.exec(k);
-      if (m) done.add(`${flatName(decodeURIComponent(m[1]).replace(/^the-/, ""))}|${baseTitle(decodeURIComponent(m[2]).replace(/-/g, " "))}`);
+    const addPath = (p) => {
+      const m = /^\/release\/[^/]+\/([^/]+)\/([^/]+)\/?$/.exec(String(p).toLowerCase());
+      if (!m) return;
+      done.add(`path:${m[0].replace(/\/?$/, "/")}`);
+      done.add(`${flatName(decodeURIComponent(m[1]).replace(/^the-/, ""))}|${baseTitle(decodeURIComponent(m[2]).replace(/-/g, " "))}`);
     };
-    for (const [k, r] of Object.entries(ratings)) if (k.startsWith("p:") && r > 0) fromPath(k.slice(2));
-    for (const [k, r] of Object.entries(reviews)) if (r && r.reviewed) fromPath(k);
+    const lib = (await store.get("sidebar:ratedlib")) || {};
+    for (const [k, v] of Object.entries(lib)) {
+      if (!Array.isArray(v) || !(v[0] > 0)) continue;
+      done.add(doneKey(v[2], v[1]));
+      addPath(k);
+    }
+    for (const [k, r] of Object.entries(ratings)) if (k.startsWith("p:") && r > 0) addPath(k.slice(2));
+    // Reviewing needs a rating, so every review is also in the library above; this just catches ones not synced yet.
+    for (const [k, r] of Object.entries(reviews)) if (r && r.reviewed) addPath(k);
     return done;
   }
+  const pathDone = (done, href) => {
+    try {
+      return done.has(`path:${new URL(href, "https://rateyourmusic.com").pathname.toLowerCase().replace(/\/?$/, "/")}`);
+    } catch {
+      return false;
+    }
+  };
+  const isDone = (done, x) => pathDone(done, x.href) || done.has(x.dk || doneKey(x.artist, x.title));
   const plItem = (done, x) => ({
     title: x.title,
     artist: x.artist,
     href: guessHref(x.artist, x.title),
     artUrl: x.artUrl || "",
     spotify: x.spotifyId ? `https://open.spotify.com/album/${x.spotifyId}` : "",
+    dk: doneKey(x.artist, x.title),
     rated: done.has(doneKey(x.artist, x.title)),
   });
   // The playlist's own Spotify album comes first, so that's what plays even when RYM lists other editions.
@@ -1350,6 +1367,26 @@
     const rl = await api.runtime.sendMessage({ type: "to-rym", tabId: current && current.tabId, msg: { type: "fetch-rymlists" } }).catch(() => null);
     return { items: essentialItems(done), done, rymLists: (rl && rl.lists) || [], rymError: rl && rl.error, playlists: sp.playlists || [], scopeOk: !!sp.scopeOk, connected: !!(st && st.connected), error: sp.error };
   };
+  // Keep the faded rows and the "N to go" counts in step with what you rate/review while the panel is open.
+  let plTimer;
+  function refreshPlaylists() {
+    clearTimeout(plTimer);
+    plTimer = setTimeout(async () => {
+      const wraps = document.querySelectorAll(".pl");
+      if (!wraps.length) return;
+      const done = await doneIndex();
+      for (const w of wraps) {
+        const items = w._items || [];
+        for (const it of items) it.rated = it.rated || isDone(done, it);
+        for (const row of w.querySelectorAll(".item[data-href]")) {
+          const r = isDone(done, { href: row.dataset.href, dk: row.dataset.dk }) || row.dataset.rated === "1";
+          if (r) row.dataset.rated = "1";
+          row.classList.toggle("rated", r);
+        }
+        if (items.length && w._label) w._label(items);
+      }
+    }, 250);
+  }
   function fillPlaylists(acc, result) {
     const body = acc.querySelector(".acc-body");
     body.textContent = "";
@@ -1407,8 +1444,17 @@
       sub.hidden = true;
       sub.append(mk("div", "acc-body"));
       wrap.append(head, sub);
+      wrap._label = (items) => {
+        const el = lbl.querySelector(".a");
+        const left = items.filter((i) => !i.rated).length;
+        el.textContent = `${items.length} albums · ${left} to go`;
+      };
       const albums = async () => {
         const r = await load();
+        if (r && r.items) {
+          wrap._items = r.items;
+          wrap._label(r.items);
+        }
         return r;
       };
       head.addEventListener("click", async (e) => {
@@ -1422,16 +1468,23 @@
         wrap.classList.add("open");
         sub.querySelector(".acc-body").textContent = "Loading…";
         fillList(sub, "playlist", await albums());
+        refreshPlaylists();
       });
       die.addEventListener("click", async (e) => {
         e.stopPropagation();
         dice("playlist", acc, await albums());
       });
       body.append(wrap);
+      return wrap;
     };
     const doneSet = result.done || new Set();
     const left = result.items.filter((i) => !i.rated).length;
-    addPlaylist("Essential albums", "", `${result.items.length} albums · ${left} to go`, async () => ({ items: result.items }), async () => result.items[0]);
+    const ess = addPlaylist("Essential albums", "", `${result.items.length} albums · ${left} to go`, async () => {
+      const d = await doneIndex();
+      for (const it of result.items) it.rated = isDone(d, it);
+      return { items: result.items };
+    }, async () => result.items[0]);
+    ess._items = result.items;
     for (const l of result.rymLists || []) {
       addPlaylist(l.name, "", `RYM list · ${l.owner}${l.fav ? " · favorited" : ""}`, async () => {
         let list = plCache.get(l.path);
@@ -1442,7 +1495,7 @@
           plCache.set(l.path, list);
         }
         const d = await doneIndex();
-        return { items: list.map((x) => ({ ...x, rated: x.rated || d.has(doneKey(x.artist, x.title)) })) };
+        return { items: list.map((x) => ({ ...x, dk: doneKey(x.artist, x.title), rated: isDone(d, x) })) };
       }, async () => {
         const hit = plCache.get(l.path) || plCache.get(`first:${l.path}`);
         if (hit) return hit[0];
@@ -1465,6 +1518,7 @@
         return items.length ? { items } : { message: "No albums in this playlist." };
       });
     }
+    refreshPlaylists();
     if (result.connected && !result.scopeOk) {
       const row = mk("div", "retry-row");
       row.append(mk("p", "hint", result.connected ? "Spotify needs permission to read your playlists." : "Connect Spotify to see your playlists."));
@@ -1581,6 +1635,7 @@
         row.dataset.href = item.href;
         if (item.id) row.dataset.id = item.id;
         if (item.rated) row.dataset.rated = "1";
+        if (item.dk) row.dataset.dk = item.dk;
         if (kind !== "history" && kind !== "favorites" && isRated(item)) row.classList.add("rated");
         if (kind === "recommended" || kind === "challenge") {
           const x = document.createElement("button");
@@ -1688,6 +1743,7 @@
       }
       const theirs = (k) => changes[k] && !(Date.now() - (selfWrites[k] || 0) < 3000);
       if (theirs("sidebar:similar")) refreshOpenList("similar");
+      if (changes["sidebar:ratedlib"] || changes["sidebar:ratings"] || changes["sidebar:reviews"]) refreshPlaylists();
       if (theirs("sidebar:reviews")) {
         reviews = { ...reviews, ...(changes["sidebar:reviews"].newValue || {}) };
         paintReview();
